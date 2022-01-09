@@ -1,0 +1,49 @@
+"""Geokube framework"""
+import setuptools
+from distutils.util import convert_path
+
+main_ns = {}
+ver_path = convert_path('geokube/version.py')
+with open(ver_path) as ver_file:
+    exec(ver_file.read(), main_ns)
+
+with open("README.md", "r") as f:
+    long_description = f.read()
+
+setuptools.setup(
+    name="geokube",
+    version=main_ns['__version__'],
+    author="CMCC PPOS Research Group",
+    author_email="ppos-services@cmcc.it",
+    description=("Python library for accessing and managing Earth Science Data based on xarray and CF conventions"),
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    url="https://github.com/geokube/geokube",
+    packages=setuptools.find_packages(),
+    install_requires=[
+        "cf_units",
+        "dask",
+        "distributed",
+        "intake",
+        "xarray",
+        "pytest-cov",
+        "pytest",
+        "netCDF4",
+        "scipy",
+        "metpy",
+        "pyarrow"
+    ],
+    classifiers=[
+        "Development Status :: 3 - Alpha",
+        "Environment :: Web Environment",
+        "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: Apache Software License",
+        "Natural Language :: English",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3",
+        "Topic :: Scientific/Engineering :: Earth Science"
+    ],
+    python_requires=">=3.9",
+    license="Apache License, Version 2.0",
+    package_data={'geokube': ['static/css/*.css', 'static/html/*.html']},
+)

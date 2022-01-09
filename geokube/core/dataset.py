@@ -1,0 +1,248 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping, Sequence
+from numbers import Number
+from typing import List, Optional, Tuple, Union, Any
+
+import numpy as np
+import pandas as pd
+from dask.delayed import Delayed
+from geokube.core.axis import AxisType
+
+import geokube.utils.exceptions as ex
+from geokube.core.datacube import DataCube
+from geokube.utils.hcube_logger import HCubeLogger
+import os
+from functools import partial
+import tempfile
+
+
+class Dataset:
+    __slots__ = ("__data", "__metadata", "__attrs", "__cube_idx")
+
+    _LOG = HCubeLogger(name="Dataset")
+
+    FIELD_COL = "fields"
+    DATACUBE_COL = "datacube"
+    FILES_COL = "files"
+
+    def __init__(
+        self,
+        hcubes: Mapping[tuple[str, ...], DataCube] | pd.DataFrame,
+        attrs: Sequence[str] = None,
+        metadata: Mapping[str, str] | None = None,
+    ) -> None:
+        # TODO: Make `attrs` capable of taking `np.ndarray`.
+        if attrs is None:
+            attrs = []
+        if isinstance(hcubes, Mapping):
+            self.__data = pd.Series(hcubes).reset_index()
+            self.__data.columns = attrs + [self.DATACUBE_COL]
+            self.__attrs = list(attrs)
+        elif isinstance(hcubes, pd.DataFrame):
+            self.__data = hcubes
+            self.__attrs = [
+                attr
+                for attr in hcubes.columns
+                if attr != self.DATACUBE_COL
+                and attr != self.FILES_COL
+                and attr != self.FIELD_COL
+            ]
+        else:
+            raise ex.HCubeTypeError(
+                "'hcubes' must be mapping or pandas DataFrame", logger=self._LOG
+            )
+
+        self.__data[self.FIELD_COL] = [
+            None
+            if isinstance(hcube, Delayed) or hcube is None
+            else list(hcube._fields.keys())
+            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
+        ]
+
+        self.__cube_idx = len(self.__attrs)
+        self.__metadata = dict(metadata) if metadata is not None else {}
+
+    def __getitem__(self, key: Union[str, Tuple[str]]) -> Dataset:
+        # TODO: Check if `.copy()` is necessary here.
+        data = self.__data.iloc[:, : self.__cube_idx].copy()
+        key = {key} if isinstance(key, str) else set(key)
+        data[self.DATACUBE_COL] = [
+            None if isinstance(hcube, Delayed) else hcube[key & hcube._fields.keys()]
+            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
+        ]
+        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return dset._drop_empty()
+
+    def geobbox(
+        self,
+        north=None,
+        south=None,
+        west=None,
+        east=None,
+        top=None,
+        bottom=None,
+        roll_if_needed=True,
+    ):
+        # this returns a new Dataset where each Datacube is subsetted according to the coordinates
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.geobbox(
+                north=north,
+                south=south,
+                west=west,
+                east=east,
+                top=top,
+                bottom=bottom,
+                roll_if_needed=roll_if_needed,
+            )
+        )
+        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+
+    def locations(
+        self,
+        latitude,
+        longitude,
+        vertical: Optional[List[Number]] = None,
+    ):
+        # this returns a new Dataset where each Datacube is subsetted according to the coordinates
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.locations(
+                latitude=latitude, longitude=longitude, vertical=vertical
+            )
+        )
+        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+
+    def sel(
+        self,
+        indexers: Mapping[Union[AxisType, str], Any] = None,
+        method: str = None,
+        tolerance: Number = None,
+        drop: bool = False,
+        roll_if_needed: bool = True,
+        **indexers_kwargs: Any,
+    ) -> Dataset:  # this can be only independent variables
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.sel(
+                indexers=indexers,
+                method=method,
+                tolerance=tolerance,
+                drop=drop,
+                roll_if_needed=roll_if_needed,
+                **indexers_kwargs,
+            )
+        )
+        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+
+    def update_metadata(self, metadata: dict):
+        self.__metadata.update(metadata)
+
+    @property
+    def data(self) -> pd.DataFrame:
+        return self.__data
+
+    @property
+    def metadata(self) -> dict[str, str]:
+        return self.__metadata
+
+    @property
+    def cubes(self) -> List[DataCube]:
+        return self.__data[self.DATACUBE_COL].tolist()
+
+    def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
+        return {
+            row[: self.__cube_idx]: row[self.__cube_idx]
+            for row in self.__data.itertuples(index=False, name=None)
+        }
+
+    def _drop_empty(self) -> Dataset:
+        mask = self.__data[self.FIELD_COL].astype(dtype=np.bool_)
+        data = self.__data.loc[mask, : self.DATACUBE_COL]
+        data.index = np.arange(len(data))
+        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+
+    def filter(
+        self, indexers: Optional[Mapping[str, str]] = None, **indexers_kwargs
+    ) -> Dataset:
+        if indexers is None:
+            params = indexers_kwargs
+        else:
+            if intersect := sorted(indexers.keys() & indexers_kwargs.keys()):
+                raise ex.HCubeValueError(
+                    "'indexers' and 'indexers_kwargs' have common parameters: "
+                    f"{intersect}",
+                    logger=self._LOG,
+                )
+            params = {**indexers, **indexers_kwargs}
+
+        if not (idx := params.keys()) <= (attrs := set(self.__attrs)):
+            # TODO: Make better message.
+            raise ex.HCubeValueError(
+                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}",
+                logger=self._LOG,
+            )
+
+        mask = np.full(shape=len(self.__data), fill_value=True, dtype=np.bool_)
+        for param_name, param_value in params.items():
+            mask &= np.in1d(self.__data[param_name], param_value)
+        data = self.__data.loc[mask, : self.DATACUBE_COL]
+        data.index = np.arange(len(data))
+
+        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+
+    def apply(
+        self,
+        func: Union[Callable[[DataCube], DataCube], property, str],
+        drop_empty: Optional[bool] = False,
+        **kwargs,
+    ) -> Dataset:
+        data = self.__data.iloc[:, : self.__cube_idx].copy()
+        data[self.DATACUBE_COL] = [
+            _apply(hcube, func, **kwargs)
+            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
+        ]
+        data.index = np.arange(len(data))
+        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return dset._drop_empty() if drop_empty else dset
+
+    def persist(self, path=None):
+        if path is None:
+            path = tempfile.gettempdir()
+
+        self.data.apply(self._persist_datacube, path=path, axis=1)
+
+    def get_nbytes(self) -> int:
+        return sum(cube.get_nbytes() for cube in self.cubes)
+
+    def _persist_datacube(self, dataframe_item, path):
+        path_to_store = os.path.join(
+            path, os.path.basename(dataframe_item[self.FILES_COL][0])
+        )
+        persisted = (
+            dataframe_item[self.DATACUBE_COL].to_xarray().to_netcdf(path_to_store)
+        )
+        if isinstance(persisted, Delayed):
+            persisted.compute()
+
+
+def _apply(
+    hcube: DataCube,
+    func: Union[Callable[[DataCube], DataCube], property, str],
+    **kwargs,
+) -> DataCube:
+    if isinstance(func, str):
+        func = getattr(DataCube, func)
+    if callable(func):
+        return func(hcube, **kwargs)
+    if isinstance(func, property):
+        if kwargs:
+            raise ValueError(
+                "'func' is a property and cannot accept additional arguments"
+            )
+        return func.fget(hcube)
+    raise TypeError(
+        "'func' must be callable or str which represents the name of a "
+        "callable member of DataCube class"
+    )
