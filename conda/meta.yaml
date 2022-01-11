@@ -1,0 +1,27 @@
+{% set data = load_setup_py_data(setup_file='../setup.py', from_recipe_dir=True) %}
+
+package:
+  name: {{ data.get('name') }}
+  version: {{ data.get('version') }}
+about:
+  summary: {{ data.get('description') }}
+source:
+  path: ..
+
+requirements:
+  build:
+    - python
+  run:
+   {% for package in data.get('install_requires') %}
+    - {{ package }}
+   {% endfor %}
+    - xesmf~=0.6.1
+    - cartopy~=0.18
+
+channels:
+  - conda-forge
+  - defaults
+
+build:
+  script: python setup.py install --single-version-externally-managed --record=record.txt
+
