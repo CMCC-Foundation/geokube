@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Mapping, Optional
 import warnings
 
 import cf_units as cf
@@ -41,11 +41,15 @@ class Dimension:
 
     @classmethod
     @log_func_debug
-    def from_xarray_dataarray(cls, da: xr.DataArray):
-        axis = Axis.from_xarray_dataarray(da)
+    def from_xarray_dataarray(
+        cls, da: xr.DataArray, mapping: Optional[Mapping[str, Mapping[str, str]]] = None
+    ):
+        axis = Axis.from_xarray_dataarray(da, mapping=mapping)
         attrs = da.attrs
         # Attrs['Axis'] -> Attrs['standard_name'] -> da.name
         name = attrs.get("standard_name", da.attrs.get("axis", da.name))
+        if mapping is not None and name in mapping:
+            name = mapping[name]["api"]
         return Dimension(name=name, axis=axis)
 
     @classmethod

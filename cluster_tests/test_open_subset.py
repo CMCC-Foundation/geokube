@@ -4,7 +4,7 @@ from geokube.backend.netcdf import open_datacube, open_dataset
 from tests import TimeCounter
 import xarray as xr
 import numpy as np
-import tests.cluster_tests.datasets_conf as DS
+import cluster_tests.datasets_conf as DS
 
 RES_PATH = "tests/resources/res.nc"
 
@@ -217,6 +217,30 @@ def test_8(client):
             parallel=True,
             chunks=DS.NEMO_GLOBAL_CHUNKS,
         )["so"]
+        res = hc.locations(latitude=[-20, 15, 35], longitude=150)
+        res.cubes[0].to_xarray().to_netcdf(RES_PATH)
+
+    with TimeCounter(print=True, log=True) as tc:
+        _ = client.submit(f).result()
+
+    ds = xr.open_dataset(RES_PATH)
+    assert ds.crs.grid_mapping_name == "curvilinear_grid"
+    assert len(ds.points) == 3
+    assert np.all((ds.nav_lat.values - np.array([-20, 15, 35])) <= 0.1)
+    assert np.all((ds.nav_lon.values - np.array([150])) <= 0.1)
+
+
+def test_9(client):
+    def f():
+        path = DS.NEMO_GLOBAL
+        hc = open_dataset(
+            path,
+            pattern=DS.NEMO_GLOBAL_PATTERN,
+            decode_coords="all",
+            parallel=True,
+            chunks=DS.NEMO_GLOBAL_CHUNKS,
+            mapping={"so": {"api": "some_so"}},
+        )["some_so"]
         res = hc.locations(latitude=[-20, 15, 35], longitude=150)
         res.cubes[0].to_xarray().to_netcdf(RES_PATH)
 
