@@ -303,47 +303,77 @@ class Field(AggMixin):
         )
 
     def _geobbox_idx(
-        self, south, north, west, east, top=None, bottom=None, roll_if_needed=True
+        self,
+        south,
+        north,
+        west,
+        east,
+        top=None,
+        bottom=None,
+        roll_if_needed=True
     ):
-        # TODO: add vertical also
-        domain = self._domain
-        # TODO: Check if these are NumPy arrays.
-        lat = domain.latitude.variable.data
-        lon = domain.longitude.variable.data
+        print('_geobbox_idx called')
 
-        ind_lat = domain.is_latitude_independent
-        ind_lon = domain.is_longitude_independent
-        if ind_lat and ind_lon:
-            idx = {
-                domain.latitude.name: np.s_[south:north]
-                if util_methods.is_nondecreasing(domain.latitude.data)
-                else np.s_[north:south],
-                domain.longitude.name: np.s_[west:east]
-                if util_methods.is_nondecreasing(domain.longitude.data)
-                else np.s_[east:west],
-            }
-            return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
+        field = self
+        domain = self.domain
 
+        # Latitude
+        lat = domain.latitude
+        lat_data = lat.data
+        lat_incr = util_methods.is_nondecreasing(lat_data)
+        lat_indep = domain.is_latitude_independent
+
+        # Longitude
+        lon = domain.longitude
+        lon_data = lon.data
+        lon_incr = util_methods.is_nondecreasing(lon_data)
+        lon_indep = domain.is_longitude_independent
+
+        # Vertical
+        vert = domain.vertical
+        if top is not None or bottom is not None:
+            if vert is None:
+                raise ValueError(
+                    "'top' and 'bottom' must be None because there is no"
+                    " vertical coordinate"
+                )
+            vert_incr = util_methods.is_nondecreasing(vert.data)
+            vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
+            vert_idx = {vert.name: vert_slice}
+            field = self.sel(indexers=vert_idx, roll_if_needed=roll_if_needed)
+
+        # Case of latitude and longitude being independent
+        if lat_indep and lon_indep:
+            lat_slice = np.s_[south:north] if lat_incr else np.s_[north:south]
+            lon_slice = np.s_[west:east] if lon_incr else np.s_[east:west]
+            idx = {lat.name: lat_slice, lon.name: lon_slice}
+            return field.sel(indexers=idx, roll_if_needed=roll_if_needed)
+
+        # Case of latitude and longitude being dependent on y and x
         # Specifying the mask(s) and extracting the indices that correspond to
         # the inside the bounding box.
-        if np.sum(lat_mask := (lat >= float(south)) & (lat <= float(north))) == 0:
-            lat_mask = (lat <= float(south)) & (lat >= float(north))
-        if np.sum(lon_mask := (lon >= float(west)) & (lon <= float(east))) == 0:
-            lon_mask = (lon <= float(west)) & (lon <= float(east))
+        lat_mask = (lat_data >= south) & (lat_data <= north)
+        lon_mask = (lon_data >= west) & (lon_data <= east)
+        # TODO: Clarify why this is required.
+        if np.sum(lat_mask) == 0:
+            lat_mask = (lat_data <= south) & (lat_data >= north)
+        if np.sum(lon_mask) == 0:
+            lon_mask = (lon_data <= float(west)) & (lon_data <= float(east))
         y, x = np.nonzero(lat_mask & lon_mask)
 
         # Spatial subseting.
-        idx = {
-            domain[AxisType.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max() + 1],
-            domain[AxisType.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max() + 1],
-        }
-        ds = (
-            self._check_and_roll_longitude(self.to_xarray(), idx)
-            if roll_if_needed
-            else self.to_xarray()
+        dims = lat.dims
+        x_slice = np.s_[x.min():x.max() + 1]
+        y_slice = np.s_[y.min():y.max() + 1]
+        idx = {dims[1].axis.name: x_slice, dims[0].axis.name: y_slice}
+        dset = (
+            field._check_and_roll_longitude(field.to_xarray(), idx)
+            if roll_if_needed else
+            field.to_xarray()
         )
+        dset = dset.sel()
         return Field.from_xarray_dataset(
-            ds=ds.isel(indexers=idx), field_name=self.name, deep_copy=False
+            ds=dset.isel(indexers=idx), field_name=self.name, deep_copy=False
         )
 
     def locations(
@@ -394,9 +424,10 @@ class Field(AggMixin):
             deep_copy=False,
         )
 
-    def _locations_idx(self, latitude, longitude):
+    def _locations_idx(self, latitude, longitude, vertical):
         lats = np.array(latitude, dtype=np.float32, ndmin=1)
         lons = np.array(longitude, dtype=np.float32, ndmin=1)
+        verts = np.array(vertical, dtype=np.float32, ndims=1)
 
         domain = self._domain
         ind_lat = domain.is_latitude_independent
