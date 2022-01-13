@@ -197,8 +197,14 @@ class Variable(AggMixin):
             calendar=da.encoding.get("calendar", da.attrs.get("calendar")),
         )
         properties, cf_encoding = CFAttributes.split_attrs(attrs)
+        # Extend properties with mapping attributes
+        name = da.name
+        if mapping is not None and name in mapping:
+            properties.update(util_methods.trim_key(mapping[name], exclude="api"))
+            name = mapping[name]["api"]
+
         return Variable(
-            name=da.name,
+            name=name,
             data=data,
             dims=dims,
             units=units,
