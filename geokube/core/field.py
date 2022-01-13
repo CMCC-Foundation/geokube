@@ -312,8 +312,6 @@ class Field(AggMixin):
         bottom=None,
         roll_if_needed=True
     ):
-        print('_geobbox_idx called')
-
         field = self
         domain = self.domain
 
@@ -334,8 +332,8 @@ class Field(AggMixin):
         if top is not None or bottom is not None:
             if vert is None:
                 raise ValueError(
-                    "'top' and 'bottom' must be None because there is no"
-                    " vertical coordinate"
+                    "'top' and 'bottom' must be None because there is no "
+                    "vertical coordinate"
                 )
             vert_incr = util_methods.is_nondecreasing(vert.data)
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
