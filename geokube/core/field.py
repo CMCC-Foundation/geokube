@@ -233,11 +233,6 @@ class Field(AggMixin):
         bottom=None,
         roll_if_needed=True,
     ):
-        if (top is not None) or (bottom is not None):
-            raise ex.HCubeNotImplementedError(
-                "Selecting by geobbox containing vertical is currently not supported!",
-                logger=self._LOG,
-            )
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
@@ -328,6 +323,8 @@ class Field(AggMixin):
         lon_indep = domain.is_longitude_independent
 
         # Vertical
+        # NOTE: In this implementation, vertical is always considered an
+        # independent coordinate.
         vert = domain.vertical
         if top is not None or bottom is not None:
             if vert is None:
