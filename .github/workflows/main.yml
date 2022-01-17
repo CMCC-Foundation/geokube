@@ -12,7 +12,7 @@ jobs:
         
       - name: Install Python dependencies
         run: |     
-          python setup.py install
+          pip install pytest
 
       - name: Test with PyTest
         run: |
