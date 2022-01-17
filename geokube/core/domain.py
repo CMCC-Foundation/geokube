@@ -162,6 +162,8 @@ class Domain:
         if isinstance(axis, str):
             # if we pass `latitude` and axis is called `lat`, we return the proper axis with AxisType.LATITUDE
             # Selection by generic should be explicit: coordinate(AxisType.GENERIC)
+            if axis in self._coords:
+                return self._coords[axis]
             if (at := AxisType.parse_type(axis)) is AxisType.GENERIC:
                 raise ex.HCubeKeyError(f"`{axis}` not found!", logger=self._LOG)
             return self._coords.get(axis, self.coordinate(at))
@@ -221,17 +223,30 @@ class Domain:
 
     @classmethod
     @log_func_debug
-    def from_xarray_dataarray(cls, da: xr.DataArray, copy: bool = False) -> "Domain":
+    def from_xarray_dataarray(
+        cls,
+        da: xr.DataArray,
+        copy: bool = False,
+        mapping: Optional[Mapping[str, str]] = None,
+    ) -> "Domain":
         da, coords_keys, crs = Domain._from_xarray_preprocess(da, copy)
 
         # create coordinates from dims
-        coords = [Coordinate.from_xarray_dataarray(da[d]) for d in coords_keys]
+        coords = [
+            Coordinate.from_xarray_dataarray(da[d], mapping=mapping)
+            for d in coords_keys
+        ]
         return Domain(coordinates=coords, crs=crs)
 
     @classmethod
     @log_func_debug
     def from_xarray_dataset(
-        cls, dset: xr.Dataset, field_name: str, copy: bool = False, errors="raise"
+        cls,
+        dset: xr.Dataset,
+        field_name: str,
+        copy: bool = False,
+        errors="raise",
+        mapping: Optional[Mapping[str, str]] = None,
     ) -> "Domain":
         da = dset[field_name]
         da, coords_keys, crs = Domain._from_xarray_preprocess(da, copy)
@@ -239,7 +254,9 @@ class Domain:
         # create coordinates from dims and coords
         coords = util_methods.get_not_nones(
             *[
-                Coordinate.from_xarray_dataset(ds=dset, coord_name=d, errors=errors)
+                Coordinate.from_xarray_dataset(
+                    ds=dset, coord_name=d, errors=errors, mapping=mapping
+                )
                 for d in coords_keys
             ]
         )
@@ -256,7 +273,10 @@ class Domain:
             ) in util_methods.parse_cell_measures_string(cell_measures).items():
                 coords.append(
                     Coordinate.from_xarray_dataset(
-                        ds=dset, coord_name=measure_var_name, errors=errors
+                        ds=dset,
+                        coord_name=measure_var_name,
+                        errors=errors,
+                        mapping=mapping,
                     )
                 )
         return Domain(coordinates=coords, crs=crs)

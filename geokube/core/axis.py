@@ -1,6 +1,6 @@
 import re
 from enum import Enum
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 import cf_units as cf
 import xarray as xr
@@ -100,7 +100,9 @@ class Axis:
         return not (self == other)
 
     @classmethod
-    def from_xarray_dataarray(cls, da: xr.DataArray) -> "Axis":
+    def from_xarray_dataarray(
+        cls, da: xr.DataArray, mapping: Optional[Mapping[str, Mapping[str, str]]] = None
+    ) -> "Axis":
         if not isinstance(da, xr.DataArray):
             raise ex.HCubeTypeError(
                 f"Expected type `xarray.DataArray` but provided `{type(da)}`",
@@ -110,4 +112,10 @@ class Axis:
         _type = AxisType.parse_type(da.attrs.get("standard_name"))
         if _type is AxisType.GENERIC:
             _type = AxisType.parse_type(da.name)
-        return Axis(atype=_type, name=da.name)
+
+        name = (
+            mapping[da.name]["api"]
+            if mapping is not None and da.name in mapping
+            else da.name
+        )
+        return Axis(atype=_type, name=name)

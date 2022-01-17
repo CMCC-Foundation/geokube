@@ -4,6 +4,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+from geokube.utils import util_methods
 import xarray as xr
 
 import geokube.utils.exceptions as ex
@@ -32,21 +33,38 @@ class Coordinate(AggMixin):
         variable: Union[np.ndarray, da.Array, Variable],
         axis: Axis,
         bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
+        mapping: Optional[Mapping[str, str]] = None,
     ):
         self._bounds = None
+        if mapping is None:
+            mapping = {}
         if isinstance(variable, Variable):
             self._variable = variable
+            if self._variable.name in mapping:
+                self._variable.properties.update(
+                    util_methods.trim_key(mapping[self._variable.name], exclude="api")
+                )
+                self._variable._name = mapping[self._variable.name]["api"]
         elif isinstance(variable, np.ndarray) or isinstance(variable, da.Array):
             # in this case, we assume an independent variable - passing only a numpy array
             # as name the axis name will be used
             # example:
             #    latitude = Coordinate([70, 68, 66, 64, 62, 60], Axis('latitude', AxisType.LATITUDE))
             #
+            props = {}
+            name = axis.name
+            if name in mapping:
+                name = mapping[name]["api"]
+                props = util_methods.trim_key(
+                    mapping[self._variable.name], exclude="api"
+                )
+            name = mapping.get(axis.name, axis.name)
             self._variable = Variable(
-                name=axis.name,
+                name=name,
                 data=variable,
                 dims=Dimension(name=axis.name, axis=axis),
                 units=axis.default_units,
+                properties=props,
             )
         else:
             raise ex.HCubeTypeError(
@@ -170,8 +188,7 @@ class Coordinate(AggMixin):
     @classmethod
     @log_func_debug
     def from_xarray_dataarray(
-        cls,
-        da: xr.DataArray,
+        cls, da: xr.DataArray, mapping: Optional[Mapping[str, str]] = None
     ) -> "Coordinate":
         if not isinstance(da, xr.DataArray):
             raise ex.HCubeTypeError(
@@ -183,14 +200,18 @@ class Coordinate(AggMixin):
                 f"Bound(s) `{bounds}`` defined for the provided xarray.DataArray but couldn't be found! Bound(s) will be skipped!"
             )
 
-        axis = Axis.from_xarray_dataarray(da)
-        var = Variable.from_xarray_dataarray(da)
-        return Coordinate(variable=var, axis=axis, bounds=None)
+        axis = Axis.from_xarray_dataarray(da, mapping=mapping)
+        var = Variable.from_xarray_dataarray(da, mapping=mapping)
+        return Coordinate(variable=var, axis=axis, bounds=None, mapping=mapping)
 
     @classmethod
     @log_func_debug
     def from_xarray_dataset(
-        cls, ds: xr.Dataset, coord_name: str, errors: Optional[str] = "raise"
+        cls,
+        ds: xr.Dataset,
+        coord_name: str,
+        errors: Optional[str] = "raise",
+        mapping: Optional[Mapping[str, str]] = None,
     ) -> "Coordinate":
         if not isinstance(ds, xr.Dataset):
             raise ex.HCubeTypeError(
@@ -213,13 +234,13 @@ class Coordinate(AggMixin):
                 )
             return
 
-        axis = Axis.from_xarray_dataarray(darr)
-        var = Variable.from_xarray_dataarray(darr)
+        axis = Axis.from_xarray_dataarray(darr, mapping=mapping)
+        var = Variable.from_xarray_dataarray(darr, mapping=mapping)
         bounds = darr.encoding.get("bounds", darr.attrs.get("bounds"))
         if bounds:
             bounds = Variable.from_xarray_dataarray(ds[bounds])
             bounds._units = var.units
-        return Coordinate(variable=var, axis=axis, bounds=bounds)
+        return Coordinate(variable=var, axis=axis, bounds=bounds, mapping=mapping)
 
     @log_func_debug
     def to_xarray_dataarray(self):
