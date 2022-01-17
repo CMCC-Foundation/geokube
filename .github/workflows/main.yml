@@ -9,11 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-        
+
+      - uses: actions/setup-python@v1
+        with:
+          python-version: 3.9    
+
       - name: Install Python dependencies
         run: |     
           pip install pytest
-
-      - name: Test with PyTest
-        run: |
-          pytest tests/
+      - name: Install plugin for annotating failures
+        run: pip install pytest-github-actions-annotate-failures          
+      
+      - run: |
+          pytest test/
