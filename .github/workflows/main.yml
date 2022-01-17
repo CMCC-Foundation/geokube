@@ -1,0 +1,19 @@
+name: Unit Tests
+on:
+  pull_request:
+    types: [opened, reopened]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        
+      - name: Install Python dependencies
+        run: |     
+          python setup.py install
+
+      - name: Test with PyTest
+        run: |
+          pytest tests/
