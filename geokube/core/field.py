@@ -337,7 +337,7 @@ class Field(AggMixin):
             vert_idx = {vert.name: vert_slice}
             field = self.sel(indexers=vert_idx, roll_if_needed=roll_if_needed)
 
-        # Case of latitude and longitude being independent
+        # Case of latitude and longitude being independent.
         if lat_indep and lon_indep:
             lat_slice = np.s_[south:north] if lat_incr else np.s_[north:south]
             lon_slice = np.s_[west:east] if lon_incr else np.s_[east:west]
@@ -380,12 +380,9 @@ class Field(AggMixin):
         ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
     ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
         # TODO: handle vertical, too
-        if vertical is not None:
-            raise ex.HCubeNotImplementedError(
-                "Selecting by location with vertical is currently not supported!",
-                logger=self._LOG,
-            )
-        return self._locations_idx(latitude=latitude, longitude=longitude)
+        return self._locations_idx(
+            latitude=latitude, longitude=longitude, vertical=vertical
+        )
 
     def _locations_cartopy(self, latitude, longitude):
         domain = self._domain
@@ -419,70 +416,105 @@ class Field(AggMixin):
             deep_copy=False,
         )
 
-    def _locations_idx(self, latitude, longitude, vertical):
-        lats = np.array(latitude, dtype=np.float32, ndmin=1)
-        lons = np.array(longitude, dtype=np.float32, ndmin=1)
-        verts = np.array(vertical, dtype=np.float32, ndims=1)
+    def _locations_idx(
+        self,
+        latitude,
+        longitude,
+        vertical
+    ):
+        field = self
+        domain = self.domain
+        sel_kwa = {'roll_if_needed': False, 'method': 'nearest'}
 
-        domain = self._domain
-        ind_lat = domain.is_latitude_independent
-        ind_lon = domain.is_longitude_independent
-        if ind_lat and ind_lon:
-            idx = {
-                domain.latitude.name: lats.item() if len(lats) == 1 else lats,
-                domain.longitude.name: lons.item() if len(lons) == 1 else lons,
-            }
+        # Latitude
+        lats = np.array(latitude, dtype=np.float32).reshape(-1)
+        lat_coord = domain.latitude
+        lat_indep = domain.is_latitude_independent
 
-            return self.sel(indexers=idx, roll_if_needed=False, method="nearest")
+        # Longitude
+        lons = np.array(longitude, dtype=np.float32).reshape(-1)
+        lon_coord = domain.longitude
+        lon_indep = domain.is_longitude_independent
+
+        n = lats.size
+        if lons.size != n:
+            raise ValueError(
+                    "'latitude' and 'longitude' must have the same number of "
+                    "items"
+                )
+
+        # Vertical
+        # NOTE: In this implementation, vertical is always considered an
+        # independent coordinate.
+        if (vert_coord := domain.vertical) is None:
+            if vertical is not None:
+                raise ValueError(
+                    "'vertical' must be None because there is no vertical "
+                    "coordinate"
+                )
         else:
-            # Adjusting the shape of the latitude and longitude coordinates.
-            # TODO: Check if these are NumPy arrays.
-            # TODO: Check axes and shapes manipulation again.
-            lat_coord = domain.latitude.variable.data
-            lat_dims = (np.s_[:],) + (np.newaxis,) * lat_coord.ndim
-            lat_coord = lat_coord[np.newaxis, :]
-            lon_coord = domain.longitude.variable.data
-            lon_dims = (np.s_[:],) + (np.newaxis,) * lon_coord.ndim
-            lon_coord = lon_coord[np.newaxis, :]
+            if vertical is None:
+                raise ValueError(
+                    "'vertical' cannot be None because there is a vertical "
+                    "coordinate"
+                )
+            verts = np.array(vertical, dtype=np.float32).reshape(-1)
+            if verts.size != n:
+                raise ValueError(
+                    "'vertical' must have the same number of items as "
+                    "'latitude' and 'longitude'"
+                )
+            field = field.sel(indexers={vert_coord.name: verts}, **sel_kwa)
 
-            # Adjusting the shape of the latitude and longitude of the
-            # locations.
-            lats = lats[lat_dims]
-            lons = lons[lon_dims]
+        # Case of latitude and longitude being independent.
+        if lat_indep and lon_indep:
+            lats = xr.DataArray(data=lats, dims='points')
+            lons = xr.DataArray(data=lons, dims='points')
+            idx = {lat_coord.name: lats, lon_coord.name: lons}
+            return field.sel(indexers=idx, **sel_kwa)
 
-            # Calculating the squares of the Euclidean distance.
-            lat_diff = lat_coord - lats
-            lon_diff = lon_coord - lons
-            diff_sq = lat_diff * lat_diff + lon_diff * lon_diff
+        # Case of latitude and longitude being dependent on y and x.
+        # Adjusting the shape of the latitude and longitude coordinates.
+        # TODO: Check if these are NumPy arrays.
+        # TODO: Check axes and shapes manipulation again.
+        lat_data = domain.latitude.variable.data
+        lat_dims = (np.s_[:],) + (np.newaxis,) * lat_data.ndim
+        lat_data = lat_data[np.newaxis, :]
+        lon_data = domain.longitude.variable.data
+        lon_dims = (np.s_[:],) + (np.newaxis,) * lon_data.ndim
+        lon_data = lon_data[np.newaxis, :]
 
-            # Selecting the indices that correspond to the squares of the
-            # Euclidean distance.
-            # TODO: Improve vectorization.
-            # TODO: Consider replacing `numpy.unravel_index` with
-            # `numpy.argwhere`, with the constructs like
-            # `np.argwhere(diff_sq[i] == diff_sq[i].min())[0]`.
-            n, *shape = diff_sq.shape
-            idx = tuple(
-                np.unravel_index(indices=diff_sq[i].argmin(), shape=shape)
-                for i in range(n)
-            )
-            idx = np.array(idx, dtype=np.int_)
+        # Adjusting the shape of the latitude and longitude of the locations.
+        lats = lats[lat_dims]
+        lons = lons[lon_dims]
 
-            # Spatial subseting.
-            idx = {
-                # The same order of dimensions for LATITUDE and LONGITUDE
-                domain[AxisType.LATITUDE]
-                .dims[1]
-                .axis.name: xr.DataArray(data=idx[:, 1], dims="points"),
-                domain[AxisType.LATITUDE]
-                .dims[0]
-                .axis.name: xr.DataArray(data=idx[:, 0], dims="points"),
-            }
+        # Calculating the squares of the Euclidean distance.
+        lat_diff = lat_data - lats
+        lon_diff = lon_data - lons
+        diff_sq = lat_diff * lat_diff + lon_diff * lon_diff
+
+        # Selecting the indices that correspond to the squares of the Euclidean
+        # distance.
+        # TODO: Improve vectorization.
+        # TODO: Consider replacing `numpy.unravel_index` with `numpy.argwhere`,
+        # with the constructs like
+        # `np.argwhere(diff_sq[i] == diff_sq[i].min())[0]`.
+        n, *shape = diff_sq.shape
+        idx_ = tuple(
+            np.unravel_index(indices=diff_sq[i].argmin(), shape=shape)
+            for i in range(n)
+        )
+        idx_ = np.array(idx_, dtype=np.int64)
+
+        # Spatial subseting.
+        dims = lat_coord.dims
+        lat_idx = xr.DataArray(data=idx_[:, 1], dims='points')
+        lon_idx = xr.DataArray(data=idx_[:, 0], dims='points')
+        idx = {dims[1].axis.name: lat_idx, dims[0].axis.name: lon_idx}
+        dset = field.to_xarray().isel(indexers=idx)
 
         return Field.from_xarray_dataset(
-            ds=self.to_xarray().isel(indexers=idx),
-            field_name=self.name,
-            deep_copy=False,
+            ds=dset, field_name=self.name, deep_copy=False
         )
 
     # consider only independent coordinates
