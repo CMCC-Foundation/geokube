@@ -8,7 +8,6 @@ from typing import Any, Callable, Hashable, List, Mapping, Optional, Tuple, Unio
 
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
-import cf_units as cf
 import dask.array as da
 import numpy as np
 from geokube.core.coordinate import CoordinateType
@@ -20,6 +19,7 @@ from xarray.core.options import OPTIONS
 
 import geokube.utils.exceptions as ex
 import geokube.utils.xarray_parser as xrp
+from geokube.core.unit import Unit
 from geokube.core.agg_mixin import AggMixin
 from geokube.core.axis import Axis, AxisType
 from geokube.core.cell_methods import CellMethod
@@ -92,7 +92,7 @@ class Field(AggMixin):
         return self._variable.values
 
     @property
-    def units(self) -> cf.Unit:
+    def units(self) -> Unit:
         return self.variable.units
 
     @property

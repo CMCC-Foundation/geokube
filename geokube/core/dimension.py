@@ -1,14 +1,12 @@
 from typing import Optional
 import warnings
 
-import cf_units as cf
+from geokube.core.unit import Unit
 import xarray as xr
 
 from geokube.core.axis import Axis, AxisType
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
-
-UNKNOWN_UNIT = cf.Unit(None)
 
 
 class Dimension:
@@ -36,7 +34,7 @@ class Dimension:
         return self._axis.atype
 
     @property
-    def default_units(self) -> cf.Unit:
+    def default_units(self) -> Unit:
         return self._axis.atype.default_units
 
     @classmethod
@@ -49,21 +47,8 @@ class Dimension:
         return Dimension(name=name, axis=axis)
 
     @classmethod
-    def _parse_units(cls, name: str, calendar: Optional[str] = None) -> cf.Unit:
-        # TODO: more logic
-        try:
-            return cf.Unit(name, calendar=calendar)
-        except ValueError:
-            warnings.warn(
-                f"Failed to create CF unit for values: `{name}`. Using <unknown>!"
-            )
-            cls._LOG.warn(
-                f"Failed to create CF unit for values: `{name}`. Using <unknown>!"
-            )
-            # Some units are not valid like in case of:
-            # /data/inputs/ERA5/single-levels/reanalysis/1979/era5_single_levels_reanalysis_mean_wave_direction_0.25x0.25_1979.nc
-            # where units is `Degree true`
-            return UNKNOWN_UNIT
+    def _parse_units(cls, name: str, calendar: Optional[str] = None) -> Unit:
+        return Unit(name, calendar=calendar)
 
     def __eq__(self, other):
         if isinstance(other, Dimension):
