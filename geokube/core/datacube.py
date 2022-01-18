@@ -210,7 +210,9 @@ class DataCube:
         #
         for dv in ds.data_vars:
             fields.append(
-                Field.from_xarray_dataset(ds, field_name=dv, field_id=field_id)
+                Field.from_xarray_dataset(
+                    ds, field_name=dv, field_id=field_id, mapping=mapping
+                )
             )
 
         return DataCube(fields=fields, **metadata)

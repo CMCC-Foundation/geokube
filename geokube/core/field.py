@@ -126,10 +126,30 @@ class Field(AggMixin):
     def get_nbytes(self):
         return self.values.nbytes
 
+    @staticmethod
+    def _get_variable_name_and_props(
+        da: xr.DataArray,
+        field_id: Optional[str] = None,
+        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
+    ):
+        name = da.name
+        props = {}
+        # Mapping has higher priority than field_id
+        if mapping is not None and da.name in mapping:
+            name = mapping[da.name]["api"]
+            props = util_methods.trim_key(mapping[da.name], exclude="api")
+        elif field_id is not None:
+            name = xrp.form_field_id(field_id, da.attrs)
+        return name, props
+
     @classmethod
     @log_func_debug
     def from_xarray_dataarray(
-        cls, da: xr.DataArray, deep_copy=False, field_id: Optional[str] = None
+        cls,
+        da: xr.DataArray,
+        deep_copy=False,
+        field_id: Optional[str] = None,
+        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ):
         if not isinstance(da, xr.DataArray):
             raise ex.HCubeTypeError(
@@ -138,10 +158,14 @@ class Field(AggMixin):
             )
         _da = da.copy(deep_copy)  # TO CHECK
         cell_methods = CellMethod.parse_cellmethods(_da.attrs.pop("cell_methods", None))
-        variable = Variable.from_xarray_dataarray(_da)
-        domain = Domain.from_xarray_dataarray(_da)
-        if field_id is not None:
-            variable._name = xrp.form_field_id(field_id, _da.attrs)
+        variable = Variable.from_xarray_dataarray(_da, mapping=mapping)
+        domain = Domain.from_xarray_dataarray(_da, mapping=mapping)
+
+        name, props = Field._get_variable_name_and_props(
+            _da, field_id=field_id, mapping=mapping
+        )
+        variable._name = name
+        variable.properties.update(props)
         return Field(variable, domain, cell_methods)
 
     @classmethod
@@ -152,6 +176,7 @@ class Field(AggMixin):
         field_name: str,
         deep_copy=False,
         field_id: Optional[str] = None,
+        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ):
         if not isinstance(ds, xr.Dataset):
             raise ex.HCubeTypeError(
@@ -161,12 +186,18 @@ class Field(AggMixin):
         _da = ds[field_name].copy(deep_copy)  # TO CHECK
 
         cell_methods = CellMethod.parse_cellmethods(_da.attrs.pop("cell_methods", None))
-        variable = Variable.from_xarray_dataarray(_da)
+        variable = Variable.from_xarray_dataarray(_da, mapping=mapping)
         # ignore if in `coordinates` attribute are coords not defined in dataset.
-        domain = Domain.from_xarray_dataset(ds, field_name=field_name, errors="ignore")
+        domain = Domain.from_xarray_dataset(
+            ds, field_name=field_name, errors="ignore", mapping=mapping
+        )
         _replace_coordinates_encoding(variable, domain.as_cf_coordinates_encoding())
-        if field_id is not None:
-            variable._name = xrp.form_field_id(field_id, _da.attrs)
+
+        name, props = Field._get_variable_name_and_props(
+            _da, field_id=field_id, mapping=mapping
+        )
+        variable._name = name
+        variable.properties.update(props)
         return Field(variable, domain, cell_methods)
 
     @staticmethod

@@ -170,7 +170,12 @@ class Variable(AggMixin):
 
     @classmethod
     @log_func_debug
-    def from_xarray_dataarray(cls, da: xr.DataArray, copy=False):
+    def from_xarray_dataarray(
+        cls,
+        da: xr.DataArray,
+        copy=False,
+        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
+    ):
         if not isinstance(da, xr.DataArray):
             raise ex.HCubeTypeError(
                 f"Expected type `xarray.DataArray` but provided `{type(da)}`",
@@ -184,17 +189,22 @@ class Variable(AggMixin):
         attrs.update(da.encoding)
         dims = []
         for d in da.dims:
-            dims.append(Dimension.from_xarray_dataarray(da[d]))
+            dims.append(Dimension.from_xarray_dataarray(da[d], mapping=mapping))
 
         # For dependent coordinate like lat(rlat, rlon) -> units are in attrs not encoding
         units = Dimension._parse_units(
             da.encoding.get("units", da.attrs.get("units")),
             calendar=da.encoding.get("calendar", da.attrs.get("calendar")),
         )
-
         properties, cf_encoding = CFAttributes.split_attrs(attrs)
+        # Extend properties with mapping attributes
+        name = da.name
+        if mapping is not None and name in mapping:
+            properties.update(util_methods.trim_key(mapping[name], exclude="api"))
+            name = mapping[name]["api"]
+
         return Variable(
-            name=da.name,
+            name=name,
             data=data,
             dims=dims,
             units=units,
