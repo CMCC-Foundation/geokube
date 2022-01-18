@@ -14,17 +14,21 @@ jobs:
         with:
           python-version: 3.9    
         
-      - name: Install dependencies  
-      - run: |
+      - name: Activate conda virtual environment
+      -  run: |
           conda activate base
+      - name: Install cartopy
       - run: |
           conda install cartopy
+
+      - name: Install XESMF          
       - run: |
           conda install -c conda-forge xesmf 
           
       - name: Install plugin for annotating failures
         run: pip install pytest-github-actions-annotate-failures           
         
+      - name: Install GeoKube        
       - run: |
           python setup.py install
           
