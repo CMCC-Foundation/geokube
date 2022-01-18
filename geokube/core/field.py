@@ -304,8 +304,7 @@ class Field(AggMixin):
         west,
         east,
         top=None,
-        bottom=None,
-        roll_if_needed=True
+        bottom=None
     ):
         field = self
         domain = self.domain
@@ -313,13 +312,11 @@ class Field(AggMixin):
         # Latitude
         lat = domain.latitude
         lat_data = lat.data
-        lat_incr = util_methods.is_nondecreasing(lat_data)
         lat_indep = domain.is_latitude_independent
 
         # Longitude
         lon = domain.longitude
         lon_data = lon.data
-        lon_incr = util_methods.is_nondecreasing(lon_data)
         lon_indep = domain.is_longitude_independent
 
         # Vertical
@@ -339,37 +336,41 @@ class Field(AggMixin):
 
         # Case of latitude and longitude being independent.
         if lat_indep and lon_indep:
+            lat_incr = util_methods.is_nondecreasing(lat_data)
             lat_slice = np.s_[south:north] if lat_incr else np.s_[north:south]
+            lon_incr = util_methods.is_nondecreasing(lon_data)
             lon_slice = np.s_[west:east] if lon_incr else np.s_[east:west]
             idx = {lat.name: lat_slice, lon.name: lon_slice}
-            return field.sel(indexers=idx, roll_if_needed=roll_if_needed)
+            return field.sel(indexers=idx, roll_if_needed=True)
+        else:
+            # Case of latitude and longitude being dependent on y and x
+            # Specifying the mask(s) and extracting the indices that correspond
+            # to the inside the bounding box.
+            # TODO: Check if lat and lon are 1D or 2D and implement code for
+            # both.
+            lat_mask = (lat_data >= south) & (lat_data <= north)
+            lon_mask = (lon_data >= west) & (lon_data <= east)
+            # TODO: Clarify why this is required.
+            if np.sum(lat_mask) == 0:
+                lat_mask = (lat_data <= south) & (lat_data >= north)
+            if np.sum(lon_mask) == 0:
+                lon_mask = (lon_data <= float(west)) & (lon_data <= float(east))
+            y, x = np.nonzero(lat_mask & lon_mask)
 
-        # Case of latitude and longitude being dependent on y and x
-        # Specifying the mask(s) and extracting the indices that correspond to
-        # the inside the bounding box.
-        lat_mask = (lat_data >= south) & (lat_data <= north)
-        lon_mask = (lon_data >= west) & (lon_data <= east)
-        # TODO: Clarify why this is required.
-        if np.sum(lat_mask) == 0:
-            lat_mask = (lat_data <= south) & (lat_data >= north)
-        if np.sum(lon_mask) == 0:
-            lon_mask = (lon_data <= float(west)) & (lon_data <= float(east))
-        y, x = np.nonzero(lat_mask & lon_mask)
-
-        # Spatial subseting.
-        dims = lat.dims
-        x_slice = np.s_[x.min():x.max() + 1]
-        y_slice = np.s_[y.min():y.max() + 1]
-        idx = {dims[1].axis.name: x_slice, dims[0].axis.name: y_slice}
-        dset = (
-            field._check_and_roll_longitude(field.to_xarray(), idx)
-            if roll_if_needed else
-            field.to_xarray()
-        )
-        dset = dset.sel()
-        return Field.from_xarray_dataset(
-            ds=dset.isel(indexers=idx), field_name=self.name, deep_copy=False
-        )
+            # Spatial subseting.
+            x_slice = np.s_[x.min():x.max() + 1]
+            y_slice = np.s_[y.min():y.max() + 1]
+            # TODO: Check dims[1] and dims[0]
+            idx = {lat.dims[1].axis.name: x_slice, lat.dims[0].axis.name: y_slice}
+            dset = (
+                field._check_and_roll_longitude(field.to_xarray(), idx)
+                if roll_if_needed else
+                field.to_xarray()
+            )
+            dset = dset.sel()
+            return Field.from_xarray_dataset(
+                ds=dset.isel(indexers=idx), field_name=self.name, deep_copy=False
+            )
 
     def locations(
         self,
@@ -464,58 +465,61 @@ class Field(AggMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
+            # TODO: Use points here
             field = field.sel(indexers={vert_coord.name: verts}, **sel_kwa)
 
         # Case of latitude and longitude being independent.
         if lat_indep and lon_indep:
+            # TODO: Check lon values conventions.
             lats = xr.DataArray(data=lats, dims='points')
             lons = xr.DataArray(data=lons, dims='points')
             idx = {lat_coord.name: lats, lon_coord.name: lons}
             return field.sel(indexers=idx, **sel_kwa)
+        else:
+            # TODO: Check lon values conventions if possible, otherwise raise error.
+            # Case of latitude and longitude being dependent on y and x.
+            # Adjusting the shape of the latitude and longitude coordinates.
+            # TODO: Check if these are NumPy arrays.
+            # TODO: Check axes and shapes manipulation again.
+            lat_data = domain.latitude.variable.data
+            lat_dims = (np.s_[:],) + (np.newaxis,) * lat_data.ndim
+            lat_data = lat_data[np.newaxis, :]
+            lon_data = domain.longitude.variable.data
+            lon_dims = (np.s_[:],) + (np.newaxis,) * lon_data.ndim
+            lon_data = lon_data[np.newaxis, :]
 
-        # Case of latitude and longitude being dependent on y and x.
-        # Adjusting the shape of the latitude and longitude coordinates.
-        # TODO: Check if these are NumPy arrays.
-        # TODO: Check axes and shapes manipulation again.
-        lat_data = domain.latitude.variable.data
-        lat_dims = (np.s_[:],) + (np.newaxis,) * lat_data.ndim
-        lat_data = lat_data[np.newaxis, :]
-        lon_data = domain.longitude.variable.data
-        lon_dims = (np.s_[:],) + (np.newaxis,) * lon_data.ndim
-        lon_data = lon_data[np.newaxis, :]
+            # Adjusting the shape of the latitude and longitude of the locations.
+            lats = lats[lat_dims]
+            lons = lons[lon_dims]
 
-        # Adjusting the shape of the latitude and longitude of the locations.
-        lats = lats[lat_dims]
-        lons = lons[lon_dims]
+            # Calculating the squares of the Euclidean distance.
+            lat_diff = lat_data - lats
+            lon_diff = lon_data - lons
+            diff_sq = lat_diff * lat_diff + lon_diff * lon_diff
 
-        # Calculating the squares of the Euclidean distance.
-        lat_diff = lat_data - lats
-        lon_diff = lon_data - lons
-        diff_sq = lat_diff * lat_diff + lon_diff * lon_diff
+            # Selecting the indices that correspond to the squares of the Euclidean
+            # distance.
+            # TODO: Improve vectorization.
+            # TODO: Consider replacing `numpy.unravel_index` with `numpy.argwhere`,
+            # with the constructs like
+            # `np.argwhere(diff_sq[i] == diff_sq[i].min())[0]`.
+            n, *shape = diff_sq.shape
+            idx_ = tuple(
+                np.unravel_index(indices=diff_sq[i].argmin(), shape=shape)
+                for i in range(n)
+            )
+            idx_ = np.array(idx_, dtype=np.int64)
 
-        # Selecting the indices that correspond to the squares of the Euclidean
-        # distance.
-        # TODO: Improve vectorization.
-        # TODO: Consider replacing `numpy.unravel_index` with `numpy.argwhere`,
-        # with the constructs like
-        # `np.argwhere(diff_sq[i] == diff_sq[i].min())[0]`.
-        n, *shape = diff_sq.shape
-        idx_ = tuple(
-            np.unravel_index(indices=diff_sq[i].argmin(), shape=shape)
-            for i in range(n)
-        )
-        idx_ = np.array(idx_, dtype=np.int64)
+            # Spatial subseting.
+            dims = lat_coord.dims
+            lat_idx = xr.DataArray(data=idx_[:, 1], dims='points')
+            lon_idx = xr.DataArray(data=idx_[:, 0], dims='points')
+            idx = {dims[1].axis.name: lat_idx, dims[0].axis.name: lon_idx}
+            dset = field.to_xarray().isel(indexers=idx)
 
-        # Spatial subseting.
-        dims = lat_coord.dims
-        lat_idx = xr.DataArray(data=idx_[:, 1], dims='points')
-        lon_idx = xr.DataArray(data=idx_[:, 0], dims='points')
-        idx = {dims[1].axis.name: lat_idx, dims[0].axis.name: lon_idx}
-        dset = field.to_xarray().isel(indexers=idx)
-
-        return Field.from_xarray_dataset(
-            ds=dset, field_name=self.name, deep_copy=False
-        )
+            return Field.from_xarray_dataset(
+                ds=dset, field_name=self.name, deep_copy=False
+            )
 
     # consider only independent coordinates
     # we should use metpy approach (user can also specify - units)
