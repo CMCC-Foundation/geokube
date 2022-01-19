@@ -803,6 +803,10 @@ class Field(AggMixin):
         # #########################################################################################
         return Field.from_xarray_dataset(res, field_name=self.variable.name)
 
+    @log_func_debug
+    def to_netcdf(self, path):
+        self.to_xarray().to_netcdf(path=path)
+
     # TO CHECK
     @log_func_debug
     def plot(
