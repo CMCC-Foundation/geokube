@@ -562,7 +562,7 @@ class Field(AggMixin):
             )
         return ds
 
-    def regrid_to_regular(self):
+    def to_regular(self):
         domain = self.domain
 
         # Infering latitude and longitude steps from the x and y coordinates.

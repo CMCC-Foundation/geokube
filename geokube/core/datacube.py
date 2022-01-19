@@ -172,6 +172,18 @@ class DataCube:
         )
 
     @log_func_debug
+    def to_regular(
+        self,
+    ) -> "DataCube":
+        return DataCube(
+            fields=[
+                self._fields[k].to_regular()
+                for k in self._fields.keys()
+            ],
+            **self.properties,
+        )
+
+    @log_func_debug
     def regrid(
         self,
         target: Union[Domain, "Field"],
