@@ -23,7 +23,7 @@ from geokube.core.unit import Unit
 from geokube.core.agg_mixin import AggMixin
 from geokube.core.axis import Axis, AxisType
 from geokube.core.cell_methods import CellMethod
-from geokube.core.coord_system import CoordSystem, RegularLatLon
+from geokube.core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
 from geokube.core.dimension import Dimension
 from geokube.core.domain import Domain
 from geokube.core.enums import MethodType, RegridMethod
@@ -562,6 +562,58 @@ class Field(AggMixin):
             )
         return ds
 
+    def to_regular(self):
+        domain = self.domain
+
+        # Infering latitude and longitude steps from the x and y coordinates.
+        if isinstance(domain.crs, RotatedGeogCS):
+            lat_step = domain.y.values.ptp() / (domain.y.values.size - 1)
+            lon_step = domain.x.values.ptp() / (domain.x.values.size - 1)
+        else:
+            raise NotImplementedError(
+                "'domain' has the coordinate reference system of the type "
+                f"{type(domain.crs).__name__} that is not currently supported"
+            )
+
+        # Building regular latitude-longitude coordinates.
+        south = domain.latitude.values.min()
+        north = domain.latitude.values.max()
+        west = domain.longitude.values.min()
+        east = domain.longitude.values.max()
+        lat = np.arange(south, north + lat_step / 2, lat_step)
+        lon = np.arange(west, east + lon_step / 2, lon_step)
+        lon_2d, lat_2d = np.meshgrid(lon, lat)
+        # shape = (lat.size, lon.size)
+        # lat_2d = np.broadcast_to(lat.reshape(-1, 1), shape=shape)
+        # lon_2d = np.broadcast_to(lon.reshape(1, -1), shape=shape)
+
+        # Transforming grid into regular.
+        pts = domain.crs.as_cartopy_crs().transform_points(
+            src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
+        )
+        x, y = pts[:, :, 0], pts[:, :, 1]
+
+        # Building the grid.
+        dims = [domain.latitude.name, domain.longitude.name]
+        grid = xr.Dataset(
+            data_vars={domain.x.name: (dims, x), domain.y.name: (dims, y)},
+            coords={domain.latitude.name: lat, domain.longitude.name: lon}
+        )
+
+        # Interpolating the data.
+        dset = self.to_xarray()
+        dset = dset.drop(labels=[domain.latitude.name, domain.longitude.name])
+        regrid_dset = dset.interp(
+            coords={
+                domain.x.name: grid[domain.x.name],
+                domain.y.name: grid[domain.y.name]
+            },
+            method='nearest'
+        )
+        return Field.from_xarray_dataset(
+            ds=regrid_dset, field_name=self.name, deep_copy=False
+        )
+
     # TO CHECK
     @log_func_debug
     def regrid(
@@ -750,6 +802,10 @@ class Field(AggMixin):
 
         # #########################################################################################
         return Field.from_xarray_dataset(res, field_name=self.variable.name)
+
+    @log_func_debug
+    def to_netcdf(self, path):
+        self.to_xarray().to_netcdf(path=path)
 
     # TO CHECK
     @log_func_debug
