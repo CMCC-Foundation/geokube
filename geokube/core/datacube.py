@@ -233,3 +233,7 @@ class DataCube:
     def to_xarray(self):
         xarray_fields = [f.to_xarray() for f in self.values()]
         return xr.merge(xarray_fields)
+
+    @log_func_debug
+    def to_netcdf(self, path):
+        self.to_xarray().to_netcdf(path=path)
