@@ -26,4 +26,12 @@ class Unit:
         return self._backup_name
 
     def __getattr__(self, name):
+        if name not in vars(self._unit):
+            raise AttributeError(f"Attribute `{name}` is not available.")
         return getattr(self._unit, name)
+
+    def __getstate__(self):
+        return dict(**self._unit.__getstate__(), **{"backup_name": self._backup_name})
+
+    def __setstate__(self, state):
+        self.__init__(state["unit_text"], calendar=state["calendar"])
