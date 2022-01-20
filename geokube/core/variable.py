@@ -102,13 +102,13 @@ class Variable(AggMixin):
     @property
     def data(self):
         # Loads data!
-        self._LOG.info("Loading data into memory...")
+        self._LOG.debug("Loading data into memory...")
         return self._variable.data
 
     @property
     def values(self):
         # Loads data!
-        self._LOG.info("Loading data into memory...")
+        self._LOG.debug("Loading data into memory...")
         return self._variable.values
 
     @property
