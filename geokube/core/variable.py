@@ -1,15 +1,15 @@
 from html import escape
 from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
-import cf_units as cf
 import dask.array as da
 import numpy as np
 import xarray as xr
 from xarray.core.options import OPTIONS
 
 import geokube.utils.exceptions as ex
+from geokube.core.unit import Unit
 from geokube.core.agg_mixin import AggMixin
-from geokube.core.dimension import UNKNOWN_UNIT, Dimension
+from geokube.core.dimension import Dimension
 from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.attrs_encoding import CFAttributes, split_to_attrs_and_encoding
 from geokube.utils.decorators import log_func_debug
@@ -34,7 +34,7 @@ class Variable(AggMixin):
         name: str,
         data: Union[np.ndarray, da.Array, xr.Variable],
         units: Optional[
-            Union[cf.Unit, str]
+            Union[Unit, str]
         ] = None,  # if dims has one element, unit will be taken as default from dims
         dims: Optional[Union[Sequence[Dimension], Dimension]] = None,
         properties: Optional[
@@ -71,7 +71,7 @@ class Variable(AggMixin):
         )
         if units is None and len(self._dims) == 1:
             units = self._dims[0].atype.default_units
-        self._units = cf.Unit(units) if isinstance(units, str) else units
+        self._units = Unit(units) if isinstance(units, str) else units
         self._properties = properties if properties else {}
         self._cf_encoding = cf_encoding if cf_encoding else {}
 
@@ -96,7 +96,7 @@ class Variable(AggMixin):
         return tuple(x.axis.name for x in self.dims) if self._dims is not None else ()
 
     @property
-    def units(self) -> cf.Unit:
+    def units(self) -> Unit:
         return self._units
 
     @property
@@ -127,7 +127,7 @@ class Variable(AggMixin):
         return formatting_html.array_repr(self)
 
     def convert_units(self, unit, inplace=True):
-        unit = cf.Unit(unit) if isinstance(unit, str) else unit
+        unit = Unit(unit) if isinstance(unit, str) else unit
         if not isinstance(self.data, np.ndarray):
             self._LOG.warn(
                 "Converting units is supported only for np.ndarray inner data type. Data will be loaded into the memory!"
@@ -215,7 +215,7 @@ class Variable(AggMixin):
     @log_func_debug
     def to_tuple(self, return_variable=True):
         attrs = self.properties.copy()
-        if self.units is not None and self.units != UNKNOWN_UNIT:
+        if self.units is not None and self.units.is_unknown:
             if self.units.is_time_reference():
                 attrs["units"] = self.units.cftime_unit
                 attrs["calendar"] = self.units.calendar

@@ -2,10 +2,10 @@ import re
 from enum import Enum
 from typing import List, Mapping, Optional
 
-import cf_units as cf
 import xarray as xr
 
 import geokube.utils.exceptions as ex
+from geokube.core.unit import Unit
 from geokube.utils.hcube_logger import HCubeLogger
 
 # Taken from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
@@ -21,25 +21,25 @@ coordinate_criteria_regular_expression = {
 
 
 class AxisType(Enum):
-    TIME = ("time", cf.Unit("hours since 1970-01-01", calendar="gregorian"))
-    TIMEDELTA = ("timedelta", cf.Unit("hour"))
-    LATITUDE = ("latitude", cf.Unit("degrees_north"))
-    LONGITUDE = ("longitude", cf.Unit("degrees_east"))
-    VERTICAL = ("vertical", cf.Unit("m"))
-    X = ("x", cf.Unit("m"))
-    Y = ("y", cf.Unit("m"))
-    Z = ("z", cf.Unit("m"))
-    RADIAL_AXIMUTH = ("radialAzimuth", cf.Unit("m"))
-    RADIAL_ELEVATION = ("radialElevation", cf.Unit("m"))
-    RADIAL_DISTANCE = ("radialDistance", cf.Unit("m"))
-    GENERIC = ("generic", cf.Unit("unknown"))
+    TIME = ("time", Unit("hours since 1970-01-01", calendar="gregorian"))
+    TIMEDELTA = ("timedelta", Unit("hour"))
+    LATITUDE = ("latitude", Unit("degrees_north"))
+    LONGITUDE = ("longitude", Unit("degrees_east"))
+    VERTICAL = ("vertical", Unit("m"))
+    X = ("x", Unit("m"))
+    Y = ("y", Unit("m"))
+    Z = ("z", Unit("m"))
+    RADIAL_AXIMUTH = ("radialAzimuth", Unit("m"))
+    RADIAL_ELEVATION = ("radialElevation", Unit("m"))
+    RADIAL_DISTANCE = ("radialDistance", Unit("m"))
+    GENERIC = ("generic", Unit("unknown"))
 
     @property
     def name(self) -> str:
         return self.value[0]
 
     @property
-    def default_units(self) -> cf.Unit:
+    def default_units(self) -> Unit:
         return self.value[1]
 
     @classmethod
@@ -90,7 +90,7 @@ class Axis:
         return self._type
 
     @property
-    def default_units(self) -> cf.Unit:
+    def default_units(self) -> Unit:
         return self._type.default_units
 
     def __eq__(self, other):
