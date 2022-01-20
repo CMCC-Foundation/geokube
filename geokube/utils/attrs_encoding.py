@@ -70,13 +70,15 @@ ENCODING_PROP = (
     CFAttributes.ADD_OFFSET.value,
 )
 
+def is_time_unit(unit):
+    return "since" in unit
 
 def split_to_attrs_and_encoding(
     mapping: Mapping[str, str]
 ) -> Tuple[Mapping[str, str], Mapping[str, str]]:
     attrs, encoding = {}, {}
     for k, v in mapping.items():
-        if k in ENCODING_PROP:
+        if not is_time_unit(k) and k in ENCODING_PROP:
             encoding[k] = v
         else:
             attrs[k] = v

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from geokube.backend.netcdf import open_datacube, open_dataset
 from geokube.core.coord_system import RegularLatLon
@@ -129,6 +130,11 @@ def test_to_xarray(nemo_ocean_16):
             if attk == "units":
                 continue  # in encoding!
             assert res[c].attrs[attk] == nemo_ocean_16[c].attrs[attk]
+    
+    res.to_netcdf("tests//resources//res.nc")
+    try:
+        os.remove("tests//resources//res.nc")
+    except: pass
 
 
 def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):
