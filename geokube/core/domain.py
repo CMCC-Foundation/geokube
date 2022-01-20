@@ -211,10 +211,10 @@ class Domain:
         coords = []
         if "coordinates" in da.encoding:
             coords = da.encoding["coordinates"].split()
-            cls._LOG.info("`coordinates` found among encoding details.")
+            cls._LOG.debug("`coordinates` found among encoding details.")
         elif "coordinates" in da.attrs:
             coords = da.attrs["coordinates"].split()
-            cls._LOG.info("`coordinates` found among attrs details.")
+            cls._LOG.debug("`coordinates` found among attrs details.")
         else:
             pass
 
