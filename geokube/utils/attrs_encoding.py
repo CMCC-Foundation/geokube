@@ -62,23 +62,29 @@ ENCODING_PROP = (
     "complevel",
     "fletcher32",
     "contiguous",
-    CFAttributes.UNITS.value,
     CFAttributes.CALENDAR.value,
+    CFAttributes.GRID_MAPPING.value,
     CFAttributes.MISSING_VALUE.value,
     CFAttributes.FILL_VALUE.value,
     CFAttributes.SCALE_FACTOR.value,
     CFAttributes.ADD_OFFSET.value,
 )
 
+
 def is_time_unit(unit):
-    return "since" in unit
+    return "since" in unit if isinstance(unit, str) else False
+
+
+def in_encoding(key, unit=None):
+    return is_time_unit(unit) or key in ENCODING_PROP
+
 
 def split_to_attrs_and_encoding(
     mapping: Mapping[str, str]
 ) -> Tuple[Mapping[str, str], Mapping[str, str]]:
     attrs, encoding = {}, {}
     for k, v in mapping.items():
-        if not is_time_unit(k) and k in ENCODING_PROP:
+        if in_encoding(k, v):
             encoding[k] = v
         else:
             attrs[k] = v

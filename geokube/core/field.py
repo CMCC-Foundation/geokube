@@ -35,7 +35,7 @@ from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 from geokube.utils.indexer_dict import IndexerDict
-from geokube.utils.attrs_encoding import split_to_attrs_and_encoding
+from geokube.utils.attrs_encoding import in_encoding, split_to_attrs_and_encoding
 
 _CARTOPY_FEATURES = {
     "borders": cartf.BORDERS,
@@ -50,12 +50,7 @@ _CARTOPY_FEATURES = {
 
 class Field(AggMixin):
 
-    __slots__ = (
-        "_variable",
-        "_domain",
-        "_cell_methods",
-        "_ancillary",
-    )
+    __slots__ = ("_variable", "_domain", "_cell_methods", "_ancillary", "_global_attrs")
 
     _LOG = HCubeLogger(name="Field")
 
@@ -65,11 +60,13 @@ class Field(AggMixin):
         domain: Domain = None,
         cell_methods: Optional[CellMethod] = None,
         ancillary: Optional[Mapping[Hashable, Variable]] = None,
+        global_attrs: Optional[Mapping[Hashable, Any]] = None,
     ) -> None:
         self._variable = variable
         self._domain = domain
         self._cell_methods = cell_methods
         self._ancillary = ancillary
+        self._global_attrs = global_attrs if global_attrs else {}
 
     def __repr__(self) -> str:
         return formatting.dataset_repr(self.to_xarray())
@@ -201,10 +198,10 @@ class Field(AggMixin):
         )
         variable._name = name
         variable.properties.update(props)
-        return Field(variable, domain, cell_methods)
+        return Field(variable, domain, cell_methods, global_attrs=ds.attrs)
 
     @staticmethod
-    def _to_xarray(variable, domain, cell_methods, ancillary):
+    def _to_xarray(variable, domain, cell_methods, ancillary, global_attrs):
         data_vars = {}
 
         data_vars[variable.name] = variable.to_xarray_dataarray()
@@ -226,6 +223,7 @@ class Field(AggMixin):
         # Needed to split tuples for existing dims
         # and for dims that must be created, like bounds (dataset_coords)
         # Combining both in xr.Dataset(...., coords=...) fails
+
         for k, v in coords_dim.items():
             if k in data_vars[variable.name].dims:
                 coords_dict[k] = v
@@ -233,15 +231,24 @@ class Field(AggMixin):
                 dataset_coords[k] = v
 
         if (crs_ds := domain._to_xarray_crs()) is not None:
-            data_vars[variable.name].attrs["grid_mapping"] = "crs"
+            if in_encoding("grid_mapping"):
+                data_vars[variable.name].encoding["grid_mapping"] = "crs"
+            else:
+                data_vars[variable.name].atrs["grid_mapping"] = "crs"
             dataset_coords["crs"] = crs_ds
         data_vars[variable.name] = data_vars[variable.name].assign_coords(coords_dict)
-        return xr.Dataset(data_vars=data_vars, coords=dataset_coords)
+        return xr.Dataset(
+            data_vars=data_vars, coords=dataset_coords, attrs=global_attrs
+        )
 
     @log_func_debug
     def to_xarray(self) -> xr.Dataset:
         return Field._to_xarray(
-            self.variable, self.domain, self.cell_methods, self.ancillary
+            variable=self.variable,
+            domain=self.domain,
+            cell_methods=self.cell_methods,
+            ancillary=self.ancillary,
+            global_attrs=self._global_attrs,
         )
 
     def get_netcdf_name_for_axistype(self, axis_type: Union[AxisType, str]):
@@ -599,10 +606,10 @@ class Field(AggMixin):
         dims = [domain.latitude.name, domain.longitude.name]
         grid = xr.Dataset(
             data_vars={domain.x.name: (dims, x), domain.y.name: (dims, y)},
-            coords={domain.latitude.name: lat, domain.longitude.name: lon}
+            coords={domain.latitude.name: lat, domain.longitude.name: lon},
         )
 
-        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units) 
+        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units)
         # grid[domain.longitude.name].attrs.update(units=domain.longitude.units)
 
         # Interpolating the data.
@@ -611,16 +618,16 @@ class Field(AggMixin):
         regrid_dset = dset.interp(
             coords={
                 domain.x.name: grid[domain.x.name],
-                domain.y.name: grid[domain.y.name]
+                domain.y.name: grid[domain.y.name],
             },
-            method='nearest'
+            method="nearest",
         )
         regrid_dset = regrid_dset.drop(labels=[domain.x.name, domain.y.name])
         field = Field.from_xarray_dataset(
             ds=regrid_dset, field_name=self.name, deep_copy=False
         )
         field.domain._crs = RegularLatLon()
-        
+
         return field
 
     # TO CHECK

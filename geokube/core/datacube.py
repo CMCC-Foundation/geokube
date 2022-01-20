@@ -39,12 +39,18 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 
 class DataCube:
 
-    __slots__ = ("_fields", "_properties")
+    __slots__ = ("_fields", "_global_attrs", "_properties")
 
     _LOG = HCubeLogger(name="DataCube")
 
-    def __init__(self, fields: List[Field], **properties) -> None:
+    def __init__(
+        self,
+        fields: List[Field],
+        global_attrs: Optional[Mapping[Hashable, Any]] = None,
+        **properties,
+    ) -> None:
         self._fields = {f.name: f for f in fields}
+        self._global_attrs = global_attrs if global_attrs is not None else {}
         self._properties = properties
 
     @property
@@ -176,10 +182,7 @@ class DataCube:
         self,
     ) -> "DataCube":
         return DataCube(
-            fields=[
-                self._fields[k].to_regular()
-                for k in self._fields.keys()
-            ],
+            fields=[self._fields[k].to_regular() for k in self._fields.keys()],
             **self.properties,
         )
 
@@ -227,12 +230,14 @@ class DataCube:
                 )
             )
 
-        return DataCube(fields=fields, **metadata)
+        return DataCube(fields=fields, global_attrs=ds.attrs, **metadata)
 
     @log_func_debug
     def to_xarray(self):
         xarray_fields = [f.to_xarray() for f in self.values()]
-        return xr.merge(xarray_fields)
+        dset = xr.merge(xarray_fields)
+        dset.attrs = self._global_attrs
+        return dset
 
     @log_func_debug
     def to_netcdf(self, path):

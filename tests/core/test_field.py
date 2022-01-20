@@ -1,5 +1,5 @@
-import os
 import numpy as np
+import xarray as xr
 from geokube.backend.netcdf import open_datacube, open_dataset
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate
@@ -15,6 +15,7 @@ from geokube.core.enums import LongitudeConvention, MethodType
 from geokube.core.field import Field
 from geokube.utils import util_methods
 from tests.fixtures import *
+from tests import RES_PATH, clear_test_res
 
 
 def test_from_xarray_dataarray(era5_globe_netcdf):
@@ -121,7 +122,7 @@ def test_from_xarray_dataset_with_ancillary_vars():
     pass
 
 
-def test_to_xarray(nemo_ocean_16):
+def test_to_xarray_1(nemo_ocean_16):
     res = Field.from_xarray_dataset(nemo_ocean_16, field_name="vt").to_xarray()
     assert res.dims == nemo_ocean_16.dims
     for c in nemo_ocean_16.coords.keys():
@@ -130,11 +131,56 @@ def test_to_xarray(nemo_ocean_16):
             if attk == "units":
                 continue  # in encoding!
             assert res[c].attrs[attk] == nemo_ocean_16[c].attrs[attk]
-    
-    res.to_netcdf("tests//resources//res.nc")
-    try:
-        os.remove("tests//resources//res.nc")
-    except: pass
+
+    res.to_netcdf(RES_PATH)
+    ds = xr.open_dataset(RES_PATH, decode_coords="all")
+    # x,y are dimensions without coordinates in original file
+    # crs is created by GeoKube as object keeping info about cooridnate reference system
+    assert set(ds.coords.keys()) - set(nemo_ocean_16.coords.keys()) == {"x", "y", "crs"}
+    clear_test_res()
+
+
+def test_to_xarray_2(era5_rotated_netcdf_wso):
+    res = Field.from_xarray_dataset(
+        era5_rotated_netcdf_wso, field_name="W_SO"
+    ).to_xarray()
+    res.to_netcdf(RES_PATH)
+    ds = xr.open_dataset(RES_PATH, decode_coords="all")
+    assert set(ds.coords.keys()) - set(era5_rotated_netcdf_wso.coords.keys()) == {"crs"}
+    assert set(era5_rotated_netcdf_wso.coords.keys()) - set(ds.coords.keys()) == {
+        "rotated_pole"
+    }
+    for d in ds.dims:
+        assert d in era5_rotated_netcdf_wso.dims
+        assert np.all(ds[d].values == era5_rotated_netcdf_wso[d].values)
+
+    for d in era5_rotated_netcdf_wso.dims:
+        assert d in era5_rotated_netcdf_wso.dims
+
+    assert era5_rotated_netcdf_wso.attrs == ds.attrs
+
+    da = ds["W_SO"]
+    dat = era5_rotated_netcdf_wso["W_SO"]
+
+    assert set(da.coords.keys()) - set(dat.coords.keys()) == {"crs"}
+    assert set(dat.coords.keys()) - set(da.coords.keys()) == {"rotated_pole"}
+    for d in da.dims:
+        assert d in dat.dims
+        assert np.all(da[d].values == dat[d].values)
+
+    for d in dat.dims:
+        assert d in dat.dims
+
+    assert dat.attrs == da.attrs
+    assert dat.encoding.pop("grid_mapping") == "rotated_pole"
+    assert da.encoding.pop("grid_mapping") == "crs"
+    assert da.encoding.pop("source") != dat.encoding.pop("source")
+    assert set(da.encoding.pop("coordinates").split(" ")) == set(
+        dat.encoding.pop("coordinates").split(" ")
+    )
+    assert dat.encoding == da.encoding
+
+    clear_test_res()
 
 
 def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):

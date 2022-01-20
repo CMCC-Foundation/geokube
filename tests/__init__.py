@@ -1,5 +1,15 @@
 import logging
 import timeit
+import os
+
+RES_PATH = os.path.join("tests", "resources", "__res.nc")
+
+
+def clear_test_res():
+    try:
+        os.remove(RES_PATH)
+    except:
+        pass
 
 
 class TimeCounter:
