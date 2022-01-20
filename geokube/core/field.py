@@ -18,6 +18,8 @@ import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
+import geokube
+
 import geokube.utils.exceptions as ex
 import geokube.utils.xarray_parser as xrp
 from geokube.core.agg_mixin import AggMixin
@@ -26,6 +28,7 @@ from geokube.core.cell_methods import CellMethod
 from geokube.core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
 from geokube.core.dimension import Dimension
 from geokube.core.domain import Domain
+from geokube.core.coordinate import Coordinate
 from geokube.core.enums import MethodType, RegridMethod
 from geokube.core.variable import Variable
 from geokube.utils import formatting, formatting_html, util_methods
@@ -592,13 +595,15 @@ class Field(AggMixin):
             src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
         )
         x, y = pts[:, :, 0], pts[:, :, 1]
-
         # Building the grid.
         dims = [domain.latitude.name, domain.longitude.name]
         grid = xr.Dataset(
             data_vars={domain.x.name: (dims, x), domain.y.name: (dims, y)},
             coords={domain.latitude.name: lat, domain.longitude.name: lon}
         )
+
+        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units) 
+        # grid[domain.longitude.name].attrs.update(units=domain.longitude.units)
 
         # Interpolating the data.
         dset = self.to_xarray()
@@ -610,9 +615,13 @@ class Field(AggMixin):
             },
             method='nearest'
         )
-        return Field.from_xarray_dataset(
+        regrid_dset = regrid_dset.drop(labels=[domain.x.name, domain.y.name])
+        field = Field.from_xarray_dataset(
             ds=regrid_dset, field_name=self.name, deep_copy=False
         )
+        field.domain._crs = RegularLatLon()
+        
+        return field
 
     # TO CHECK
     @log_func_debug
