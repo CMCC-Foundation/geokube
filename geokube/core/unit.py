@@ -2,6 +2,7 @@ import cf_units as cf
 
 
 class Unit:
+    UNKNOWN_CF_UNIT = cf.Unit(None)
 
     __slots__ = (
         "_unit",
@@ -18,7 +19,7 @@ class Unit:
 
     @property
     def is_unknown(self):
-        return self._backup_name is not None
+        return self._backup_name is not None or self._unit == Unit.UNKNOWN_CF_UNIT
 
     def __str__(self):
         if self._backup_name is None:

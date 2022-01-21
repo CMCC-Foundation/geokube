@@ -215,7 +215,7 @@ class Variable(AggMixin):
     @log_func_debug
     def to_tuple(self, return_variable=True):
         attrs = self.properties.copy()
-        if self.units is not None:
+        if self.units is not None and not self.units.is_unknown:
             if self.units.is_time_reference():
                 attrs["units"] = self.units.cftime_unit
                 attrs["calendar"] = self.units.calendar

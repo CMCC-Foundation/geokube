@@ -155,9 +155,7 @@ def test_to_xarray_2(era5_rotated_netcdf_wso):
         assert np.all(ds[d].values == era5_rotated_netcdf_wso[d].values)
 
     for d in era5_rotated_netcdf_wso.dims:
-        assert d in era5_rotated_netcdf_wso.dims
-
-    assert era5_rotated_netcdf_wso.attrs == ds.attrs
+        assert d in ds.dims
 
     da = ds["W_SO"]
     dat = era5_rotated_netcdf_wso["W_SO"]
@@ -169,17 +167,12 @@ def test_to_xarray_2(era5_rotated_netcdf_wso):
         assert np.all(da[d].values == dat[d].values)
 
     for d in dat.dims:
-        assert d in dat.dims
+        assert d in da.dims
 
     assert dat.attrs == da.attrs
     assert dat.encoding.pop("grid_mapping") == "rotated_pole"
     assert da.encoding.pop("grid_mapping") == "crs"
     assert da.encoding.pop("source") != dat.encoding.pop("source")
-    assert set(da.encoding.pop("coordinates").split(" ")) == set(
-        dat.encoding.pop("coordinates").split(" ")
-    )
-    assert dat.encoding == da.encoding
-
     clear_test_res()
 
 

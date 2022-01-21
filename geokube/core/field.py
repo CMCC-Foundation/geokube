@@ -50,7 +50,7 @@ _CARTOPY_FEATURES = {
 
 class Field(AggMixin):
 
-    __slots__ = ("_variable", "_domain", "_cell_methods", "_ancillary", "_global_attrs")
+    __slots__ = ("_variable", "_domain", "_cell_methods", "_ancillary")
 
     _LOG = HCubeLogger(name="Field")
 
@@ -60,13 +60,11 @@ class Field(AggMixin):
         domain: Domain = None,
         cell_methods: Optional[CellMethod] = None,
         ancillary: Optional[Mapping[Hashable, Variable]] = None,
-        global_attrs: Optional[Mapping[Hashable, Any]] = None,
     ) -> None:
         self._variable = variable
         self._domain = domain
         self._cell_methods = cell_methods
         self._ancillary = ancillary
-        self._global_attrs = global_attrs if global_attrs else {}
 
     def __repr__(self) -> str:
         return formatting.dataset_repr(self.to_xarray())
@@ -198,10 +196,10 @@ class Field(AggMixin):
         )
         variable._name = name
         variable.properties.update(props)
-        return Field(variable, domain, cell_methods, global_attrs=ds.attrs)
+        return Field(variable, domain, cell_methods)
 
     @staticmethod
-    def _to_xarray(variable, domain, cell_methods, ancillary, global_attrs):
+    def _to_xarray(variable, domain, cell_methods, ancillary):
         data_vars = {}
 
         data_vars[variable.name] = variable.to_xarray_dataarray()
@@ -237,9 +235,7 @@ class Field(AggMixin):
                 data_vars[variable.name].atrs["grid_mapping"] = "crs"
             dataset_coords["crs"] = crs_ds
         data_vars[variable.name] = data_vars[variable.name].assign_coords(coords_dict)
-        return xr.Dataset(
-            data_vars=data_vars, coords=dataset_coords, attrs=global_attrs
-        )
+        return xr.Dataset(data_vars=data_vars, coords=dataset_coords)
 
     @log_func_debug
     def to_xarray(self) -> xr.Dataset:
@@ -248,7 +244,6 @@ class Field(AggMixin):
             domain=self.domain,
             cell_methods=self.cell_methods,
             ancillary=self.ancillary,
-            global_attrs=self._global_attrs,
         )
 
     def get_netcdf_name_for_axistype(self, axis_type: Union[AxisType, str]):
@@ -720,9 +715,9 @@ class Field(AggMixin):
         xr_ds = self.to_xarray()
         result = regridder(xr_ds, keep_attrs=True, skipna=False)
         result = result.rename({"lat": lat_in.axis.name, "lon": lon_in.axis.name})
+        result[self.variable.name].encoding = xr_ds[self.variable.name].encoding
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-
         field_out = Field.from_xarray_dataset(result, field_name=self.variable.name)
         # Take `crs`` from `target_domain` as in `result` there can be still the coordinate responsible for CRS
         field_out.domain._crs = target_domain.crs

@@ -1,5 +1,6 @@
 import cartopy.crs as ccrs
 import numpy as np
+import xarray as xr
 from geokube.backend.netcdf import open_datacube
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate
@@ -11,6 +12,7 @@ import pytest
 from geokube.core.axis import Axis, AxisType
 from geokube.core.datacube import DataCube
 from tests.fixtures import *
+from tests import RES_PATH, clear_test_res
 
 
 def test_from_xarray_1(era5_netcdf, era5_globe_netcdf):
@@ -172,7 +174,8 @@ def test_regrid(era5_rotated_netcdf):
 
 
 def test_to_xarray(era5_rotated_netcdf):
-    res = DataCube.from_xarray(era5_rotated_netcdf).to_xarray()
+    datacube = DataCube.from_xarray(era5_rotated_netcdf)
+    res = datacube.to_xarray()
     for dv in era5_rotated_netcdf.data_vars.keys():
         assert dv in res
         m1 = np.isnan(res[dv].values) & np.isnan(era5_rotated_netcdf[dv].values)
@@ -184,3 +187,43 @@ def test_to_xarray(era5_rotated_netcdf):
             continue
         assert c in res
         assert np.all(res[c].values == era5_rotated_netcdf[c].values)
+
+    res.to_netcdf(RES_PATH)
+    ds = xr.open_dataset(RES_PATH, decode_coords="all")
+    ds.encoding.pop("source")
+    ds.encoding.pop("unlimited_dims")
+    assert ds.attrs == era5_rotated_netcdf.attrs
+    assert ds.encoding == era5_rotated_netcdf.encoding
+
+    fields_xr = {f.name: f.to_xarray() for f in datacube.values()}
+    assert set(fields_xr["W_SO"]["W_SO"].encoding["coordinates"].split(" ")) == set(
+        ds["W_SO"].encoding["coordinates"].split(" ")
+    )
+    assert set(
+        fields_xr["TMIN_2M"]["TMIN_2M"].encoding["coordinates"].split(" ")
+    ) == set(ds["TMIN_2M"].encoding["coordinates"].split(" "))
+    merge_res = xr.merge(
+        list(fields_xr.values()), join="outer", combine_attrs="no_conflicts"
+    )
+    assert set(merge_res["W_SO"].encoding["coordinates"].split(" ")) == set(
+        ds["W_SO"].encoding["coordinates"].split(" ")
+    )
+    assert set(merge_res["TMIN_2M"].encoding["coordinates"].split(" ")) == set(
+        ds["TMIN_2M"].encoding["coordinates"].split(" ")
+    )
+
+    assert set(era5_rotated_netcdf["W_SO"].encoding["coordinates"].split(" ")).issubset(
+        set(merge_res["W_SO"].encoding["coordinates"].split(" "))
+    )
+    assert set(
+        era5_rotated_netcdf["TMIN_2M"].encoding["coordinates"].split(" ")
+    ).issubset(set(merge_res["TMIN_2M"].encoding["coordinates"].split(" ")))
+
+    for d in ds.dims:
+        assert d in era5_rotated_netcdf.dims
+        assert np.all(ds[d].values == era5_rotated_netcdf[d].values)
+
+    for d in era5_rotated_netcdf.dims:
+        assert d in era5_rotated_netcdf.dims
+
+    clear_test_res()

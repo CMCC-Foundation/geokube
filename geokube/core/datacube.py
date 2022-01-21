@@ -39,19 +39,17 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 
 class DataCube:
 
-    __slots__ = ("_fields", "_global_attrs", "_properties")
+    __slots__ = ("_fields", "_properties")
 
     _LOG = HCubeLogger(name="DataCube")
 
     def __init__(
         self,
         fields: List[Field],
-        global_attrs: Optional[Mapping[Hashable, Any]] = None,
         **properties,
     ) -> None:
         self._fields = {f.name: f for f in fields}
-        self._global_attrs = global_attrs if global_attrs is not None else {}
-        self._properties = properties
+        self._properties = properties if properties is not None else {}
 
     @property
     def properties(self):
@@ -230,13 +228,13 @@ class DataCube:
                 )
             )
 
-        return DataCube(fields=fields, global_attrs=ds.attrs, **metadata)
+        return DataCube(fields=fields, **metadata, **ds.attrs)
 
     @log_func_debug
     def to_xarray(self):
         xarray_fields = [f.to_xarray() for f in self.values()]
-        dset = xr.merge(xarray_fields)
-        dset.attrs = self._global_attrs
+        dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
+        dset.attrs = self.properties
         return dset
 
     @log_func_debug

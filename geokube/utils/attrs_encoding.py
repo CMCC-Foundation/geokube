@@ -62,6 +62,7 @@ ENCODING_PROP = (
     "complevel",
     "fletcher32",
     "contiguous",
+    CFAttributes.COORDINATES.value,
     CFAttributes.CALENDAR.value,
     CFAttributes.GRID_MAPPING.value,
     CFAttributes.MISSING_VALUE.value,
