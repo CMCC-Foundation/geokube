@@ -465,7 +465,7 @@ class Field(AggMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
-            # TODO: Use points here
+            verts = xr.DataArray(data=verts, dims='points')
             field = field.sel(indexers={vert_coord.name: verts}, **sel_kwa)
 
         # Case of latitude and longitude being independent.
