@@ -208,19 +208,7 @@ class Variable(AggMixin):
         
         encoding['name'] = da.name
         encoding['dims'] = da.dims
-        
-        # pop coordinates, grid_mapping_name, cell_measures
-        attrs.pop("coordinates", None)
-        attrs.pop("grid_mapping_name", None)
-        attrs.pop("grid_mapping", None)
-        attrs.pop("cell_measures", None)        
-        attrs.pop("cell_methods", None)        
-        encoding.pop("coordinates", None)
-        encoding.pop("grid_mapping_name", None)
-        encoding.pop("grid_mapping", None)
-        encoding.pop("cell_measures", None)        
-        encoding.pop("cell_methods", None)        
-        
+                
         return Variable(
             name=name,
             data=data,

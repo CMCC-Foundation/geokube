@@ -862,10 +862,12 @@ class Field(AggMixin):
         data_vars = {}
         var_name = self.variable.nc_name
         data_vars[var_name] = self.variable.to_xarray()
-        coords = " ".join([ x for x in list(self.domain.coords.keys()) if x not in self.dims ])
-        print(f"domain coords {coords}")
-        if coords:
-            data_vars[var_name].encoding['coordinates'] = coords 
+        coords = [ x for x in list(self.domain.coords.keys()) if x not in self.dims ]
+        coords_names = " ".join([self.domain.coords[x].nc_name for x in coords])
+        print(f"domain coords {coords_names}")
+
+        if coords_names:
+            data_vars[var_name].encoding['coordinates'] = coords_names 
         data_vars[var_name].encoding["grid_mapping"] = "crs"
         if self.cell_methods is not None:
             data_vars[var_name].attrs["cell_methods"] = str(self.cell_methods)

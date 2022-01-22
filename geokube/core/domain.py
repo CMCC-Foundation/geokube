@@ -295,26 +295,6 @@ class Domain:
         return RegularLatLon()
 
     @classmethod
-    def _from_xarray_preprocess(cls, da: xr.DataArray, copy: bool):
-        if copy:
-            da = da.copy()
-        else:
-            da = da
-
-        coords = []
-        if "coordinates" in da.encoding:
-            coords = da.encoding["coordinates"].split()
-            cls._LOG.debug("`coordinates` found among encoding details.")
-        elif "coordinates" in da.attrs:
-            coords = da.attrs["coordinates"].split()
-            cls._LOG.debug("`coordinates` found among attrs details.")
-        else:
-            pass
-
-        # TODO: handle single-element latitude and longitude from da if they are note sotred in `coordinate` attribute/encoding
-        return (da, np.unique(list(chain(da.dims, coords))), crs)
-
-    @classmethod
     @log_func_debug
     def from_xarray(
         cls,
@@ -350,14 +330,14 @@ class Domain:
         for dim in da.dims:
             coords.append(Coordinate.from_xarray(ds, dim, id_pattern, copy, mapping))
 
-        xr_coords = ds[field_name].attrs.get("coordinates", ds[field_name].encoding.get("coordinates", None))
+        xr_coords = ds[field_name].attrs.pop("coordinates", ds[field_name].encoding.pop("coordinates", None))
         if xr_coords is not None:
             for coord in xr_coords.split(" "):
                 coords.append(Coordinate.from_xarray(ds, coord, id_pattern, copy, mapping))       
         if "grid_mapping" in da.encoding:
-            crs = parse_crs(da[da.encoding["grid_mapping"]])
+            crs = parse_crs(da[da.encoding.pop("grid_mapping")])
         elif "grid_mapping" in da.attrs:
-            crs = parse_crs(da[da.attrs["grid_mapping"]])
+            crs = parse_crs(da[da.attrs.pop("grid_mapping")])
         else:
             crs = Domain.guess_crs(da)
         
