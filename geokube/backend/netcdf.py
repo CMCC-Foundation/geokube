@@ -37,7 +37,7 @@ def _write_cache(ds, cache_path: str):
 
 def open_datacube(
     path: str,
-    field_id: Optional[str] = None,
+    id_pattern: Optional[str] = None,
     mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     metadata_caching: bool = False,
     metadata_cache_path: str = None,
@@ -53,7 +53,7 @@ def open_datacube(
             return ds
 
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, **kwargs), field_id=field_id, mapping=mapping
+        xr.open_mfdataset(path, **kwargs), id_pattern=id_pattern, mapping=mapping
     )
     if metadata_caching:
         _write_cache(ds, metadata_cache_path)

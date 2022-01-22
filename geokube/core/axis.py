@@ -100,7 +100,7 @@ class Axis:
         return not (self == other)
 
     @classmethod
-    def from_xarray_dataarray(
+    def from_xarray(
         cls, da: xr.DataArray, mapping: Optional[Mapping[str, Mapping[str, str]]] = None
     ) -> "Axis":
         if not isinstance(da, xr.DataArray):
@@ -114,8 +114,9 @@ class Axis:
             _type = AxisType.parse_type(da.name)
 
         name = (
-            mapping[da.name]["api"]
+            mapping[da.name]["name"]
             if mapping is not None and da.name in mapping
             else da.name
         )
+        
         return Axis(atype=_type, name=name)

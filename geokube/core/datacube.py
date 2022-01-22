@@ -210,12 +210,10 @@ class DataCube:
     def from_xarray(
         cls,
         ds: xr.Dataset,
-        field_id: Optional[str] = None,
+        id_pattern: Optional[str] = None,
         mapping: Optional[Mapping[str, str]] = None,
-        metadata: Optional[dict] = None,
     ) -> "DataCube":
         fields = []
-        metadata = metadata if metadata is not None else {}
         #
         # we assume that data_vars contains only variable + ancillary
         # and coords all coordinates, grid_mapping and so on ...
@@ -223,12 +221,12 @@ class DataCube:
         #
         for dv in ds.data_vars:
             fields.append(
-                Field.from_xarray_dataset(
-                    ds, field_name=dv, field_id=field_id, mapping=mapping
+                Field.from_xarray(
+                    ds, ncvar_name=dv, id_pattern=id_pattern, mapping=mapping
                 )
             )
 
-        return DataCube(fields=fields, **metadata, **ds.attrs)
+        return DataCube(fields=fields, **ds.attrs)
 
     @log_func_debug
     def to_xarray(self):

@@ -105,12 +105,12 @@ class Coordinate(AggMixin):
         return self._variable.name
 
     @property
-    def dims_names(self):
-        return self._variable.dims_names
-
+    def nc_name(self) -> str:
+        return self._variable.nc_name
+    
     @property
-    def dims_axis_names(self):
-        return self._variable.dims_axis_names
+    def nc_dims(self) -> str:
+        return self._variable.nc_dims
 
     @property
     def dims(self):
@@ -187,30 +187,12 @@ class Coordinate(AggMixin):
 
     @classmethod
     @log_func_debug
-    def from_xarray_dataarray(
-        cls, da: xr.DataArray, mapping: Optional[Mapping[str, str]] = None
-    ) -> "Coordinate":
-        if not isinstance(da, xr.DataArray):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.DataArray` but provided `{type(da)}`",
-                logger=cls._LOG,
-            )
-        if (bounds := da.encoding.get("bounds")) is not None:
-            warnings.warn(
-                f"Bound(s) `{bounds}`` defined for the provided xarray.DataArray but couldn't be found! Bound(s) will be skipped!"
-            )
-
-        axis = Axis.from_xarray_dataarray(da, mapping=mapping)
-        var = Variable.from_xarray_dataarray(da, mapping=mapping)
-        return Coordinate(variable=var, axis=axis, bounds=None, mapping=mapping)
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataset(
+    def from_xarray(
         cls,
         ds: xr.Dataset,
         coord_name: str,
-        errors: Optional[str] = "raise",
+        id_pattern: Optional[str] = None,
+        copy: Optional[bool] = False,
         mapping: Optional[Mapping[str, str]] = None,
     ) -> "Coordinate":
         if not isinstance(ds, xr.Dataset):
@@ -219,26 +201,12 @@ class Coordinate(AggMixin):
                 logger=cls._LOG,
             )
 
-        try:
-            darr = ds[coord_name]
-        except KeyError:
-            # Checking `coord_name not in ds` doesn't work for integer values, like x = {0,1,2,3,....}(for example: nemo-ocean-16)
-            if errors == "raise":
-                raise ex.HCubeKeyError(
-                    f"Requested coordinate `{coord_name}` does not exists in the provided dataset!",
-                    logger=cls._LOG,
-                )
-            elif errors == "warn":
-                warnings.warn(
-                    f"Requested coordinate `{coord_name}` does not exists in the provided dataset!"
-                )
-            return
-
-        axis = Axis.from_xarray_dataarray(darr, mapping=mapping)
-        var = Variable.from_xarray_dataarray(darr, mapping=mapping)
-        bounds = darr.encoding.get("bounds", darr.attrs.get("bounds"))
+        da = ds[coord_name]
+        axis = Axis.from_xarray(da, mapping=mapping)
+        var = Variable.from_xarray(da, id_pattern=id_pattern, copy=copy, mapping=mapping)
+        bounds = da.encoding.get("bounds", da.attrs.get("bounds"))
         if bounds:
-            bounds = Variable.from_xarray_dataarray(ds[bounds])
+            bounds = Variable.from_xarray(ds[bounds], id_pattern=id_pattern, copy=copy, mapping=mapping)
             bounds._units = var.units
         return Coordinate(variable=var, axis=axis, bounds=bounds, mapping=mapping)
 
@@ -268,11 +236,3 @@ class Coordinate(AggMixin):
         xr_var = self._variable.to_xarray_dataarray()
         xr_var = xr_var.assign_coords(coords)
         return xr_var
-
-    def to_dict_of_tuple(self) -> Mapping[Hashable, Tuple[Any]]:
-        # return a mapping of coordinates dims_names, data and attributes
-        coords = {}
-        coords[self.name] = self.variable.to_tuple(return_variable=False)
-        if self.has_bounds:
-            coords[self.bounds.name] = self.bounds.to_tuple(return_variable=False)
-        return coords
