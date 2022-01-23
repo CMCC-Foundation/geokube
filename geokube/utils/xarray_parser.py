@@ -85,18 +85,18 @@ def get_auxiliary_coords(dataset: xr.Dataset):
     return set([k for k, d in dataset.coords.items() if d.dims and d.dims[0] != k])
 
 
-def form_field_id(field_id_pattern, attrs):
+def form_id(id_pattern, attrs):
     fmt = Formatter()
-    _, field_names, _, _ = zip(*fmt.parse(field_id_pattern))
+    _, field_names, _, _ = zip(*fmt.parse(id_pattern))
     field_names = [_ for _ in field_names if _]
     # Replace intake-like placeholder to string.Template-like ones
     for k in field_names:
         if k not in attrs:
             raise KeyError(
-                f"Requested field_id component - `{k}` is not present in attributes!"
+                f"Requested id component - `{k}` is not present in attributes!"
             )
-        field_id_pattern = field_id_pattern.replace(
+        id_pattern = id_pattern.replace(
             f"{{{k}}}", f"${{{k}}}"
         )  # "{some_field}" -> "${some_field}"
-    template = Template(field_id_pattern)
+    template = Template(id_pattern)
     return template.substitute(**{k: attrs[k] for k in field_names})

@@ -105,9 +105,6 @@ class CellMethod:
             comment=comment_val,
         )
 
-    def encode_for_netcdf(self):
-        return self.__str__()
-
     def __str__(self) -> str:
         res_str = self.method.value[0]
         if self.axis is not None:

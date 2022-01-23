@@ -39,21 +39,27 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 
 class DataCube:
 
-    __slots__ = ("_fields", "_properties")
+    __slots__ = ("_fields", "_properties", "_encoding")
 
     _LOG = HCubeLogger(name="DataCube")
 
     def __init__(
         self,
         fields: List[Field],
-        **properties,
+        properties,
+        encoding
     ) -> None:
         self._fields = {f.name: f for f in fields}
         self._properties = properties if properties is not None else {}
+        self._encoding = encoding if encoding is not None else {}
 
     @property
     def properties(self):
         return self._properties
+
+    @property
+    def encoding(self):
+        return self._encoding
 
     def __len__(self):
         return len(self._fields)
@@ -172,7 +178,8 @@ class DataCube:
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties = self.properties,
+            encoding = self.encoding
         )
 
     @log_func_debug
@@ -181,7 +188,8 @@ class DataCube:
     ) -> "DataCube":
         return DataCube(
             fields=[self._fields[k].to_regular() for k in self._fields.keys()],
-            **self.properties,
+            properties=self.properties,
+            encoding = self.encoding
         )
 
     @log_func_debug
@@ -202,7 +210,8 @@ class DataCube:
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties = self.properties,
+            encoding = self.encoding
         )
 
     @classmethod
@@ -210,12 +219,10 @@ class DataCube:
     def from_xarray(
         cls,
         ds: xr.Dataset,
-        field_id: Optional[str] = None,
+        id_pattern: Optional[str] = None,
         mapping: Optional[Mapping[str, str]] = None,
-        metadata: Optional[dict] = None,
     ) -> "DataCube":
         fields = []
-        metadata = metadata if metadata is not None else {}
         #
         # we assume that data_vars contains only variable + ancillary
         # and coords all coordinates, grid_mapping and so on ...
@@ -223,18 +230,19 @@ class DataCube:
         #
         for dv in ds.data_vars:
             fields.append(
-                Field.from_xarray_dataset(
-                    ds, field_name=dv, field_id=field_id, mapping=mapping
+                Field.from_xarray(
+                    ds, ncvar_name=dv, id_pattern=id_pattern, mapping=mapping
                 )
             )
-
-        return DataCube(fields=fields, **metadata, **ds.attrs)
+        print(ds.encoding)
+        return DataCube(fields=fields, properties = ds.attrs, encoding=ds.encoding)
 
     @log_func_debug
     def to_xarray(self):
         xarray_fields = [f.to_xarray() for f in self.values()]
         dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
         dset.attrs = self.properties
+        dset.encoding = self.encoding
         return dset
 
     @log_func_debug

@@ -37,7 +37,7 @@ def _write_cache(ds, cache_path: str):
 
 def open_datacube(
     path: str,
-    field_id: Optional[str] = None,
+    id_pattern: Optional[str] = None,
     mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     metadata_caching: bool = False,
     metadata_cache_path: str = None,
@@ -51,9 +51,10 @@ def open_datacube(
         ds = _read_cache(metadata_cache_path)
         if ds is not None:
             return ds
-
+    if 'decode_coords' not in kwargs:
+        kwargs.update(decode_coords='all')
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, **kwargs), field_id=field_id, mapping=mapping
+        xr.open_mfdataset(path, **kwargs), id_pattern=id_pattern, mapping=mapping
     )
     if metadata_caching:
         _write_cache(ds, metadata_cache_path)
@@ -86,9 +87,8 @@ def _get_df_from_files_list(files, pattern, ds_attr_names):
 def open_dataset(
     path: str,
     pattern: str,
-    field_id: Optional[str] = None,
+    id_pattern: Optional[str] = None,
     mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
-    parallel: bool = False,
     metadata_caching: bool = False,
     metadata_cache_path: str = None,
     ds_attr_mapping: Mapping[Hashable, Any] = None,  # dataset attributes mapping - TBA
@@ -134,11 +134,11 @@ def open_dataset(
                     new_files = [*cached_ds[FILES_COL][i], *not_cached_ds[FILES_COL][i]]
                     if delay_read_cubes:
                         cube = dask.delayed(open_datacube)(
-                            path=new_files, field_id=field_id, mapping=mapping, **kwargs
+                            path=new_files, id_pattern=id_pattern, mapping=mapping, **kwargs
                         )
                     else:
                         cube = open_datacube(
-                            path=new_files, field_id=field_id, mapping=mapping, **kwargs
+                            path=new_files, id_pattern=id_pattern, mapping=mapping, **kwargs
                         )
                     cached_ds.loc[i] = {FILES_COL: new_files, DATACUBE_COL: cube}
                 elif i in not_cached_ds.index:
@@ -146,14 +146,14 @@ def open_dataset(
                     if delay_read_cubes:
                         cube = dask.delayed(open_datacube)(
                             path=not_cached_files,
-                            field_id=field_id,
+                            id_pattern=id_pattern,
                             mapping=mapping,
                             **kwargs,
                         )
                     else:
                         cube = open_datacube(
                             path=not_cached_files,
-                            field_id=field_id,
+                            id_pattern=id_pattern,
                             mapping=mapping,
                             **kwargs,
                         )
@@ -174,14 +174,14 @@ def open_dataset(
         for i in df.index:
             cubes.append(
                 dask.delayed(open_datacube)(
-                    path=df[FILES_COL][i], field_id=field_id, mapping=mapping, **kwargs
+                    path=df[FILES_COL][i], id_pattern=id_pattern, mapping=mapping, **kwargs
                 )
             )
     else:
         for i in df.index:
             cubes.append(
                 open_datacube(
-                    path=df[FILES_COL][i], field_id=field_id, mapping=mapping, **kwargs
+                    path=df[FILES_COL][i], id_pattern=id_pattern, mapping=mapping, **kwargs
                 )
             )  # we do not need to enable caching here!
     df[DATACUBE_COL] = cubes
