@@ -19,16 +19,14 @@ from geokube.core.coord_system import (
     RegularLatLon,
     parse_crs,
 )
-from geokube.core.coordinate import Coordinate, CoordinateType
-from geokube.core.dimension import Dimension
-from geokube.core.enums import LatitudeConvention, LongitudeConvention
-from geokube.core.variable import Variable
 from geokube.utils import util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
-from geokube.utils.indexer_dict import IndexerDict
-from geokube.utils.warnings import DomainWarning
+from .coordinate import Coordinate, CoordinateType
+from .dimension import Dimension
+from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
+
 
 class DomainType(Enum):
     GRIDDED = "gridded"
@@ -144,7 +142,7 @@ class Domain:
         elif isinstance(key, AxisType):
             return self._coords[self._axistype_to_name.get(key)]         
         raise ex.HCubeTypeError(
-             f"Indexing coordinates for Domain is supported only for object of types [string, AxisType]. Provided type: {type(axis)}",
+             f"Indexing coordinates for Domain is supported only for object of types [string, AxisType]. Provided type: {type(key)}",
              logger=self._LOG,
          )
 
@@ -155,24 +153,6 @@ class Domain:
         return (key in self._coords) or (
             AxisType.parse_type(key) in self._axistype_to_name
         )
-
-    # def coordinate(self, axis: Union[str, Axis, AxisType]) -> Optional[Coordinate]:
-    #     if isinstance(axis, str):
-    #         # if we pass `latitude` and axis is called `lat`, we return the proper axis with AxisType.LATITUDE
-    #         # Selection by generic should be explicit: coordinate(AxisType.GENERIC)
-    #         if axis in self._coords:
-    #             return self._coords[axis]
-    #         if (at := AxisType.parse_type(axis)) is AxisType.GENERIC:
-    #             raise ex.HCubeKeyError(f"`{axis}` not found!", logger=self._LOG)
-    #         return self._coords.get(axis, self.coordinate(at))
-    #     if isinstance(axis, Axis):
-    #         return self._coords.get(axis.name)
-    #     if isinstance(axis, AxisType):
-    #         return self._coords.get(self._axistype_to_name.get(axis))
-    #     raise ex.HCubeTypeError(
-    #         f"Indexing coordinates for Domain is supported only for object of types [string, Axis, AxisType]. Provided type: {type(axis)}",
-    #         logger=self._LOG,
-    #     )
 
     def nbytes(self) -> int:
         return sum(coord.nbytes() for coord in self._coords)
@@ -304,25 +284,6 @@ class Domain:
         copy: bool = False,
         mapping: Optional[Mapping[str, str]] = None,
     ) -> "Domain":
-
-        # cell_measures = da.encoding.get("cell_measures", da.attrs.get("cell_measures"))
-        # if cell_measures:
-        #     cls._LOG.info(
-        #         "`cell_measure` found among encoding or attributes details. Processing..."
-        #     )
-        #     # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/build/ch07s02.html
-        #     for (
-        #         measure_type,
-        #         measure_var_name,
-        #     ) in util_methods.parse_cell_measures_string(cell_measures).items():
-        #         coords.append(
-        #             Coordinate.from_xarray_dataset(
-        #                 ds=dset,
-        #                 coord_name=measure_var_name,
-        #                 errors=errors,
-        #                 mapping=mapping,
-        #             )
-        #         )
         
         da = ds[field_name]
         coords = []
@@ -340,7 +301,26 @@ class Domain:
             crs = parse_crs(da[da.attrs.pop("grid_mapping")])
         else:
             crs = Domain.guess_crs(da)
-        
+
+        # cell_measures = da.encoding.pop("cell_measures", da.attrs.pop("cell_measures"))
+        # if cell_measures:
+        #      cls._LOG.info(
+        #          "`cell_measure` found among encoding or attributes details. Processing..."
+        #      )
+        # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/build/ch07s02.html
+        #     for (
+        #         measure_type,
+        #         measure_var_name,
+        #     ) in util_methods.parse_cell_measures_string(cell_measures).items():
+        #         coords.append(
+        #             Coordinate.from_xarray_dataset(
+        #                 ds=dset,
+        #                 coord_name=measure_var_name,
+        #                 errors=errors,
+        #                 mapping=mapping,
+        #             )
+        #         )
+
         return Domain(coords=coords, crs=crs)
 
     @log_func_debug
@@ -354,6 +334,6 @@ class Domain:
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-            grid['crs'] = xr.DataArray(1.0, name="crs", attrs=not_none_attrs)
+            grid['crs'] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
         return xr.Dataset(coords=grid).coords
 

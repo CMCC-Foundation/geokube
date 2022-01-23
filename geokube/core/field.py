@@ -103,6 +103,10 @@ class Field(AggMixin):
         return self.variable.name
 
     @property
+    def nc_name(self) -> str:
+        return self.variable.nc_name
+
+    @property
     def properties(self) -> Optional[Mapping[Hashable, str]]:
         return self.variable.properties
 
@@ -213,19 +217,18 @@ class Field(AggMixin):
     ):
         # TODO: add vertical also
         domain = self._domain
-        # TODO: Check if these are NumPy arrays.
-        lat = domain.latitude.variable.data
-        lon = domain.longitude.variable.data
+        lat = domain.latitude.values
+        lon = domain.longitude.values
 
         ind_lat = domain.is_latitude_independent
         ind_lon = domain.is_longitude_independent
         if ind_lat and ind_lon:
             idx = {
                 domain.latitude.name: np.s_[south:north]
-                if util_methods.is_nondecreasing(domain.latitude.data)
+                if util_methods.is_nondecreasing(domain.latitude.values)
                 else np.s_[north:south],
                 domain.longitude.name: np.s_[west:east]
-                if util_methods.is_nondecreasing(domain.longitude.data)
+                if util_methods.is_nondecreasing(domain.longitude.values)
                 else np.s_[east:west],
             }
             return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
@@ -248,7 +251,7 @@ class Field(AggMixin):
             if roll_if_needed
             else self.to_xarray()
         )
-        return Field.from_xarray_dataset(
+        return Field.from_xarray(
             ds=ds.isel(indexers=idx), field_name=self.name, deep_copy=False
         )
 
@@ -318,10 +321,10 @@ class Field(AggMixin):
             # Adjusting the shape of the latitude and longitude coordinates.
             # TODO: Check if these are NumPy arrays.
             # TODO: Check axes and shapes manipulation again.
-            lat_coord = domain.latitude.variable.data
+            lat_coord = domain.latitude.values
             lat_dims = (np.s_[:],) + (np.newaxis,) * lat_coord.ndim
             lat_coord = lat_coord[np.newaxis, :]
-            lon_coord = domain.longitude.variable.data
+            lon_coord = domain.longitude.values
             lon_dims = (np.s_[:],) + (np.newaxis,) * lon_coord.ndim
             lon_coord = lon_coord[np.newaxis, :]
 
@@ -467,29 +470,35 @@ class Field(AggMixin):
             src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
         )
         x, y = pts[:, :, 0], pts[:, :, 1]
-        # Building the grid.
-        dims = [domain.latitude.name, domain.longitude.name]
+
+        # Building the grid (using xarray)
+        dims = [domain.latitude.nc_name, domain.longitude.nc_name]
         grid = xr.Dataset(
-            data_vars={domain.x.name: (dims, x), domain.y.name: (dims, y)},
-            coords={domain.latitude.name: lat, domain.longitude.name: lon},
+            data_vars={domain.x.nc_name: (dims, x), domain.y.nc_name: (dims, y)},
+            coords={domain.latitude.nc_name: lat, domain.longitude.nc_name: lon},
         )
 
-        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units)
-        # grid[domain.longitude.name].attrs.update(units=domain.longitude.units)
+        grid[domain.latitude.nc_name].attrs = domain.latitude.variable.properties
+        grid[domain.longitude.nc_name].attrs = domain.longitude.variable.properties
+        grid[domain.latitude.nc_name].encoding = domain.latitude.variable.encoding
+        grid[domain.longitude.nc_name].encoding = domain.longitude.variable.encoding
 
         # Interpolating the data.
         dset = self.to_xarray()
-        dset = dset.drop(labels=[domain.latitude.name, domain.longitude.name])
+        dset = dset.drop(labels=[domain.latitude.nc_name, domain.longitude.nc_name])
         regrid_dset = dset.interp(
             coords={
-                domain.x.name: grid[domain.x.name],
-                domain.y.name: grid[domain.y.name],
+                domain.x.nc_name: grid[domain.x.nc_name],
+                domain.y.nc_name: grid[domain.y.nc_name],
             },
             method="nearest",
         )
-        regrid_dset = regrid_dset.drop(labels=[domain.x.name, domain.y.name])
-        field = Field.from_xarray_dataset(
-            ds=regrid_dset, field_name=self.name, deep_copy=False
+        regrid_dset = regrid_dset.drop(labels=[domain.x.nc_name, domain.y.nc_name])
+        fillValue = -9.0e-20
+        regrid_dset.fillna(fillValue)
+        regrid_dset[self.nc_name].encoding['_FillValue'] = fillValue
+        field = Field.from_xarray(
+            ds=regrid_dset, ncvar_name=self.nc_name, copy=False
         )
         field.domain._crs = RegularLatLon()
 
@@ -864,7 +873,6 @@ class Field(AggMixin):
         data_vars[var_name] = self.variable.to_xarray()
         coords = [ x for x in list(self.domain.coords.keys()) if x not in self.dims ]
         coords_names = " ".join([self.domain.coords[x].nc_name for x in coords])
-        print(f"domain coords {coords_names}")
 
         if coords_names:
             data_vars[var_name].encoding['coordinates'] = coords_names 

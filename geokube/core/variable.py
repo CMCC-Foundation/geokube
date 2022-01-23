@@ -92,21 +92,23 @@ class Variable(AggMixin):
 
     @property
     def data(self):
-        return self._data.data
+        # TO BE FIXED (we should return directly data)
+        return self.to_xarray().data
 
     @property
-    def values(self):
-        return self._data.values
+    def values(self): 
+        # TO BE FIXED (we should return directly values)
+        return self.to_xarray().values
 
     def __len__(self):
         return len(self._variable)
 
     def __repr__(self) -> str:
-        return formatting.array_repr(self.to_xarray_dataarray())
+        return formatting.array_repr(self.to_xarray())
 
     def _repr_html_(self):
         if OPTIONS["display_style"] == "text":
-            return f"<pre>{escape(repr(self.to_xarray_dataarray()))}</pre>"
+            return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
         return formatting_html.array_repr(self)
 
     @property
@@ -192,7 +194,6 @@ class Variable(AggMixin):
                 logger=cls._LOG,
             )
         name = Variable._get_var_name(da, mapping, id_pattern)
-        print(f"from xarray name {name}")
         data = da.data.copy() if copy else da.data
         dims = []
         for d in da.dims:
@@ -221,11 +222,11 @@ class Variable(AggMixin):
     @log_func_debug
     def to_xarray(self):
         xr_attrs = self.properties
-        # if self.units is not None and not self.units.is_unknown:
-        #     if self.units.is_time_reference():
-        #         xr_attrs["units"] = self.units.cftime_unit
-        #         xr_attrs["calendar"] = self.units.calendar
-        #     else:
-        #         xr_attrs["units"] = str(self.units)
         xr_encoding = self.encoding
+        if self.units is not None and not self.units.is_unknown:
+             if self.units.is_time_reference():
+                 xr_encoding["units"] = self.units.cftime_unit
+                 xr_encoding["calendar"] = self.units.calendar
+             else:
+                 xr_attrs["units"] = str(self.units)
         return xr.Variable(data=self._data, dims = self.nc_dims, attrs=xr_attrs, encoding=xr_encoding)

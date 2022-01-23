@@ -204,10 +204,12 @@ class Coordinate(AggMixin):
         da = ds[coord_name]
         axis = Axis.from_xarray(da, mapping=mapping)
         var = Variable.from_xarray(da, id_pattern=id_pattern, copy=copy, mapping=mapping)
-        bounds = da.encoding.get("bounds", da.attrs.get("bounds"))
-        if bounds:
-            bounds = Variable.from_xarray(ds[bounds], id_pattern=id_pattern, copy=copy, mapping=mapping)
-            bounds._units = var.units
+        bnds_name = da.encoding.pop("bounds", da.attrs.pop("bounds", None))
+        bounds = None
+        if bnds_name:
+            bounds = Variable.from_xarray(ds[bnds_name], id_pattern=id_pattern, copy=copy, mapping=mapping)
+            if 'units' not in ds[bnds_name].attrs and 'units' not in ds[bnds_name].encoding:
+                bounds.units = var.units
         return Coordinate(variable=var, axis=axis, bounds=bounds, mapping=mapping)
 
     @log_func_debug

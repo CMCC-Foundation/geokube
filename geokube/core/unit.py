@@ -21,6 +21,9 @@ class Unit:
     def is_unknown(self):
         return self._backup_name is not None or self._unit == Unit.UNKNOWN_CF_UNIT
 
+    def __repr__(self):
+        return self.__str__()
+
     def __str__(self):
         if self._backup_name is None:
             return str(self._unit)
