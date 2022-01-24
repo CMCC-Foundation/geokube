@@ -10,7 +10,7 @@ from geokube.core.variable import Variable
 import pytest
 
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, AxisType
+from geokube.core.axis import Axis, Axis
 from geokube.core.enums import LongitudeConvention, MethodType
 from geokube.core.field import Field
 from geokube.utils import util_methods
@@ -24,12 +24,12 @@ def test_from_xarray_dataarray(era5_globe_netcdf):
 
     field = Field.from_xarray_dataarray(era5_globe_netcdf["tp"])
     assert np.all(
-        field.domain[AxisType.LATITUDE].data == era5_globe_netcdf["latitude"].values
+        field.domain[Axis.LATITUDE].data == era5_globe_netcdf["latitude"].values
     )
     assert np.all(
-        field.domain[AxisType.LONGITUDE].data == era5_globe_netcdf["longitude"].values
+        field.domain[Axis.LONGITUDE].data == era5_globe_netcdf["longitude"].values
     )
-    assert np.all(field.domain[AxisType.TIME].data == era5_globe_netcdf["time"].values)
+    assert np.all(field.domain[Axis.TIME].data == era5_globe_netcdf["time"].values)
 
 
 def test_from_xarray_dataarray_2(era5_rotated_netcdf_wso):
@@ -38,16 +38,16 @@ def test_from_xarray_dataarray_2(era5_rotated_netcdf_wso):
 
     field = Field.from_xarray_dataarray(era5_rotated_netcdf_wso["W_SO"])
     assert np.all(
-        field.domain[AxisType.X].data == era5_rotated_netcdf_wso["rlon"].values
+        field.domain[Axis.X].data == era5_rotated_netcdf_wso["rlon"].values
     )
     assert np.all(
-        field.domain[AxisType.Y].data == era5_rotated_netcdf_wso["rlat"].values
+        field.domain[Axis.Y].data == era5_rotated_netcdf_wso["rlat"].values
     )
     assert np.all(
-        field.domain[AxisType.TIME].data == era5_rotated_netcdf_wso["time"].values
+        field.domain[Axis.TIME].data == era5_rotated_netcdf_wso["time"].values
     )
-    assert field.domain[AxisType.TIME].bounds is None
-    assert field.domain[AxisType.VERTICAL].bounds is None
+    assert field.domain[Axis.TIME].bounds is None
+    assert field.domain[Axis.VERTICAL].bounds is None
     assert field.cell_methods.method == MethodType.MEAN
     assert field.cell_methods.axis == "soil1"
     assert str(field.cell_methods) == "soil1: mean"
@@ -60,27 +60,27 @@ def test_from_xarray_dataset(era5_globe_netcdf):
 
     field = Field.from_xarray_dataset(era5_globe_netcdf, field_name="tp")
     assert np.all(
-        field.domain[AxisType.LATITUDE].data == era5_globe_netcdf["latitude"].values
+        field.domain[Axis.LATITUDE].data == era5_globe_netcdf["latitude"].values
     )
     assert np.all(
-        field.domain[AxisType.LONGITUDE].data == era5_globe_netcdf["longitude"].values
+        field.domain[Axis.LONGITUDE].data == era5_globe_netcdf["longitude"].values
     )
-    assert np.all(field.domain[AxisType.TIME].data == era5_globe_netcdf["time"].values)
+    assert np.all(field.domain[Axis.TIME].data == era5_globe_netcdf["time"].values)
 
 
 def test_from_xarray_dataset_2(era5_rotated_netcdf_wso):
     field = Field.from_xarray_dataset(era5_rotated_netcdf_wso, field_name="W_SO")
     assert np.all(
-        field.domain[AxisType.X].data == era5_rotated_netcdf_wso["rlon"].values
+        field.domain[Axis.X].data == era5_rotated_netcdf_wso["rlon"].values
     )
     assert np.all(
-        field.domain[AxisType.Y].data == era5_rotated_netcdf_wso["rlat"].values
+        field.domain[Axis.Y].data == era5_rotated_netcdf_wso["rlat"].values
     )
     assert np.all(
-        field.domain[AxisType.TIME].data == era5_rotated_netcdf_wso["time"].values
+        field.domain[Axis.TIME].data == era5_rotated_netcdf_wso["time"].values
     )
-    assert field.domain[AxisType.TIME].bounds is not None
-    assert field.domain[AxisType.VERTICAL].bounds is not None
+    assert field.domain[Axis.TIME].bounds is not None
+    assert field.domain[Axis.VERTICAL].bounds is not None
     assert field.cell_methods.method == MethodType.MEAN
     assert field.cell_methods.axis == "soil1"
     assert str(field.cell_methods) == "soil1: mean"
@@ -88,19 +88,19 @@ def test_from_xarray_dataset_2(era5_rotated_netcdf_wso):
 
 def test_from_xarray_dataset_3(nemo_ocean_16):
     field = Field.from_xarray_dataset(nemo_ocean_16, field_name="vt")
-    assert np.all(field.domain[AxisType.X].data == nemo_ocean_16["x"].values)
-    assert np.all(field.domain[AxisType.Y].data == nemo_ocean_16["y"].values)
+    assert np.all(field.domain[Axis.X].data == nemo_ocean_16["x"].values)
+    assert np.all(field.domain[Axis.Y].data == nemo_ocean_16["y"].values)
     assert np.all(
-        field.domain[AxisType.TIME].data == nemo_ocean_16["time_counter"].values
+        field.domain[Axis.TIME].data == nemo_ocean_16["time_counter"].values
     )
-    assert field.domain[AxisType.TIME].bounds is not None
-    assert field.domain[AxisType.VERTICAL].bounds is not None
+    assert field.domain[Axis.TIME].bounds is not None
+    assert field.domain[Axis.VERTICAL].bounds is not None
     assert np.all(
-        field.domain[AxisType.LONGITUDE].bounds.data
+        field.domain[Axis.LONGITUDE].bounds.data
         == nemo_ocean_16["bounds_lon"].values
     )
     assert np.all(
-        field.domain[AxisType.LATITUDE].bounds.data
+        field.domain[Axis.LATITUDE].bounds.data
         == nemo_ocean_16["bounds_lat"].values
     )
 
@@ -184,11 +184,11 @@ def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):
     }
     f = Field.from_xarray_dataset(era5_netcdf, field_name="tp")
     res = f.sel(ind1)
-    assert np.all(res.domain[AxisType.LATITUDE].data >= 36)
-    assert np.all(res.domain[AxisType.LATITUDE].data <= 44)
-    assert np.all(res.domain[AxisType.LONGITUDE].data >= 10)
-    assert np.all(res.domain[AxisType.LONGITUDE].data <= 17)
-    da = res.domain[AxisType.TIME].to_xarray_dataarray()
+    assert np.all(res.domain[Axis.LATITUDE].data >= 36)
+    assert np.all(res.domain[Axis.LATITUDE].data <= 44)
+    assert np.all(res.domain[Axis.LONGITUDE].data >= 10)
+    assert np.all(res.domain[Axis.LONGITUDE].data <= 17)
+    da = res.domain[Axis.TIME].to_xarray_dataarray()
     assert np.all((da.dt.hour == 10) | (da.dt.hour == 15))
 
     ind2 = {
@@ -198,26 +198,26 @@ def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):
     }
     f = Field.from_xarray_dataset(era5_globe_netcdf, field_name="tp")
     res = f.sel(ind2, roll_if_needed=False)
-    assert np.all(res.domain[AxisType.LATITUDE].data >= 78)
-    assert np.all(res.domain[AxisType.LATITUDE].data <= 90)
-    assert np.all(res.domain[AxisType.LONGITUDE].data <= 20)
-    assert np.all(res.domain[AxisType.LONGITUDE].data >= 0)
+    assert np.all(res.domain[Axis.LATITUDE].data >= 78)
+    assert np.all(res.domain[Axis.LATITUDE].data <= 90)
+    assert np.all(res.domain[Axis.LONGITUDE].data <= 20)
+    assert np.all(res.domain[Axis.LONGITUDE].data >= 0)
     assert (
-        res.domain[AxisType.LONGITUDE].convention is LongitudeConvention.POSITIVE_WEST
+        res.domain[Axis.LONGITUDE].convention is LongitudeConvention.POSITIVE_WEST
     )
-    da = res.domain[AxisType.TIME].to_xarray_dataarray()
+    da = res.domain[Axis.TIME].to_xarray_dataarray()
     assert np.all((da.dt.day == 10))
     assert np.all((da.dt.hour == 15))
 
     res = f.sel(ind2, roll_if_needed=True)
-    assert np.all(res.domain[AxisType.LATITUDE].data >= 78)
-    assert np.all(res.domain[AxisType.LATITUDE].data <= 90)
-    assert np.all(res.domain[AxisType.LONGITUDE].data <= 20)
-    assert np.all(res.domain[AxisType.LONGITUDE].data >= -20)
+    assert np.all(res.domain[Axis.LATITUDE].data >= 78)
+    assert np.all(res.domain[Axis.LATITUDE].data <= 90)
+    assert np.all(res.domain[Axis.LONGITUDE].data <= 20)
+    assert np.all(res.domain[Axis.LONGITUDE].data >= -20)
     assert (
-        res.domain[AxisType.LONGITUDE].convention is LongitudeConvention.NEGATIVE_WEST
+        res.domain[Axis.LONGITUDE].convention is LongitudeConvention.NEGATIVE_WEST
     )
-    da = res.domain[AxisType.TIME].to_xarray_dataarray()
+    da = res.domain[Axis.TIME].to_xarray_dataarray()
     assert np.all((da.dt.day == 10))
     assert np.all((da.dt.hour == 15))
 
@@ -225,24 +225,24 @@ def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):
 def test_geobbox(era5_globe_netcdf):
     f = Field.from_xarray_dataset(era5_globe_netcdf, field_name="tp")
     res = f.geobbox(north=90, south=70, west=60, east=90, roll_if_needed=True)
-    assert np.all(res.domain[AxisType.LATITUDE].values <= 90)
+    assert np.all(res.domain[Axis.LATITUDE].values <= 90)
     assert np.all(res.domain["latitude"].values >= 70)
-    assert np.all(res.domain[AxisType.LONGITUDE].values <= 90)
+    assert np.all(res.domain[Axis.LONGITUDE].values <= 90)
     assert np.all(res.domain["longitude"].values >= 60)
 
 
 def test_geobbox_2(era5_globe_netcdf):
     f = Field.from_xarray_dataset(era5_globe_netcdf, field_name="tp")
     res = f.geobbox(north=90, south=70, west=-20, east=20, roll_if_needed=True)
-    assert np.all(res.domain[AxisType.LATITUDE].values <= 90)
+    assert np.all(res.domain[Axis.LATITUDE].values <= 90)
     assert np.all(res.domain["latitude"].values >= 70)
-    assert np.all(res.domain[AxisType.LONGITUDE].values <= 20)
+    assert np.all(res.domain[Axis.LONGITUDE].values <= 20)
     assert np.all(res.domain["longitude"].values >= -20)
 
     res = f.geobbox(north=90, south=70, west=-20, east=20, roll_if_needed=False)
-    assert np.all(res.domain[AxisType.LATITUDE].values <= 90)
+    assert np.all(res.domain[Axis.LATITUDE].values <= 90)
     assert np.all(res.domain["latitude"].values >= 70)
-    assert np.all(res.domain[AxisType.LONGITUDE].values <= 20)
+    assert np.all(res.domain[Axis.LONGITUDE].values <= 20)
     assert np.all(res.domain["longitude"].values >= 0)
 
 
@@ -381,9 +381,9 @@ def test_regrid(nemo_ocean_16):
     coord = f.domain.coordinate
     lat, lon = coord("latitude").values, coord("longitude").values
 
-    lat_axis = Axis(atype=AxisType.LATITUDE)
+    lat_axis = Axis(atype=Axis.LATITUDE)
     lat_dim = Dimension(name="latitude", axis=lat_axis)
-    lon_axis = Axis(atype=AxisType.LONGITUDE)
+    lon_axis = Axis(atype=Axis.LONGITUDE)
     lon_dim = Dimension(name="longitude", axis=lon_axis)
 
     lat_coord = Coordinate(

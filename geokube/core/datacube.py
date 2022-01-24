@@ -22,7 +22,7 @@ from typing import (
 )
 
 import numpy as np
-from geokube.core.axis import AxisType
+from geokube.core.axis import Axis
 from geokube.core.enums import RegridMethod
 import pyarrow as pa
 import xarray as xr
@@ -46,10 +46,12 @@ class DataCube:
     def __init__(
         self,
         fields: List[Field],
-        properties,
-        encoding
+        properties: Mapping[Any, Any],
+        encoding: Mapping[Any, Any]
     ) -> None:
-        self._fields = {f.name: f for f in fields}
+        # TO DO save only fields variables and coordinates names to build the field domain
+        self._fields = {f.name: f for f in fields} 
+        self._domain = Domain.merge([f.domain for f in fields])
         self._properties = properties if properties is not None else {}
         self._encoding = encoding if encoding is not None else {}
 
@@ -60,6 +62,14 @@ class DataCube:
     @property
     def encoding(self):
         return self._encoding
+
+    @property
+    def fields(self):
+        return self._fields
+
+    @property
+    def nbytes(self) -> int:
+        return sum(field.nbytes for field in self.fields.values())
 
     def __len__(self):
         return len(self._fields)
@@ -83,17 +93,15 @@ class DataCube:
             yield f
         raise StopIteration
 
-    def keys(self):
-        return self._fields.keys()
+    def __repr__(self) -> str:
+        return self.to_xarray(encoding=False).__repr__()
+#        return formatting.array_repr(self.to_xarray())
 
-    def values(self):
-        return self._fields.values()
-
-    def items(self):
-        return self._fields.items()
-
-    def get_nbytes(self) -> int:
-        return sum(field.get_nbytes() for field in self.values())
+    def _repr_html_(self):
+        return self.to_xarray(encoding=False)._repr_html_()
+        # if OPTIONS["display_style"] == "text":
+        #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
+        # return formatting_html.array_repr(self)
 
     @log_func_debug
     def geobbox(
@@ -142,7 +150,7 @@ class DataCube:
     @log_func_debug
     def sel(
         self,
-        indexers: Mapping[Union[AxisType, str], Any] = None,
+        indexers: Mapping[Union[Axis, str], Any] = None,
         method: str = None,
         tolerance: Number = None,
         drop: bool = False,
@@ -229,17 +237,18 @@ class DataCube:
         # TODO ancillary variables
         #
         for dv in ds.data_vars:
+            print(dv)
             fields.append(
                 Field.from_xarray(
-                    ds, ncvar_name=dv, id_pattern=id_pattern, mapping=mapping
+                    ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
                 )
             )
         print(ds.encoding)
         return DataCube(fields=fields, properties = ds.attrs, encoding=ds.encoding)
 
     @log_func_debug
-    def to_xarray(self):
-        xarray_fields = [f.to_xarray() for f in self.values()]
+    def to_xarray(self, encoding=True):
+        xarray_fields = [f.to_xarray(encoding) for f in self.fields.values()]
         dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
         dset.attrs = self.properties
         dset.encoding = self.encoding

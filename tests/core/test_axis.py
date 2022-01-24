@@ -2,27 +2,27 @@ import pytest
 from cf_units import Unit
 
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, AxisType
+from geokube.core.axis import Axis, Axis
 from tests.fixtures import *
 
 
 def test_axis_type():
-    assert len(AxisType.get_available_names()) == 12
-    assert "time" in AxisType.get_available_names()
-    assert "generic" in AxisType.get_available_names()
-    assert AxisType.LATITUDE.default_units == Unit("degrees_north")
-    assert AxisType.TIME.name == "time"
-    assert AxisType("aaa") is AxisType.GENERIC
-    assert AxisType.parse_type("latitude") is AxisType.LATITUDE
-    assert AxisType.parse_type("lat") is AxisType.LATITUDE
-    assert AxisType.parse_type("rlat") is AxisType.Y
-    assert AxisType.parse_type("x").default_units == Unit("m")
-    assert AxisType.parse_type("depth") is AxisType.VERTICAL
-    assert AxisType.parse_type("time").default_units == Unit(
+    assert len(Axis.get_available_names()) == 12
+    assert "time" in Axis.get_available_names()
+    assert "generic" in Axis.get_available_names()
+    assert Axis.LATITUDE.default_units == Unit("degrees_north")
+    assert Axis.TIME.name == "time"
+    assert Axis("aaa") is Axis.GENERIC
+    assert Axis.parse_type("latitude") is Axis.LATITUDE
+    assert Axis.parse_type("lat") is Axis.LATITUDE
+    assert Axis.parse_type("rlat") is Axis.Y
+    assert Axis.parse_type("x").default_units == Unit("m")
+    assert Axis.parse_type("depth") is Axis.VERTICAL
+    assert Axis.parse_type("time").default_units == Unit(
         "hours since 1970-01-01", calendar="gregorian"
     )
-    assert AxisType.generic() is AxisType.GENERIC
-    assert AxisType.generic().default_units == Unit("unknown")
+    assert Axis.generic() is Axis.GENERIC
+    assert Axis.generic().default_units == Unit("unknown")
 
 
 def test_axis_1():
@@ -33,35 +33,35 @@ def test_axis_1():
 def test_axis_2(era5_netcdf, era5_rotated_netcdf_tmin2m, nemo_ocean_16):
     at = Axis.from_xarray_dataarray(era5_netcdf["longitude"])
     assert at.name == "longitude"
-    assert at.atype is AxisType.LONGITUDE
+    assert at.atype is Axis.LONGITUDE
 
     at = Axis.from_xarray_dataarray(era5_netcdf["time"])
     assert at.name == "time"
-    assert at.atype is AxisType.TIME
+    assert at.atype is Axis.TIME
     assert at.atype.default_units == Unit(
         "hours since 1970-01-01", calendar="gregorian"
     )
 
     at = Axis.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["rlat"])
     assert at.name == "rlat"
-    assert at.atype is AxisType.Y
+    assert at.atype is Axis.Y
 
     at = Axis.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["rlon"])
     assert at.name == "rlon"
-    assert at.atype is AxisType.X
+    assert at.atype is Axis.X
 
     at = Axis.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["height_2m"])
     assert at.name == "height_2m"
-    assert at.atype is AxisType.VERTICAL
+    assert at.atype is Axis.VERTICAL
 
     at = Axis.from_xarray_dataarray(nemo_ocean_16["nav_lat"])
     assert at.name == "nav_lat"
-    assert at.atype is AxisType.LATITUDE
+    assert at.atype is Axis.LATITUDE
 
     at = Axis.from_xarray_dataarray(nemo_ocean_16["nav_lon"])
     assert at.name == "nav_lon"
-    assert at.atype is AxisType.LONGITUDE
+    assert at.atype is Axis.LONGITUDE
 
     at = Axis.from_xarray_dataarray(nemo_ocean_16["depthv"])
     assert at.name == "depthv"
-    assert at.atype is AxisType.VERTICAL
+    assert at.atype is Axis.VERTICAL

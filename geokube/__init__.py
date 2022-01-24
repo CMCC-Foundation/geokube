@@ -2,7 +2,7 @@ import geokube.backend.netcdf
 
 open_datacube = geokube.backend.netcdf.open_datacube
 open_dataset = geokube.backend.netcdf.open_dataset
-from geokube.core.axis import AxisType
+from geokube.core.axis import Axis
 from geokube.core.coord_system import (
     AlbersEqualArea,
     GeogCS,

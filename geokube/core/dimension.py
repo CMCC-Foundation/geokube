@@ -1,64 +1,22 @@
-from typing import Mapping, Optional
-import warnings
-
-from geokube.core.unit import Unit
-import xarray as xr
-
-from geokube.core.axis import Axis, AxisType
-from geokube.utils.decorators import log_func_debug
+from .axis import Axis, AxisType
 from geokube.utils.hcube_logger import HCubeLogger
+from typing import Mapping, Any, Union
 
+class Dimension(Axis):
 
-class Dimension:
+    __slots__ = ("_encoding")
 
     _LOG = HCubeLogger(name="Dimension")
 
     def __init__(
         self,
-        name: str,
-        axis: Axis,
+        name: Union[Axis,str],
+        axistype: AxisType=None,
+        encoding: Mapping[Any, Any]=None,
     ):
-        self._name = name
-        self._axis = axis
+        super().__init__(name, axistype)
+        self._encoding = encoding
 
     @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def axis(self):
-        return self._axis
-
-    @property
-    def atype(self) -> str:
-        return self._axis.atype
-
-    @property
-    def default_units(self) -> Unit:
-        return self._axis.atype.default_units
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataarray(
-        cls, da: xr.DataArray, mapping: Optional[Mapping[str, Mapping[str, str]]] = None
-    ):
-        axis = Axis.from_xarray_dataarray(da, mapping=mapping)
-        attrs = da.attrs
-        # Attrs['Axis'] -> Attrs['standard_name'] -> da.name
-        name = attrs.get("standard_name", da.attrs.get("axis", da.name))
-        if mapping is not None and name in mapping:
-            name = mapping[name]["api"]
-        return Dimension(name=name, axis=axis)
-
-    @classmethod
-    def _parse_units(cls, name: str, calendar: Optional[str] = None) -> Unit:
-        return Unit(name, calendar=calendar)
-
-    def __eq__(self, other):
-        if isinstance(other, Dimension):
-            return (self.name == other.name) and (self._type == other._type)
-        else:
-            False
-
-    def __ne__(self, other):
-        return not (self == other)
+    def ncvar(self):
+        return self._encoding.get("name", self.name)

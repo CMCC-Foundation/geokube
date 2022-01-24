@@ -9,7 +9,7 @@ from geokube.core.domain import Domain
 from geokube.core.variable import Variable
 import pytest
 
-from geokube.core.axis import Axis, AxisType
+from geokube.core.axis import Axis, Axis
 from geokube.core.datacube import DataCube
 from tests.fixtures import *
 from tests import RES_PATH, clear_test_res
@@ -20,18 +20,18 @@ def test_from_xarray_1(era5_netcdf, era5_globe_netcdf):
     assert len(dc) == 2
     res = dc.geobbox(north=90, south=70, west=60, east=90, roll_if_needed=True)
     for f in res.values():
-        assert np.all(f.domain[AxisType.LATITUDE].values <= 90)
+        assert np.all(f.domain[Axis.LATITUDE].values <= 90)
         assert np.all(f.domain["latitude"].values >= 70)
-        assert np.all(f.domain[AxisType.LONGITUDE].values <= 90)
+        assert np.all(f.domain[Axis.LONGITUDE].values <= 90)
         assert np.all(f.domain["longitude"].values >= 60)
 
     dc = DataCube.from_xarray(era5_globe_netcdf)
     assert len(dc) == 1
     res = dc.geobbox(north=90, south=70, west=-20, east=20, roll_if_needed=True)
     for f in res.values():
-        assert np.all(f.domain[AxisType.LATITUDE].values <= 90)
+        assert np.all(f.domain[Axis.LATITUDE].values <= 90)
         assert np.all(f.domain["latitude"].values >= 70)
-        assert np.all(f.domain[AxisType.LONGITUDE].values <= 20)
+        assert np.all(f.domain[Axis.LONGITUDE].values <= 20)
         assert np.all(f.domain["longitude"].values >= -20)
 
 
@@ -40,9 +40,9 @@ def test_from_xarray_2(era5_rotated_netcdf):
     assert len(dc) == 2
     res = dc.geobbox(north=39, south=41, west=16, east=19, roll_if_needed=False)
     for f in res.values():
-        assert np.all(f.domain[AxisType.LATITUDE].values <= 41 + 1)
+        assert np.all(f.domain[Axis.LATITUDE].values <= 41 + 1)
         assert np.all(f.domain["latitude"].values >= 39 - 1)
-        assert np.all(f.domain[AxisType.LONGITUDE].values <= 19 + 1)
+        assert np.all(f.domain[Axis.LONGITUDE].values <= 19 + 1)
         assert np.all(f.domain["longitude"].values >= 16 - 1)
 
 
@@ -106,9 +106,9 @@ def test_large_file():
     dc = DataCube.from_xarray(dset)
     res = dc.geobbox(north=90, south=85, west=85, east=90, roll_if_needed=True)
     for f in res.values():
-        assert np.all(f.domain[AxisType.LATITUDE].values <= 90)
+        assert np.all(f.domain[Axis.LATITUDE].values <= 90)
         assert np.all(f.domain["latitude"].values >= 70)
-        assert np.all(f.domain[AxisType.LONGITUDE].values <= 90)
+        assert np.all(f.domain[Axis.LONGITUDE].values <= 90)
         assert np.all(f.domain["longitude"].values >= 60)
 
 
@@ -138,9 +138,9 @@ def test_regrid(era5_rotated_netcdf):
     coord = dc["W_SO"].domain.coordinate
     lat, lon = coord("latitude").values, coord("longitude").values
 
-    lat_axis = Axis(atype=AxisType.LATITUDE)
+    lat_axis = Axis(atype=Axis.LATITUDE)
     lat_dim = Dimension(name="latitude", axis=lat_axis)
-    lon_axis = Axis(atype=AxisType.LONGITUDE)
+    lon_axis = Axis(atype=Axis.LONGITUDE)
     lon_dim = Dimension(name="longitude", axis=lon_axis)
 
     lat_coord = Coordinate(

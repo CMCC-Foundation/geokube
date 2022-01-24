@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple, Union, Any
 import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
-from geokube.core.axis import AxisType
+from geokube.core.axis import Axis
 
 import geokube.utils.exceptions as ex
 from geokube.core.datacube import DataCube
@@ -116,7 +116,7 @@ class Dataset:
 
     def sel(
         self,
-        indexers: Mapping[Union[AxisType, str], Any] = None,
+        indexers: Mapping[Union[Axis, str], Any] = None,
         method: str = None,
         tolerance: Number = None,
         drop: bool = False,

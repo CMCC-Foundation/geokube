@@ -1,135 +1,126 @@
+from __future__ import annotations
+
 from html import escape
 from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 import dask.array as da
+from dask.array.core import _elemwise_handle_where
 import numpy as np
 import xarray as xr
 from xarray.core.options import OPTIONS
 
 import geokube.utils.exceptions as ex
 from geokube.core.unit import Unit
-from geokube.core.agg_mixin import AggMixin
 from geokube.core.dimension import Dimension
 from geokube.utils import formatting, formatting_html, util_methods
-from geokube.utils.attrs_encoding import CFAttributes, split_to_xr_attrs_and_encoding
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 import geokube.utils.xarray_parser as xrp
 
-class Variable(AggMixin):
+class Variable(xr.Variable):
 
     __slots__ = (
-        "_name",
         "_dims",
-        "_variable",
         "_units",
-        "_properties",
-        "_cf_encoding",
     )
 
     _LOG = HCubeLogger(name="Variable")
 
+    def _as_dimension_tuple(self, dims):
+        if isinstance(dims, str):
+            _dims = Dimension(str)
+        elif isinstance(dims, tuple) or isinstance(dims, list):
+            _dims = []
+            for d in dims:
+                if isinstance(d, str):
+                    _dims.append(Dimension(d))
+                else:
+                    _dims.append(d)
+        else:
+            raise ex.HCubeValueError(
+                    f"not valid type for dimensions provided in `dims` argument",
+                    logger=self._LOG,
+            )
+
+        return tuple(_dims)
+
     def __init__(
         self,
-        name: str,
         data: Union[np.ndarray, da.Array],
-        units: Optional[ Union[Unit, str]] = None,
-        dims: Optional[Union[Sequence[str], str]] = None,
+        dims: Optional[Union[Sequence[Union[Dimension, str]], Union[Dimension,str]]] = None,
+        units: Optional[Union[Unit, str]] = None,
         properties: Optional[ Mapping[Hashable, str]] = None, 
         encoding: Optional[Mapping[Hashable, str]] = None,
     ):
         if not (
             isinstance(data, np.ndarray)
             or isinstance(data, da.Array)
+            or isinstance(data, Variable)
         ):
             raise ex.HCubeTypeError(
                 f"Expected argument of one of the following types `numpy.ndarray`, `dask.array.Array`, but provided {type(data)}",
                 logger=self._LOG,
             )
 
-        self._name = name
-        self._data = data
-        self._dims = None
-        if dims is not None:
-            dims = np.array(dims, ndmin=1, dtype=str)
-            if len(dims) != data.ndim:
-                raise ex.HCubeValueError(
-                    f"Provided data have {data.ndim} dimensions but {len(dims)} Dimensions provided in `dims` argument",
-                    logger=self._LOG,
-                )
-            self._dims = tuple(dims)
-        self._encoding = encoding if encoding else {}
-        self._units = Unit(units) if (isinstance(units, str) or None) else units
-        self._properties = properties if properties else {}
+        if isinstance(data, Variable):
+            self.copy(data)
+        else:
+        
+            self._dims = None
+            if dims is not None:
+                dims = self._as_dimension_tuple(dims)
+                dims = np.array(dims, ndmin=1, dtype=Dimension)
+                if len(dims) != data.ndim:
+                    raise ex.HCubeValueError(
+                        f"Provided data have {data.ndim} dimensions but {len(dims)} Dimensions provided in `dims` argument",
+                        logger=self._LOG,
+                    )
+                self._dims = dims
+            
+            print("DIMS!!!!!")
+            for d in dims:
+                print(d)
+            super().__init__(data=data, dims=self.dim_names, attrs=properties, encoding=encoding, fastpath=True)        
+            self._units = Unit(units) if (isinstance(units, str) or units is None) else units
+
+    def dims(self) -> Tuple[Dimension, ...]:
+        return self._dims
 
     @property
-    def name(self) -> str:
-        return self._name
+    def dim_names(self):
+        print(type(self._dims))
+        return tuple([d.name for d in self._dims])
 
     @property
-    def nc_name(self) -> str:
-        return self._encoding.get('name', self.name)
+    def dim_ncvars(self):
+        return tuple([d.ncvar for d in self._dims])
 
     @property
-    def nc_dims(self) -> str:
-        return self._encoding.get('dims', self.dims)
+    def dim_axis(self):
+        return tuple([d.axis for d in self._dims])
 
     @property
     def properties(self):
-        return self._properties
-
-    @property
-    def encoding(self):
-        return self._encoding
-
-    @property
-    def dims(self) -> Tuple[str, ...]:
-        return self._dims
+        return self.attrs
 
     @property
     def units(self) -> Unit:
         return self._units
 
-    @property
-    def data(self):
-        # TO BE FIXED (we should return directly data)
-        return self.to_xarray().data
-
-    @property
-    def values(self): 
-        # TO BE FIXED (we should return directly values)
-        return self.to_xarray().values
-
-    def __len__(self):
-        return len(self._variable)
+    def copy(self, other, deep_copy=False):
+        self._dims = other.dims
+        self._units = other.units       
+        super().__init__(data=other.data, dims=other.dim_names, attrs=other.properties, encoding=other.encoding)
 
     def __repr__(self) -> str:
-        return formatting.array_repr(self.to_xarray())
+        return self.to_xarray(encoding=False).__repr__()
+#        return formatting.array_repr(self.to_xarray())
 
     def _repr_html_(self):
-        if OPTIONS["display_style"] == "text":
-            return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
-        return formatting_html.array_repr(self)
-
-    @property
-    def dtype(self):
-        return self._data.dtype
-
-    @property
-    def size(self):
-        return self._data.size
-
-    @property
-    def nbytes(self):
-        return self._data.nbytes
-
-    @property
-    def shape(self):
-        return self._data.shape
-
-    @property
-    def ndim(self):
-        return self._data.ndim
+        return self.to_xarray(encoding=False)._repr_html_()
+        # if OPTIONS["display_style"] == "text":
+        #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
+        # return formatting_html.array_repr(self)
 
     def convert_units(self, unit, inplace=True):
         unit = Unit(unit) if isinstance(unit, str) else unit
@@ -137,48 +128,31 @@ class Variable(AggMixin):
             self._LOG.warn(
                 "Converting units is supported only for np.ndarray inner data type. Data will be loaded into the memory!"
             )
-            self._variable.data = np.array(
-                self._variable.data
+            self.data = np.array(
+                self.data
             )  # TODO: inplace for cf.Unit doesn't work!
         res = self.units.convert(self.data, unit, inplace)
         if not inplace:
             return Variable(
-                name=self._name,
                 data=res,
                 dims=self.dims,
                 units=unit,
-                properties=self._properties,
-                cf_encoding=self._cf_encoding,
+                properties=self.properties,
+                encoding=self.encoding,
             )
-        self._variable.data = res
-        self._units = unit
-
-    @staticmethod
-    def _get_var_name(
-        da: xr.DataArray,
-        field_id: Optional[str] = None,
-        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
-    ):
-        name = da.attrs.get("standard_name", da.name) # by default standard name
-        props = {}
-        # Mapping has higher priority than field_id
-        if mapping is not None and da.name in mapping:
-            name = mapping[da.name]["name"]
-            props = util_methods.trim_key(mapping[da.name], exclude="api")
-        elif field_id is not None:
-            name = xrp.form_field_id(field_id, da.attrs)
-        return name, props
+        self.data = res
+        self.units = unit
 
     @classmethod
     @log_func_debug
-    def _get_var_name( cls, da, mapping, id_pattern):
+    def _get_name(cls, da, mapping, id_pattern):
         name = da.attrs.get("standard_name", da.name)
         if mapping is not None and da.name in mapping:
             name = mapping[da.name]['name']
         elif id_pattern is not None:
             name = xrp.form_id(id_pattern, da.attrs)                
         return name
-
+    
     @classmethod
     @log_func_debug
     def from_xarray(
@@ -193,40 +167,48 @@ class Variable(AggMixin):
                 f"Expected type `xarray.DataArray` but provided `{type(da)}`",
                 logger=cls._LOG,
             )
-        name = Variable._get_var_name(da, mapping, id_pattern)
+ 
         data = da.data.copy() if copy else da.data
         dims = []
         for d in da.dims:
-            dims.append(Variable._get_var_name(da[d], mapping, id_pattern))
+            if d in da.coords:
+                d_name = Variable._get_name(da[d], mapping, id_pattern)
+                d_axis = da[d].attrs.get("axis", None)
+                dims.append(Dimension(name=d_name, axistype=d_axis, encoding={'name': d}))   
+            else:
+                dims.append(Dimension(name = d))
+
+        print(dims)
 
         attrs = da.attrs.copy()
         encoding = da.encoding.copy()
 
-        units = Dimension._parse_units(
+        units = Unit(
             encoding.pop("units", attrs.pop("units", None)),
             calendar=encoding.pop("calendar", attrs.pop("calendar", None)),
         )
-        
-        encoding['name'] = da.name
-        encoding['dims'] = da.dims
-                
+                        
         return Variable(
-            name=name,
             data=data,
-            dims=dims,
+            dims=tuple(dims),
             units=units,
             properties=attrs,
             encoding=encoding,
         )
 
     @log_func_debug
-    def to_xarray(self):
-        xr_attrs = self.properties
-        xr_encoding = self.encoding
-        if self.units is not None and not self.units.is_unknown:
-             if self.units.is_time_reference():
-                 xr_encoding["units"] = self.units.cftime_unit
-                 xr_encoding["calendar"] = self.units.calendar
-             else:
-                 xr_attrs["units"] = str(self.units)
-        return xr.Variable(data=self._data, dims = self.nc_dims, attrs=xr_attrs, encoding=xr_encoding)
+    def to_xarray(self, encoding=True):
+        nc_attrs = self.properties
+        nc_encoding = self.encoding
+        if encoding:
+            dims = self.dim_ncvars
+            if self.units is not None and not self.units.is_unknown:
+                 if self.units.is_time_reference():
+                     nc_encoding["units"] = self.units.cftime_unit
+                     nc_encoding["calendar"] = self.units.calendar
+                 else:
+                     nc_attrs["units"] = str(self.units)
+        else:
+            dims = self.dim_names
+
+        return xr.Variable(data=self._data, dims = dims, attrs=nc_attrs, encoding=nc_encoding)

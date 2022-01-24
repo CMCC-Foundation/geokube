@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from geokube.core.axis import Axis, AxisType
+from geokube.core.axis import Axis, Axis
 from geokube.core.dimension import Dimension
 from geokube.core.variable import Variable
 from geokube.utils.attrs_encoding import CFAttributes
@@ -18,8 +18,8 @@ def test_construct_from_numpy():
         data=d,
         units=cf.Unit("m"),
         dims=[
-            Dimension("lat", Axis(atype=AxisType.LATITUDE)),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
+            Dimension("lat", Axis(atype=Axis.LATITUDE)),
+            Dimension("lon", Axis(atype=Axis.LONGITUDE)),
         ],
     )
     assert v.name == "var1"
@@ -27,16 +27,16 @@ def test_construct_from_numpy():
     assert v.dims_names == ("lat", "lon")
     assert v.ndim == 2
     assert v.shape == (10, 50)
-    assert v.dims[0].atype is AxisType.LATITUDE
-    assert v.dims[1].atype is AxisType.LONGITUDE
+    assert v.dims[0].atype is Axis.LATITUDE
+    assert v.dims[1].atype is Axis.LONGITUDE
 
     v = Variable(
         name="var1",
         data=d,
         units=cf.Unit("m"),
         dims=[
-            Dimension("lat", Axis(atype=AxisType.LATITUDE, name="lat")),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
+            Dimension("lat", Axis(atype=Axis.LATITUDE, name="lat")),
+            Dimension("lon", Axis(atype=Axis.LONGITUDE)),
         ],
         cf_encoding={"standard_name": "variable_1"},
     )
@@ -45,8 +45,8 @@ def test_construct_from_numpy():
     assert v.dims_names == ("lat", "lon")
     assert v.ndim == 2
     assert v.shape == (10, 50)
-    assert v.dims[0].atype is AxisType.LATITUDE
-    assert v.dims[1].atype is AxisType.LONGITUDE
+    assert v.dims[0].atype is Axis.LATITUDE
+    assert v.dims[1].atype is Axis.LONGITUDE
     xrv = v.to_xarray_variable()
     assert isinstance(xrv, xr.Variable)
     assert xrv.attrs["standard_name"] == "variable_1"
@@ -61,9 +61,9 @@ def test_construct_from_dask():
         data=d,
         units=cf.Unit("m"),
         dims=[
-            Dimension("time", Axis(atype=AxisType.TIME)),
-            Dimension("lat", Axis(atype=AxisType.LATITUDE)),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
+            Dimension("time", Axis(atype=Axis.TIME)),
+            Dimension("lat", Axis(atype=Axis.LATITUDE)),
+            Dimension("lon", Axis(atype=Axis.LONGITUDE)),
         ],
     )
     assert v.name == "var2"
@@ -71,9 +71,9 @@ def test_construct_from_dask():
     assert v.dims_names == ("time", "lat", "lon")
     assert v.ndim == 3
     assert v.shape == (10, 50, 5)
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[1].atype is AxisType.LATITUDE
-    assert v.dims[2].atype is AxisType.LONGITUDE
+    assert v.dims[0].atype is Axis.TIME
+    assert v.dims[1].atype is Axis.LATITUDE
+    assert v.dims[2].atype is Axis.LONGITUDE
     assert isinstance(v.data, da.Array)
 
 
@@ -85,9 +85,9 @@ def test_construct_from_xarray():
         data=xrv,
         units="K",
         dims=[
-            Dimension("time", Axis(atype=AxisType.TIME)),
-            Dimension("lat", Axis(atype=AxisType.LATITUDE)),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
+            Dimension("time", Axis(atype=Axis.TIME)),
+            Dimension("lat", Axis(atype=Axis.LATITUDE)),
+            Dimension("lon", Axis(atype=Axis.LONGITUDE)),
         ],
     )
     assert v.name == "var2"
@@ -95,9 +95,9 @@ def test_construct_from_xarray():
     assert v.dims_names == ("time", "lat", "lon")
     assert v.ndim == 3
     assert v.shape == (10, 50, 5)
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[1].atype is AxisType.LATITUDE
-    assert v.dims[2].atype is AxisType.LONGITUDE
+    assert v.dims[0].atype is Axis.TIME
+    assert v.dims[1].atype is Axis.LATITUDE
+    assert v.dims[2].atype is Axis.LONGITUDE
 
 
 def test_convert_units(era5_netcdf):
@@ -129,9 +129,9 @@ def test_from_xarray_dataarray_1(
     assert v.name == "tp"
     assert v.dims_names == ("time", "latitude", "longitude")
     assert v.units == cf.Unit("m")
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[2].atype is AxisType.LONGITUDE
-    assert v.dims[1].atype is AxisType.LATITUDE
+    assert v.dims[0].atype is Axis.TIME
+    assert v.dims[2].atype is Axis.LONGITUDE
+    assert v.dims[1].atype is Axis.LATITUDE
     xrv = v.to_xarray_variable()
     assert np.all(xrv == era5_netcdf["tp"]._variable)
 
@@ -139,9 +139,9 @@ def test_from_xarray_dataarray_1(
     assert v.name == "d2m"
     assert v.dims_names == ("time", "latitude", "longitude")
     assert v.units == cf.Unit("K")
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[2].atype is AxisType.LONGITUDE
-    assert v.dims[1].atype is AxisType.LATITUDE
+    assert v.dims[0].atype is Axis.TIME
+    assert v.dims[2].atype is Axis.LONGITUDE
+    assert v.dims[1].atype is Axis.LATITUDE
     xrv = v.to_xarray_variable()
     assert np.all(xrv == era5_netcdf["d2m"]._variable)
 
@@ -150,11 +150,11 @@ def test_from_xarray_dataarray_1(
     assert v._cf_encoding["standard_name"] == "air_temperature"
     assert v.units == cf.Unit("K")
     assert v.dims_names == ("time", "grid_latitude", "grid_longitude")
-    assert v.dims[0].atype is AxisType.TIME
+    assert v.dims[0].atype is Axis.TIME
     assert v.dims[0].axis.name == "time"
-    assert v.dims[1].atype is AxisType.Y
+    assert v.dims[1].atype is Axis.Y
     assert v.dims[1].axis.name == "rlat"
-    assert v.dims[2].atype is AxisType.X
+    assert v.dims[2].atype is Axis.X
     assert v.dims[2].axis.name == "rlon"
 
 

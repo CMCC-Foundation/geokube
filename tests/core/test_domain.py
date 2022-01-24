@@ -4,7 +4,7 @@ import pytest
 
 import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, AxisType
+from geokube.core.axis import Axis, Axis
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.dimension import Dimension
 from geokube.core.domain import Domain, DomainType
@@ -13,12 +13,12 @@ from tests.fixtures import *
 
 
 def test_construct_1():
-    x_axis = Axis(AxisType.X)
+    x_axis = Axis(Axis.X)
     x_axis_dim = Dimension("x", x_axis)
-    y_axis = Axis(AxisType.Y)
+    y_axis = Axis(Axis.Y)
     y_axis_dim = Dimension("y", y_axis)
-    lat_axis = Axis(name="latT", atype=AxisType.LATITUDE)
-    lon_axis = Axis(name="longitude", atype=AxisType.LONGITUDE)
+    lat_axis = Axis(name="latT", atype=Axis.LATITUDE)
+    lon_axis = Axis(name="longitude", atype=Axis.LONGITUDE)
 
     x = Coordinate(
         variable=Variable(name="x", data=np.linspace(-10, 10, 100), dims=x_axis_dim),
@@ -42,7 +42,7 @@ def test_construct_1():
         axis=lon_axis,
     )  # lon
 
-    time_axis = Axis(AxisType.TIME)
+    time_axis = Axis(Axis.TIME)
     time_axis_dim = Dimension(name="time", axis=time_axis)
     time = Coordinate(
         variable=Variable(
@@ -60,32 +60,32 @@ def test_construct_1():
         ),
     )
 
-    assert AxisType.LATITUDE in dom._axistype_to_name
-    assert dom[AxisType.LATITUDE].ctype is CoordinateType.DEPENDENT
-    assert dom[AxisType.LATITUDE].name == "lat"
-    assert AxisType.LONGITUDE in dom._axistype_to_name
-    assert dom[AxisType.LONGITUDE].ctype is CoordinateType.DEPENDENT
-    assert dom[AxisType.LONGITUDE].name == "lon"
-    assert AxisType.TIME in dom._axistype_to_name
-    assert dom[AxisType.TIME].ctype is CoordinateType.INDEPENDENT
-    assert AxisType.X in dom._axistype_to_name
-    assert dom[AxisType.X].ctype is CoordinateType.INDEPENDENT
-    assert AxisType.Y in dom._axistype_to_name
-    assert dom[AxisType.Y].ctype is CoordinateType.INDEPENDENT
+    assert Axis.LATITUDE in dom._Axis_to_name
+    assert dom[Axis.LATITUDE].ctype is CoordinateType.DEPENDENT
+    assert dom[Axis.LATITUDE].name == "lat"
+    assert Axis.LONGITUDE in dom._Axis_to_name
+    assert dom[Axis.LONGITUDE].ctype is CoordinateType.DEPENDENT
+    assert dom[Axis.LONGITUDE].name == "lon"
+    assert Axis.TIME in dom._Axis_to_name
+    assert dom[Axis.TIME].ctype is CoordinateType.INDEPENDENT
+    assert Axis.X in dom._Axis_to_name
+    assert dom[Axis.X].ctype is CoordinateType.INDEPENDENT
+    assert Axis.Y in dom._Axis_to_name
+    assert dom[Axis.Y].ctype is CoordinateType.INDEPENDENT
 
     assert dom.domtype is None
     assert dom.crs == crs.RotatedGeogCS(
         grid_north_pole_latitude=10, grid_north_pole_longitude=-25
     )
-    assert id(dom[AxisType.LATITUDE].dims[0].atype) == id(
-        dom[AxisType.LONGITUDE].dims[0].atype
+    assert id(dom[Axis.LATITUDE].dims[0].atype) == id(
+        dom[Axis.LONGITUDE].dims[0].atype
     )
-    assert dom[AxisType.LATITUDE].axis.name == "latT"
-    assert dom[AxisType.LATITUDE].axis.atype is AxisType.LATITUDE
-    assert dom[AxisType.LONGITUDE].axis.name == "longitude"
-    assert dom[AxisType.LONGITUDE].axis.atype is AxisType.LONGITUDE
-    assert id(dom[AxisType.LATITUDE].dims[0]) == id(dom[AxisType.LONGITUDE].dims[0])
-    assert id(dom[AxisType.LATITUDE].dims[1]) == id(dom[AxisType.LONGITUDE].dims[1])
+    assert dom[Axis.LATITUDE].axis.name == "latT"
+    assert dom[Axis.LATITUDE].axis.atype is Axis.LATITUDE
+    assert dom[Axis.LONGITUDE].axis.name == "longitude"
+    assert dom[Axis.LONGITUDE].axis.atype is Axis.LONGITUDE
+    assert id(dom[Axis.LATITUDE].dims[0]) == id(dom[Axis.LONGITUDE].dims[0])
+    assert id(dom[Axis.LATITUDE].dims[1]) == id(dom[Axis.LONGITUDE].dims[1])
 
     # TODO: more tests
 
@@ -95,9 +95,9 @@ def test_from_xarray_dataarray(era5_globe_netcdf):
     assert "time" in dom
     assert "latitude" in dom
     assert "longitude" in dom
-    assert dom["time"].axis.atype is AxisType.TIME
-    assert dom["latitude"].axis.atype is AxisType.LATITUDE
-    assert dom["longitude"].axis.atype is AxisType.LONGITUDE
+    assert dom["time"].axis.atype is Axis.TIME
+    assert dom["latitude"].axis.atype is Axis.LATITUDE
+    assert dom["longitude"].axis.atype is Axis.LONGITUDE
     assert dom["time"].ctype is CoordinateType.INDEPENDENT
     assert dom["latitude"].ctype is CoordinateType.INDEPENDENT
     assert dom["longitude"].ctype is CoordinateType.INDEPENDENT
@@ -118,39 +118,39 @@ def test_from_xarray_dataarray_2(era5_rotated_netcdf_wso):
     assert "soil1" in dom
 
     assert dom["time"].ctype is CoordinateType.INDEPENDENT
-    assert dom["time"].axis.atype is AxisType.TIME
+    assert dom["time"].axis.atype is Axis.TIME
     assert dom["time"].variable.dims[0].name == "time"
-    assert dom["time"].variable.dims[0].axis.atype is AxisType.TIME
+    assert dom["time"].variable.dims[0].axis.atype is Axis.TIME
 
     assert dom["soil1"].ctype is CoordinateType.INDEPENDENT
-    assert dom["soil1"].axis.atype is AxisType.VERTICAL
+    assert dom["soil1"].axis.atype is Axis.VERTICAL
     assert dom["soil1"].variable.dims[0].name == "depth"  # from standard_name
     # assert dom["soil1"].variable._cf_encoding == era5_rotated_netcdf_wso["soil1"].attrs
-    assert dom["soil1"].variable.dims[0].axis.atype is AxisType.VERTICAL
+    assert dom["soil1"].variable.dims[0].axis.atype is Axis.VERTICAL
 
     assert dom["lat"].ctype is CoordinateType.DEPENDENT
-    assert dom["lat"].axis.atype is AxisType.LATITUDE
+    assert dom["lat"].axis.atype is Axis.LATITUDE
     assert dom["lat"].variable.dims[0].name == "grid_latitude"
-    assert dom["lat"].variable.dims[0].atype is AxisType.Y
+    assert dom["lat"].variable.dims[0].atype is Axis.Y
     assert dom["lat"].variable.dims[1].name == "grid_longitude"
-    assert dom["lat"].variable.dims[1].atype is AxisType.X
+    assert dom["lat"].variable.dims[1].atype is Axis.X
 
     assert dom["lon"].ctype is CoordinateType.DEPENDENT
-    assert dom["lon"].axis.atype is AxisType.LONGITUDE
+    assert dom["lon"].axis.atype is Axis.LONGITUDE
     assert dom["lon"].variable.dims[0].name == "grid_latitude"
-    assert dom["lon"].variable.dims[0].atype is AxisType.Y
+    assert dom["lon"].variable.dims[0].atype is Axis.Y
     assert dom["lon"].variable.dims[1].name == "grid_longitude"
-    assert dom["lon"].variable.dims[1].atype is AxisType.X
+    assert dom["lon"].variable.dims[1].atype is Axis.X
 
     assert dom["rlat"].ctype is CoordinateType.INDEPENDENT
-    assert dom["rlat"].axis.atype is AxisType.Y
+    assert dom["rlat"].axis.atype is Axis.Y
     assert dom["rlat"].variable.dims[0].name == "grid_latitude"
-    assert dom["rlat"].variable.dims[0].atype is AxisType.Y
+    assert dom["rlat"].variable.dims[0].atype is Axis.Y
 
     assert dom["rlon"].ctype is CoordinateType.INDEPENDENT
-    assert dom["rlon"].axis.atype is AxisType.X
+    assert dom["rlon"].axis.atype is Axis.X
     assert dom["rlon"].variable.dims[0].name == "grid_longitude"
-    assert dom["rlon"].variable.dims[0].atype is AxisType.X
+    assert dom["rlon"].variable.dims[0].atype is Axis.X
 
     assert isinstance(dom.crs, crs.RotatedGeogCS)
 
@@ -181,28 +181,28 @@ def test_from_xarray_dataarray_3(nemo_ocean_16):
     assert dom["nav_lon"].bounds is not None
 
     assert dom["nav_lat"].ctype is CoordinateType.DEPENDENT
-    assert dom["nav_lat"].axis.atype is AxisType.LATITUDE
+    assert dom["nav_lat"].axis.atype is Axis.LATITUDE
     assert dom["nav_lat"].variable.dims[0].name == "y"
     assert dom["nav_lat"].variable.dims[1].name == "x"
-    assert dom["nav_lat"].variable.dims[0].atype is AxisType.Y
-    assert dom["nav_lat"].variable.dims[1].atype is AxisType.X
+    assert dom["nav_lat"].variable.dims[0].atype is Axis.Y
+    assert dom["nav_lat"].variable.dims[1].atype is Axis.X
 
     assert dom["nav_lon"].ctype is CoordinateType.DEPENDENT
-    assert dom["nav_lon"].axis.atype is AxisType.LONGITUDE
+    assert dom["nav_lon"].axis.atype is Axis.LONGITUDE
     assert dom["nav_lon"].variable.dims[0].name == "y"
     assert dom["nav_lon"].variable.dims[1].name == "x"
-    assert dom["nav_lon"].variable.dims[0].atype is AxisType.Y
-    assert dom["nav_lon"].variable.dims[1].atype is AxisType.X
+    assert dom["nav_lon"].variable.dims[0].atype is Axis.Y
+    assert dom["nav_lon"].variable.dims[1].atype is Axis.X
 
     assert dom["x"].ctype is CoordinateType.INDEPENDENT
-    assert dom["x"].axis.atype is AxisType.X
+    assert dom["x"].axis.atype is Axis.X
     assert dom["x"].variable.dims[0].name == "x"
-    assert dom["x"].variable.dims[0].atype is AxisType.X
+    assert dom["x"].variable.dims[0].atype is Axis.X
 
     assert dom["y"].ctype is CoordinateType.INDEPENDENT
-    assert dom["y"].axis.atype is AxisType.Y
+    assert dom["y"].axis.atype is Axis.Y
     assert dom["y"].variable.dims[0].name == "y"
-    assert dom["y"].variable.dims[0].atype is AxisType.Y
+    assert dom["y"].variable.dims[0].atype is Axis.Y
 
     # assert isinstance(dom.crs, ???)
 
@@ -229,22 +229,22 @@ def test_process_time_combo(era5_netcdf):
 
 def test_compute_bounds(era5_netcdf, nemo_ocean_16):
     dom = Domain.from_xarray_dataset(era5_netcdf, field_name="tp")
-    assert not dom[AxisType.LATITUDE].has_bounds
-    assert not dom[AxisType.LONGITUDE].has_bounds
+    assert not dom[Axis.LATITUDE].has_bounds
+    assert not dom[Axis.LONGITUDE].has_bounds
     dom.compute_bounds(coord="latitude")
-    assert dom[AxisType.LATITUDE].has_bounds
-    assert dom[AxisType.LATITUDE].bounds.data.ndim == 2
+    assert dom[Axis.LATITUDE].has_bounds
+    assert dom[Axis.LATITUDE].bounds.data.ndim == 2
     assert (
-        np.min(dom[AxisType.LATITUDE].bounds.data)
+        np.min(dom[Axis.LATITUDE].bounds.data)
         < era5_netcdf["latitude"].values.min()
     )
     assert (
-        np.max(dom[AxisType.LATITUDE].bounds.data)
+        np.max(dom[Axis.LATITUDE].bounds.data)
         > era5_netcdf["latitude"].values.max()
     )
-    assert dom[AxisType.LATITUDE].bounds.dims[0].atype is AxisType.LATITUDE
-    assert dom[AxisType.LATITUDE].bounds.dims[1].atype is AxisType.GENERIC
-    assert not dom[AxisType.LONGITUDE].has_bounds
+    assert dom[Axis.LATITUDE].bounds.dims[0].atype is Axis.LATITUDE
+    assert dom[Axis.LATITUDE].bounds.dims[1].atype is Axis.GENERIC
+    assert not dom[Axis.LONGITUDE].has_bounds
 
     with pytest.raises(ex.HCubeValueError):
         dom = Domain.from_xarray_dataarray(nemo_ocean_16["vt"])
