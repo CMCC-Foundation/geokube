@@ -40,6 +40,8 @@ class Coordinate(AggMixin):
             mapping = {}
         if isinstance(variable, Variable):
             self._variable = variable
+            # Coordinates are always stored as NumPy data
+            self._variable._variable._data = np.array(self._variable._variable._data)
             if self._variable.name in mapping:
                 self._variable.properties.update(
                     util_methods.trim_key(mapping[self._variable.name], exclude="api")

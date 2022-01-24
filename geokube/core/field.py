@@ -599,10 +599,10 @@ class Field(AggMixin):
         dims = [domain.latitude.name, domain.longitude.name]
         grid = xr.Dataset(
             data_vars={domain.x.name: (dims, x), domain.y.name: (dims, y)},
-            coords={domain.latitude.name: lat, domain.longitude.name: lon}
+            coords={domain.latitude.name: lat, domain.longitude.name: lon},
         )
 
-        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units) 
+        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units)
         # grid[domain.longitude.name].attrs.update(units=domain.longitude.units)
 
         # Interpolating the data.
@@ -611,16 +611,16 @@ class Field(AggMixin):
         regrid_dset = dset.interp(
             coords={
                 domain.x.name: grid[domain.x.name],
-                domain.y.name: grid[domain.y.name]
+                domain.y.name: grid[domain.y.name],
             },
-            method='nearest'
+            method="nearest",
         )
         regrid_dset = regrid_dset.drop(labels=[domain.x.name, domain.y.name])
         field = Field.from_xarray_dataset(
             ds=regrid_dset, field_name=self.name, deep_copy=False
         )
         field.domain._crs = RegularLatLon()
-        
+
         return field
 
     # TO CHECK

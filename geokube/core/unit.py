@@ -26,7 +26,7 @@ class Unit:
         return self._backup_name
 
     def __getattr__(self, name):
-        if name not in vars(self._unit):
+        if not hasattr(self._unit, name):
             raise AttributeError(f"Attribute `{name}` is not available.")
         return getattr(self._unit, name)
 

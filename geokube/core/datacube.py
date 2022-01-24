@@ -176,10 +176,7 @@ class DataCube:
         self,
     ) -> "DataCube":
         return DataCube(
-            fields=[
-                self._fields[k].to_regular()
-                for k in self._fields.keys()
-            ],
+            fields=[self._fields[k].to_regular() for k in self._fields.keys()],
             **self.properties,
         )
 

@@ -1,4 +1,5 @@
 import numpy as np
+import dask.array as da
 import pytest
 
 import geokube.utils.exceptions as ex
@@ -25,6 +26,7 @@ def test_construct_1():
         dims=[Dimension("y", Axis(AxisType.Y)), Dimension("x", Axis(AxisType.X))],
     )
     coord = Coordinate(variable=var, axis=Axis("latitude"), bounds=None)
+    assert isinstance(coord._variable._variable._data, np.ndarray)
     assert coord.bounds is None
     assert coord.name == "lat"
     assert coord.dims_names == ("y", "x")
@@ -42,6 +44,7 @@ def test_construct_1():
     coord = Coordinate(
         variable=var, axis=Axis("latitude"), bounds=np.random.random((10, 2))
     )
+    assert isinstance(coord._variable._variable._data, np.ndarray)
     assert coord.has_bounds
     assert coord.bounds.dims[0].atype is AxisType.LATITUDE
     assert coord.bounds.dims[1].atype is AxisType.GENERIC
@@ -52,6 +55,29 @@ def test_construct_1():
     var = Variable(data=np.array(10), name="lat", units="degrees_north")
     coord = Coordinate(variable=var, axis=Axis("latitude"))
     assert not coord.has_bounds
+    assert isinstance(coord._variable._variable._data, np.ndarray)
+    assert coord.ctype is CoordinateType.SCALAR
+
+
+def test_construct_2():
+    data = da.random.random((10, 5))
+    var = Variable(
+        data=data,
+        name="lat",
+        units="degrees_north",
+        dims=[Dimension("y", Axis(AxisType.Y)), Dimension("x", Axis(AxisType.X))],
+    )
+    coord = Coordinate(variable=var, axis=Axis("latitude"), bounds=None)
+    assert isinstance(coord._variable._variable._data, np.ndarray)
+    assert coord.bounds is None
+    assert coord.name == "lat"
+    assert coord.dims_names == ("y", "x")
+    assert coord.ctype is CoordinateType.DEPENDENT
+
+    var = Variable(data=da.array(10), name="lat", units="degrees_north")
+    coord = Coordinate(variable=var, axis=Axis("latitude"))
+    assert not coord.has_bounds
+    assert isinstance(coord._variable._variable._data, np.ndarray)
     assert coord.ctype is CoordinateType.SCALAR
 
 
@@ -62,6 +88,7 @@ def test_from_xarray_dataarray(era5_rotated_netcdf_tmin2m):
     assert res.units.calendar == era5_rotated_netcdf_tmin2m["time"].encoding["calendar"]
     assert res.bounds is None
     assert res.name == "time"
+    assert isinstance(res._variable._variable._data, np.ndarray)
 
 
 def test_from_xarray_dataset(era5_rotated_netcdf_tmin2m):
@@ -77,6 +104,7 @@ def test_from_xarray_dataset(era5_rotated_netcdf_tmin2m):
     assert res.bounds.dims[1].name == "bnds"
     assert res.name == "time"
     assert res.ctype is CoordinateType.INDEPENDENT
+    assert isinstance(res._variable._variable._data, np.ndarray)
 
 
 def test_from_xarray_dataset_2(era5_rotated_netcdf_tmin2m):
@@ -96,16 +124,19 @@ def test_from_xarray_dataset_2(era5_rotated_netcdf_tmin2m):
     assert res.dims[1].name == "grid_longitude"
     assert res.dims[1].axis.name == "rlon"
     assert res.ctype is CoordinateType.DEPENDENT
+    assert isinstance(res._variable._variable._data, np.ndarray)
 
 
 def test_to_xarray_dataarray(era5_rotated_netcdf_tmin2m):
     res = Coordinate.from_xarray_dataset(era5_rotated_netcdf_tmin2m, coord_name="time")
+    assert isinstance(res._variable._variable._data, np.ndarray)
     darr = res.to_xarray_dataarray()
     # TODO: more test
 
 
 def test_to_xarray_dataset(era5_rotated_netcdf_tmin2m):
     res = Coordinate.from_xarray_dataset(era5_rotated_netcdf_tmin2m, coord_name="time")
+    assert isinstance(res._variable._variable._data, np.ndarray)
     darr = res.to_xarray_dataset()
     assert darr.time.encoding["bounds"] == "time_bnds"
     # TODO: more test
