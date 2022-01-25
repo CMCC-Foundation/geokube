@@ -61,13 +61,18 @@ class Domain(DomainMixin):
             self._coords = {}
             for name, coord in coords.items():
                 self._coord[name] = self._as_coordinate(coord, name)
-
         if isinstance(coords, list):
             # TODO: check if it is a coordinate or just data!
             self._coords = {c.name: c for c in coords}
+        if isinstance(coords, Domain):
+            self._coords = coords
 
         self._crs = crs
         self._type = domaintype
+        print("Domain coordinates")
+        for c in self._coords:
+            print(c)
+        print("*****************")
         self._axis_to_name = {c.axis.type: c.name for c in self._coords}
 
     @property
@@ -248,7 +253,6 @@ class Domain(DomainMixin):
         coords = {}
         for domain in domains:
             coords.update(**domain.coords)
-        print(coords)
         return Domain(coords=coords, crs=domains[0].crs)
 
     @classmethod
@@ -267,7 +271,6 @@ class Domain(DomainMixin):
        
         for dim in da.dims:
             if dim in coords:
-
                 coords.append(Coordinate.from_xarray(ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping))
 
         xr_coords = ds[field_name].attrs.pop("coordinates", ds[field_name].encoding.pop("coordinates", None))

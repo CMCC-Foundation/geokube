@@ -20,7 +20,7 @@ import geokube.utils.xarray_parser as xrp
 class Variable(xr.Variable):
 
     __slots__ = (
-        "_dims",
+        "__dims__",
         "_units",
     )
 
@@ -32,10 +32,11 @@ class Variable(xr.Variable):
         elif isinstance(dims, tuple) or isinstance(dims, list):
             _dims = []
             for d in dims:
-                if isinstance(d, str):
-                    _dims.append(Dimension(d))
-                else:
-                    _dims.append(d)
+                _dims.append(Dimension(d))
+                # if isinstance(d, str):
+                #     _dims.append(Dimension(d))
+                # el:
+                #     _dims.append(d)
         else:
             raise ex.HCubeValueError(
                     f"not valid type for dimensions provided in `dims` argument",
@@ -65,40 +66,35 @@ class Variable(xr.Variable):
         if isinstance(data, Variable):
             self.copy(data)
         else:
-        
-            self._dims = None
+            self.__dims__ = None
             if dims is not None:
                 dims = self._as_dimension_tuple(dims)
                 dims = np.array(dims, ndmin=1, dtype=Dimension)
                 if len(dims) != data.ndim:
-                    raise ex.HCubeValueError(
-                        f"Provided data have {data.ndim} dimensions but {len(dims)} Dimensions provided in `dims` argument",
-                        logger=self._LOG,
-                    )
-                self._dims = dims
+                     raise ex.HCubeValueError(
+                         f"Provided data have {data.ndim} dimensions but {len(dims)} Dimensions provided in `dims` argument",
+                         logger=self._LOG,
+                     )
             
-            print("DIMS!!!!!")
-            for d in dims:
-                print(d)
-            super().__init__(data=data, dims=self.dim_names, attrs=properties, encoding=encoding, fastpath=True)        
+                self.__dims__ = dims
+            super().__init__(data=data, dims=self.dim_names, attrs=properties, encoding=encoding, fastpath=True)      
             self._units = Unit(units) if (isinstance(units, str) or units is None) else units
 
     def dims(self) -> Tuple[Dimension, ...]:
-        return self._dims
+        return self.__dims__
 
     @property
     def dim_names(self):
-        print(type(self._dims))
-        return tuple([d.name for d in self._dims])
+        return tuple([d.name for d in self.__dims__])
 
     @property
     def dim_ncvars(self):
-        return tuple([d.ncvar for d in self._dims])
-
+        return tuple([d.ncvar for d in self.__dims__])
+        
     @property
     def dim_axis(self):
-        return tuple([d.axis for d in self._dims])
-
+        return tuple([d.axis for d in self.__dims__])
+        
     @property
     def properties(self):
         return self.attrs
@@ -114,13 +110,9 @@ class Variable(xr.Variable):
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
-#        return formatting.array_repr(self.to_xarray())
 
     def _repr_html_(self):
         return self.to_xarray(encoding=False)._repr_html_()
-        # if OPTIONS["display_style"] == "text":
-        #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
-        # return formatting_html.array_repr(self)
 
     def convert_units(self, unit, inplace=True):
         unit = Unit(unit) if isinstance(unit, str) else unit
@@ -176,10 +168,9 @@ class Variable(xr.Variable):
                 d_axis = da[d].attrs.get("axis", None)
                 dims.append(Dimension(name=d_name, axistype=d_axis, encoding={'name': d}))   
             else:
-                dims.append(Dimension(name = d))
+                dims.append(Dimension(name=d))
 
-        print(dims)
-
+        dims = tuple(dims)
         attrs = da.attrs.copy()
         encoding = da.encoding.copy()
 
@@ -187,10 +178,10 @@ class Variable(xr.Variable):
             encoding.pop("units", attrs.pop("units", None)),
             calendar=encoding.pop("calendar", attrs.pop("calendar", None)),
         )
-                        
+                
         return Variable(
             data=data,
-            dims=tuple(dims),
+            dims=dims,
             units=units,
             properties=attrs,
             encoding=encoding,

@@ -167,15 +167,11 @@ class Coordinate(Variable):
                 logger=cls._LOG,
             )
 
-        print(f"coordinate {ncvar}")
-
         da = ds[ncvar]
         
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
-        
         name = Variable._get_name(ds[ncvar], mapping, id_pattern)
         var.encoding.update(name=ncvar)
-
         axis = Axis(da.attrs.get("axis", Variable._get_name(da, mapping, id_pattern)))
         if ncvar in da.dims:
             axis = Dimension(name=axis.name, axistype = axis.type, encoding={'name': ncvar})

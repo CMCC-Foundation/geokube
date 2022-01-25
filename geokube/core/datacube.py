@@ -243,7 +243,6 @@ class DataCube:
                     ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
                 )
             )
-        print(ds.encoding)
         return DataCube(fields=fields, properties = ds.attrs, encoding=ds.encoding)
 
     @log_func_debug

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import List, Mapping, Optional
+from typing import List, Mapping, Optional, Union
 
 import xarray as xr
 
@@ -101,5 +101,8 @@ class Axis:
         return not (self == other)
 
     def copy(self, other):
-        self.name = other.name
-        self.type = other.type
+        self._name = other.name
+        self._type = other.type
+    
+    def __repr__(self) -> str:
+        return f"{self.name}: {self.type}"
