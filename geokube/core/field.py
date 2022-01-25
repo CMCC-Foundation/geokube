@@ -48,6 +48,8 @@ _CARTOPY_FEATURES = {
     "states": cartf.STATES,
 }
 
+
+
 class Field(Variable, DomainMixin):
 
     __slots__ = ("_domain", "_cell_methods", "_ancillary_data")
@@ -876,7 +878,9 @@ class Field(Variable, DomainMixin):
             else:
                 coords_names = " ".join([self.domain.coords[x].name for x in coords])
             data_vars[var_name].encoding['coordinates'] = coords_names 
-        
+
+        coords = self.domain.to_xarray(encoding) # return xarray.core.coordinates.DatasetCoordinates
+
         data_vars[var_name].encoding["grid_mapping"] = "crs"
 
         if self.cell_methods is not None:
@@ -885,8 +889,6 @@ class Field(Variable, DomainMixin):
         if self._ancillary is not None:
             for a in self.ancillary:
                 data_vars[a] = a.to_xarray(encoding)
-
-        coords = self.domain.to_xarray(encoding) # return xarray.core.coordinates.DatasetCoordinates
 
         return xr.Dataset(data_vars=data_vars, coords=coords)
 

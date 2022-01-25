@@ -27,6 +27,21 @@ class CoordinateType(Enum):
 # coordinate axis type is dimension/axis type
 #
 
+# class Coordinate(Variable, Dimension):
+# __slots__ = ("_bounds")
+#    def __init__(
+#        self,
+#        name
+#        data: Union[np.ndarray, da.Array, Variable],
+        # axis: Optional[Union[str, AxisType, Axis, Dimension]],
+        # dims: Optional[Tuple[Dimension]] = None,
+        # units: Optional[Union[Unit, str]] = None,
+        # bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
+        # properties: Optional[Mapping[Any, Any]] = None,
+        # encoding: Optional[Mapping[Any, Any]] = None
+
+# )
+
 class Coordinate(Variable): 
     __slots__ = ("_axis", "_bounds")
 
@@ -149,6 +164,11 @@ class Coordinate(Variable):
                 if self.min() >= 0
                 else LongitudeConvention.NEGATIVE_WEST
             )
+
+    # @classmethod
+    # @log_func_debug
+    # def to_xarray_with_bounds(cls,
+    # )
 
     @classmethod
     @log_func_debug

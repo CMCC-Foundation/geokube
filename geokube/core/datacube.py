@@ -36,7 +36,11 @@ import geokube.utils.exceptions as ex
 
 IndexerType = Union[slice, List[slice], Number, List[Number]]
 
-
+# TODO: Not a priority
+# dc = datacube.set_id_pattern('{standard_name}')
+# dc['air_temperature']
+# dc['latitude']
+#
 class DataCube:
 
     __slots__ = ("_fields", "_properties", "_encoding")

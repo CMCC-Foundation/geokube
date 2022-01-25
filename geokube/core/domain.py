@@ -260,20 +260,20 @@ class Domain(DomainMixin):
     def from_xarray(
         cls,
         ds: xr.Dataset,
-        field_name: str,
+        ncvar: str,
         id_pattern: str = None,
         copy: bool = False,
         mapping: Optional[Mapping[str, str]] = None,
     ) -> "Domain":
         
-        da = ds[field_name]
+        da = ds[ncvar]
         coords = []
        
         for dim in da.dims:
             if dim in coords:
                 coords.append(Coordinate.from_xarray(ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping))
 
-        xr_coords = ds[field_name].attrs.pop("coordinates", ds[field_name].encoding.pop("coordinates", None))
+        xr_coords = ds[ncvar].attrs.pop("coordinates", ds[ncvar].encoding.pop("coordinates", None))
         if xr_coords is not None:
             for coord in xr_coords.split(" "):
                 coords.append(Coordinate.from_xarray(ds=ds, ncvar=coord, id_pattern=id_pattern, mapping=mapping))       
@@ -283,25 +283,6 @@ class Domain(DomainMixin):
             crs = parse_crs(da[da.attrs.pop("grid_mapping")])
         else:
             crs = Domain.guess_crs(da)
-
-        # cell_measures = da.encoding.pop("cell_measures", da.attrs.pop("cell_measures"))
-        # if cell_measures:
-        #      cls._LOG.info(
-        #          "`cell_measure` found among encoding or attributes details. Processing..."
-        #      )
-        # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/build/ch07s02.html
-        #     for (
-        #         measure_type,
-        #         measure_var_name,
-        #     ) in util_methods.parse_cell_measures_string(cell_measures).items():
-        #         coords.append(
-        #             Coordinate.from_xarray_dataset(
-        #                 ds=dset,
-        #                 coord_name=measure_var_name,
-        #                 errors=errors,
-        #                 mapping=mapping,
-        #             )
-        #         )
 
         return Domain(coords=coords, crs=crs)
 
