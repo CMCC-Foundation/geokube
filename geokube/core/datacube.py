@@ -33,6 +33,8 @@ from geokube.utils import util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 import geokube.utils.exceptions as ex
+from .domainmixin import DomainMixin
+
 
 IndexerType = Union[slice, List[slice], Number, List[Number]]
 
@@ -41,9 +43,9 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 # dc['air_temperature']
 # dc['latitude']
 #
-class DataCube:
+class DataCube(DomainMixin):
 
-    __slots__ = ("_fields", "_properties", "_encoding")
+    __slots__ = ("_fields", "_domain",  "_properties", "_encoding")
 
     _LOG = HCubeLogger(name="DataCube")
 
