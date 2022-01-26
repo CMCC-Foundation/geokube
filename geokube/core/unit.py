@@ -22,7 +22,7 @@ class Unit:
         return self._backup_name is not None or self._unit == Unit.UNKNOWN_CF_UNIT
 
     def __repr__(self):
-        return self.__str__()
+        return f"<Unit({str(self._unit)}, backeup_name={self._backup_name}>"
 
     def __str__(self):
         if self._backup_name is None:
@@ -39,3 +39,11 @@ class Unit:
 
     def __setstate__(self, state):
         self.__init__(state["unit_text"], calendar=state["calendar"])
+
+    def __eq__(self, other):
+        if not isinstance(other, Unit):
+            return False
+        return self._unit == other._unit and self._backup_name == other._backup_name
+
+    def __ne__(self, other):
+        return not (self == other)

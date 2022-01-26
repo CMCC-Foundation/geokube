@@ -1,9 +1,15 @@
 from collections.abc import Iterable
 from enum import Enum
 from numbers import Number
-from typing import Any
+from typing import Any, Hashable, Mapping, Optional, Union
 
 import numpy as np
+import xarray as xr
+
+import geokube.core.axis
+
+OptStrMapType = Optional[Mapping[Hashable, str]]
+XrDsDaType = Union[xr.Dataset, xr.DataArray]
 
 
 class Types(Enum):

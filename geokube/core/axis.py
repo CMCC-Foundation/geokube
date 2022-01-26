@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from enum import Enum
 from typing import Any, Hashable, List, Mapping, Optional, Union
+from geokube.utils.type_utils import OptStrMapType
 
 import xarray as xr
 
@@ -10,6 +11,8 @@ import geokube.utils.exceptions as ex
 from geokube.core.unit import Unit
 from geokube.utils.hcube_logger import HCubeLogger
 from geokube.core.cfobject_mixin import CFObjectMixin
+
+AxisStrType = Union["Axis", str]
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {
@@ -42,7 +45,7 @@ class AxisType(Enum):
         return self.value[1]
 
     @property
-    def unit_name(self) -> str:
+    def axis_type_name(self) -> str:
         return self.value[0]
 
     @classmethod
@@ -70,11 +73,7 @@ class AxisType(Enum):
 
 class Axis(CFObjectMixin):
 
-    __slots__ = (
-        "_name",
-        "_type",
-        "_encoding",
-    )
+    __slots__ = ("_name", "_type", "_encoding", "_is_dim")
 
     _LOG = HCubeLogger(name="Axis")
 
@@ -82,11 +81,13 @@ class Axis(CFObjectMixin):
         self,
         name: Union[str, Axis],
         axistype: Optional[Union[AxisType, str]] = None,
-        encoding: Optional[Mapping[Hashable, Any]] = None,
+        encoding: OptStrMapType = None,
+        is_dim: Optional[bool] = False,
     ):
         if isinstance(name, Axis):
             super().apply_from_other(name)
         else:
+            self._is_dim = is_dim
             self._name = name
             self._encoding = encoding
             if axistype is None:
@@ -98,7 +99,7 @@ class Axis(CFObjectMixin):
                     self._type = axistype
                 else:
                     raise ex.HCubeTypeError(
-                        f"Expected type: str or geokube.AxisType, provided type: {type(axistype)}",
+                        f"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided {type(axistype)}",
                         logger=Axis._LOG,
                     )
 
@@ -116,11 +117,15 @@ class Axis(CFObjectMixin):
 
     @property
     def ncvar(self):
-        return self._encoding.get("name", self.name)
+        return self._encoding.get("name", self.name) if self._encoding else self.name
 
     @property
     def encoding(self):
         return self._encoding
+
+    @property
+    def is_dim(self):
+        return self._is_dimension
 
     def __eq__(self, other):
         return (self.name == other.name) and (self.type == other.type)

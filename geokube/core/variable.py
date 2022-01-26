@@ -4,57 +4,37 @@ from html import escape
 from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 import dask.array as da
-from dask.array.core import _elemwise_handle_where
 import numpy as np
+from geokube.core.axis import AxisStrType, Axis, AxisType
+from geokube.core.cfobject_mixin import CFObjectMixin
 import xarray as xr
 from xarray.core.options import OPTIONS
 
 import geokube.utils.exceptions as ex
 from geokube.core.unit import Unit
-from geokube.core.dimension import Dimension
 from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 import geokube.utils.xarray_parser as xrp
+from geokube.utils.type_utils import OptStrMapType, XrDsDaType
 
 
-class Variable(xr.Variable):
+class Variable(xr.Variable, CFObjectMixin):
 
     __slots__ = (
-        "__dims__",
+        "_dimensions",
         "_units",
     )
 
     _LOG = HCubeLogger(name="Variable")
 
-    def _as_dimension_tuple(self, dims):
-        if isinstance(dims, str):
-            _dims = Dimension(str)
-        elif isinstance(dims, tuple) or isinstance(dims, list):
-            _dims = []
-            for d in dims:
-                _dims.append(Dimension(d))
-                # if isinstance(d, str):
-                #     _dims.append(Dimension(d))
-                # el:
-                #     _dims.append(d)
-        else:
-            raise ex.HCubeValueError(
-                f"not valid type for dimensions provided in `dims` argument",
-                logger=self._LOG,
-            )
-
-        return tuple(_dims)
-
     def __init__(
         self,
-        data: Union[np.ndarray, da.Array],
-        dims: Optional[
-            Union[Sequence[Union[Dimension, str]], Union[Dimension, str]]
-        ] = None,
+        data: Union[np.ndarray, da.Array, Variable],
+        dims: Optional[Union[Sequence[AxisStrType], AxisStrType]] = None,
         units: Optional[Union[Unit, str]] = None,
-        properties: Optional[Mapping[Hashable, str]] = None,
-        encoding: Optional[Mapping[Hashable, str]] = None,
+        properties: OptStrMapType = None,
+        encoding: OptStrMapType = None,
     ):
         if not (
             isinstance(data, np.ndarray)
@@ -62,25 +42,25 @@ class Variable(xr.Variable):
             or isinstance(data, Variable)
         ):
             raise ex.HCubeTypeError(
-                f"Expected argument of one of the following types `numpy.ndarray`, `dask.array.Array`, but provided {type(data)}",
-                logger=self._LOG,
+                f"Expected argument is one of the following types `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`, but provided {type(data)}",
+                logger=Variable._LOG,
             )
 
         if isinstance(data, Variable):
-            self.copy(data)
+            super().apply_from_other(data)
         else:
-            self.__dims__ = None
+            self._dimensions = None
             if dims is not None:
                 dims = self._as_dimension_tuple(dims)
-                dims = np.array(dims, ndmin=1, dtype=Dimension)
+                dims = np.array(dims, ndmin=1, dtype=Axis)
                 if len(dims) != data.ndim:
                     raise ex.HCubeValueError(
                         f"Provided data have {data.ndim} dimensions but {len(dims)} Dimensions provided in `dims` argument",
-                        logger=self._LOG,
+                        logger=Variable._LOG,
                     )
 
-                self.__dims__ = dims
-            super().__init__(
+                self._dimensions = dims
+            super(Variable, self).__init__(
                 data=data,
                 dims=self.dim_names,
                 attrs=properties,
@@ -88,23 +68,43 @@ class Variable(xr.Variable):
                 fastpath=True,
             )
             self._units = (
-                Unit(units) if (isinstance(units, str) or units is None) else units
+                Unit(units) if isinstance(units, str) or units is None else units
             )
 
-    def dims(self) -> Tuple[Dimension, ...]:
-        return self.__dims__
+    def _as_dimension_tuple(self, dims) -> Tuple[Axis, ...]:
+        if isinstance(dims, str):
+            return (Axis(dims, is_dim=True),)
+        if isinstance(dims, Iterable):
+            _dims = []
+            for d in dims:
+                if isinstance(d, str):
+                    _dims.append(Axis(name=d, is_dim=True))
+                elif isinstance(d, AxisType):
+                    _dims.append(Axis(name=d.axis_type_name, axistype=d, is_dim=True))
+                elif isinstance(d, Axis):
+                    _dims.append(d)
+                else:
+                    raise ex.HCubeTypeError(
+                        f"Expected argument of collection item is one of the following types `str` or `geokube.Axis`, but provided {type(d)}",
+                        logger=Variable._LOG,
+                    )
+            return tuple(_dims)
+        raise ex.HCubeValueError(
+            f"Expected argument is one of the following types `str`, `iterable of str`, `iterable of geokub.Axis`, or `iterable of str`, but provided {type(dims)}",
+            logger=Variable._LOG,
+        )
+
+    @property
+    def dims(self) -> Tuple[Axis, ...]:
+        return self._dimensions
 
     @property
     def dim_names(self):
-        return tuple([d.name for d in self.__dims__])
+        return tuple([d.name for d in self._dimensions])
 
     @property
     def dim_ncvars(self):
-        return tuple([d.ncvar for d in self.__dims__])
-
-    @property
-    def dim_axis(self):
-        return tuple([d.axis for d in self.__dims__])
+        return tuple([d.ncvar for d in self._dimensions])
 
     @property
     def properties(self):
@@ -113,16 +113,6 @@ class Variable(xr.Variable):
     @property
     def units(self) -> Unit:
         return self._units
-
-    def copy(self, other, deep_copy=False):
-        self._dims = other.dims
-        self._units = other.units
-        super().__init__(
-            data=other.data,
-            dims=other.dim_names,
-            attrs=other.properties,
-            encoding=other.encoding,
-        )
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
@@ -133,7 +123,7 @@ class Variable(xr.Variable):
     def convert_units(self, unit, inplace=True):
         unit = Unit(unit) if isinstance(unit, str) else unit
         if not isinstance(self.data, np.ndarray):
-            self._LOG.warn(
+            Variable._LOG.warn(
                 "Converting units is supported only for np.ndarray inner data type. Data will be loaded into the memory!"
             )
             self.data = np.array(self.data)  # TODO: inplace for cf.Unit doesn't work!
@@ -151,40 +141,41 @@ class Variable(xr.Variable):
 
     @classmethod
     @log_func_debug
-    def _get_name(cls, da, mapping, id_pattern):
-        name = da.attrs.get("standard_name", da.name)
+    def _get_name(cls, da: XrDsDaType, mapping: OptStrMapType, id_pattern: str) -> str:
         if mapping is not None and da.name in mapping:
-            name = mapping[da.name]["name"]
-        elif id_pattern is not None:
-            name = xrp.form_id(id_pattern, da.attrs)
-        return name
+            return mapping[da.name]["name"]
+        if id_pattern is not None:
+            return xrp.form_id(id_pattern, da.attrs)
+        return da.attrs.get("standard_name", da.name)
 
     @classmethod
     @log_func_debug
     def from_xarray(
         cls,
         da: xr.DataArray,
-        id_pattern,
-        copy=False,
+        id_pattern: Optional[str] = None,
+        copy: Optional[bool] = False,
         mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ):
         if not isinstance(da, xr.DataArray):
             raise ex.HCubeTypeError(
-                f"Expected type `xarray.DataArray` but provided `{type(da)}`",
-                logger=cls._LOG,
+                f"Expected argument of the following type `xarray.DataArray`, but provided {type(da)}",
+                logger=Variable._LOG,
             )
-
         data = da.data.copy() if copy else da.data
         dims = []
         for d in da.dims:
             if d in da.coords:
                 d_name = Variable._get_name(da[d], mapping, id_pattern)
-                d_axis = da[d].attrs.get("axis", None)
+                # If id_pattern is defined, AxisType might be improperly parsed (to GENERIC)
+                d_axis = da[d].attrs.get("axis", AxisType.parse(d))
                 dims.append(
-                    Dimension(name=d_name, axistype=d_axis, encoding={"name": d})
+                    Axis(
+                        name=d_name, axistype=d_axis, encoding={"name": d}, is_dim=True
+                    )
                 )
             else:
-                dims.append(Dimension(name=d))
+                dims.append(Axis(name=d, is_dim=True))
 
         dims = tuple(dims)
         attrs = da.attrs.copy()
@@ -204,7 +195,7 @@ class Variable(xr.Variable):
         )
 
     @log_func_debug
-    def to_xarray(self, encoding=True):
+    def to_xarray(self, encoding=True) -> xr.Variable:
         nc_attrs = self.properties
         nc_encoding = self.encoding
         if encoding:
@@ -219,5 +210,9 @@ class Variable(xr.Variable):
             dims = self.dim_names
 
         return xr.Variable(
-            data=self._data, dims=dims, attrs=nc_attrs, encoding=nc_encoding
+            data=self._data,
+            dims=dims,
+            attrs=nc_attrs,
+            encoding=nc_encoding,
+            fastpath=True,
         )

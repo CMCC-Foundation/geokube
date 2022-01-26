@@ -8,7 +8,7 @@ from tests.fixtures import *
 
 def test_axis_type():
     assert AxisType.LATITUDE.default_unit == Unit("degrees_north")
-    assert AxisType.TIME.unit_name == "time"
+    assert AxisType.TIME.axis_type_name == "time"
     assert AxisType("aaa") is AxisType.GENERIC
     assert AxisType.parse("latitude") is AxisType.LATITUDE
     assert AxisType.parse("lat") is AxisType.LATITUDE
@@ -59,6 +59,7 @@ def test_axis_2():
     assert a4.encoding == {"name": "ncvar_my_name"}
     assert a4.default_unit == Unit("degrees_east")
     assert a4.ncvar == "ncvar_my_name"
+    assert not a4.is_dim
 
     a5 = Axis(a4)
     assert a5.name == a4.name
@@ -66,3 +67,9 @@ def test_axis_2():
     assert a5.encoding == a4.encoding
     assert a5.default_unit == Unit("degrees_east")
     assert a5.ncvar == "ncvar_my_name"
+    assert not a5.is_dim
+
+    a6 = Axis("time", is_dim=True)
+    assert a6.name == "time"
+    assert a6.type is AxisType.TIME
+    assert a6.is_dim
