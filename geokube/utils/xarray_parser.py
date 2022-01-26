@@ -13,6 +13,7 @@ BOUNDS_PATTERN = re.compile(r".*(bnds|bounds).*$", re.IGNORECASE)
 
 logger = logging.getLogger(__name__)
 
+
 def form_id(id_pattern, attrs):
     fmt = Formatter()
     _, field_names, _, _ = zip(*fmt.parse(id_pattern))
@@ -21,7 +22,9 @@ def form_id(id_pattern, attrs):
     present_values = {}
     for k in field_names:
         if k not in attrs:
-            warnings.warn(f"Requested id component - `{k}` is not present among provided attributes!")
+            warnings.warn(
+                f"Requested id component - `{k}` is not present among provided attributes!"
+            )
             # TODO: what if there is missing attibute, for instance for a dimension? Now pattern is created with <undefined>
             present_values[k] = "<unknown>"
         else:

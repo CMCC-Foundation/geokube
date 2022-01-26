@@ -163,3 +163,24 @@ def test_3(era5_netcdf):
         "prefix:degrees_north_latitude",
         "prefix:<unknown>_time",
     }
+
+
+def test_4(era5_rotated_netcdf_wso):
+    v = Variable.from_xarray(
+        era5_rotated_netcdf_wso["W_SO"], mapping={"soil1": {"name": "my_depth"}}
+    )
+    assert set(v.dim_ncvars) == (set(era5_rotated_netcdf_wso.dims.keys()) - {"bnds"})
+    mask = ~np.isnan(v._data)
+    assert np.allclose(
+        np.array(v._data)[mask],
+        np.array(era5_rotated_netcdf_wso["W_SO"]._variable._data[mask]),
+    )
+    r1 = v.to_xarray(encoding=True)
+    assert r1.dims == era5_rotated_netcdf_wso["W_SO"].dims
+    assert r1.encoding == era5_rotated_netcdf_wso["W_SO"].encoding
+    assert r1.attrs == era5_rotated_netcdf_wso["W_SO"].attrs
+
+    r2 = v.to_xarray(encoding=False)
+    assert set(r2.dims) == {"my_depth", "time", "grid_latitude", "grid_longitude"}
+    assert r2.encoding == era5_rotated_netcdf_wso["W_SO"].encoding
+    assert r2.attrs == era5_rotated_netcdf_wso["W_SO"].attrs
