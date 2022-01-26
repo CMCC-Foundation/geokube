@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import List, Mapping, Optional, Union
+from typing import Any, Hashable, List, Mapping, Optional, Union
 
 import xarray as xr
 
 import geokube.utils.exceptions as ex
 from geokube.core.unit import Unit
 from geokube.utils.hcube_logger import HCubeLogger
+from geokube.core.cfobject_mixin import CFObjectMixin
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {
@@ -20,6 +21,7 @@ coordinate_criteria_regular_expression = {
     "latitude": r"(x?lat[a-z0-9]*|nav_lat)",
     "longitude": r"(x?lon[a-z0-9]*|nav_lon)",
 }
+
 
 class AxisType(Enum):
     TIME = ("time", Unit("hours since 1970-01-01", calendar="gregorian"))
@@ -38,6 +40,10 @@ class AxisType(Enum):
     @property
     def default_unit(self) -> Unit:
         return self.value[1]
+
+    @property
+    def unit_name(self) -> str:
+        return self.value[0]
 
     @classmethod
     def values(cls) -> List[str]:
@@ -61,7 +67,14 @@ class AxisType(Enum):
     def _missing_(cls, key) -> "AxisType":
         return cls.GENERIC
 
-class Axis:
+
+class Axis(CFObjectMixin):
+
+    __slots__ = (
+        "_name",
+        "_type",
+        "_encoding",
+    )
 
     _LOG = HCubeLogger(name="Axis")
 
@@ -69,18 +82,25 @@ class Axis:
         self,
         name: Union[str, Axis],
         axistype: Optional[Union[AxisType, str]] = None,
+        encoding: Optional[Mapping[Hashable, Any]] = None,
     ):
         if isinstance(name, Axis):
-            self.copy(name)
+            super().apply_from_other(name)
         else:
             self._name = name
+            self._encoding = encoding
             if axistype is None:
                 self._type = AxisType.parse(name)
             else:
                 if isinstance(axistype, str):
                     self._type = AxisType.parse(axistype)
-                else:
+                elif isinstance(axistype, AxisType):
                     self._type = axistype
+                else:
+                    raise ex.HCubeTypeError(
+                        f"Expected type: str or geokube.AxisType, provided type: {type(axistype)}",
+                        logger=Axis._LOG,
+                    )
 
     @property
     def name(self) -> str:
@@ -92,7 +112,11 @@ class Axis:
 
     @property
     def default_unit(self) -> Unit:
-        return self.type.default_unit
+        return self._type.default_unit
+
+    @property
+    def ncvar(self):
+        return self._encoding.get("name", self.name)
 
     def __eq__(self, other):
         return (self.name == other.name) and (self.type == other.type)
@@ -100,9 +124,8 @@ class Axis:
     def __ne__(self, other):
         return not (self == other)
 
-    def copy(self, other):
-        self._name = other.name
-        self._type = other.type
-    
     def __repr__(self) -> str:
+        return f"<Axis(name={self.name}, type:{self.type}, encoding={self._encoding}>"
+
+    def __str__(self) -> str:
         return f"{self.name}: {self.type}"

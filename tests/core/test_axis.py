@@ -2,66 +2,67 @@ import pytest
 from cf_units import Unit
 
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, Axis
+from geokube.core.axis import Axis, Axis, AxisType
 from tests.fixtures import *
 
 
 def test_axis_type():
-    assert len(Axis.get_available_names()) == 12
-    assert "time" in Axis.get_available_names()
-    assert "generic" in Axis.get_available_names()
-    assert Axis.LATITUDE.default_units == Unit("degrees_north")
-    assert Axis.TIME.name == "time"
-    assert Axis("aaa") is Axis.GENERIC
-    assert Axis.parse_type("latitude") is Axis.LATITUDE
-    assert Axis.parse_type("lat") is Axis.LATITUDE
-    assert Axis.parse_type("rlat") is Axis.Y
-    assert Axis.parse_type("x").default_units == Unit("m")
-    assert Axis.parse_type("depth") is Axis.VERTICAL
-    assert Axis.parse_type("time").default_units == Unit(
+    assert AxisType.LATITUDE.default_unit == Unit("degrees_north")
+    assert AxisType.TIME.unit_name == "time"
+    assert AxisType("aaa") is AxisType.GENERIC
+    assert AxisType.parse("latitude") is AxisType.LATITUDE
+    assert AxisType.parse("lat") is AxisType.LATITUDE
+    assert AxisType.parse("rlat") is AxisType.Y
+    assert AxisType.parse("x").default_unit == Unit("m")
+    assert AxisType.parse("depth") is AxisType.VERTICAL
+    assert AxisType.parse("time").default_unit == Unit(
         "hours since 1970-01-01", calendar="gregorian"
     )
-    assert Axis.generic() is Axis.GENERIC
-    assert Axis.generic().default_units == Unit("unknown")
+    assert AxisType.GENERIC.default_unit == Unit("unknown")
 
 
-def test_axis_1():
-    with pytest.raises(ex.HCubeTypeError):
-        Axis.from_xarray_dataarray("some_object")
+def test_axis_2():
+    a1 = Axis(name="LAT", axistype="latitude")
 
+    assert a1.name == "LAT"
+    assert a1.type is AxisType.LATITUDE
+    assert a1._encoding is None
 
-def test_axis_2(era5_netcdf, era5_rotated_netcdf_tmin2m, nemo_ocean_16):
-    at = Axis.from_xarray_dataarray(era5_netcdf["longitude"])
-    assert at.name == "longitude"
-    assert at.atype is Axis.LONGITUDE
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected type: str or geokube.AxisType, provided type *",
+    ):
+        _ = Axis("lon", axistype=10)
 
-    at = Axis.from_xarray_dataarray(era5_netcdf["time"])
-    assert at.name == "time"
-    assert at.atype is Axis.TIME
-    assert at.atype.default_units == Unit(
-        "hours since 1970-01-01", calendar="gregorian"
-    )
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected type: str or geokube.AxisType, provided type *",
+    ):
+        _ = Axis("lon", axistype={"lat"})
 
-    at = Axis.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["rlat"])
-    assert at.name == "rlat"
-    assert at.atype is Axis.Y
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected type: str or geokube.AxisType, provided type *",
+    ):
+        _ = Axis("lon", axistype=["lon"])
 
-    at = Axis.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["rlon"])
-    assert at.name == "rlon"
-    assert at.atype is Axis.X
+    a3 = Axis(a1)
+    assert id(a3) != id(a1)
+    assert a3.name == a1.name
+    assert a3.type is a1.type
+    assert a3._encoding == a1._encoding
+    assert a3.default_unit == Unit("degrees_north")
 
-    at = Axis.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["height_2m"])
-    assert at.name == "height_2m"
-    assert at.atype is Axis.VERTICAL
+    a4 = Axis("lon", encoding={"name": "ncvar_my_name"})
+    assert a4.name == "lon"
+    assert a4.type is AxisType.LONGITUDE
+    assert a4._encoding == {"name": "ncvar_my_name"}
+    assert a4.default_unit == Unit("degrees_east")
+    assert a4.ncvar == "ncvar_my_name"
 
-    at = Axis.from_xarray_dataarray(nemo_ocean_16["nav_lat"])
-    assert at.name == "nav_lat"
-    assert at.atype is Axis.LATITUDE
-
-    at = Axis.from_xarray_dataarray(nemo_ocean_16["nav_lon"])
-    assert at.name == "nav_lon"
-    assert at.atype is Axis.LONGITUDE
-
-    at = Axis.from_xarray_dataarray(nemo_ocean_16["depthv"])
-    assert at.name == "depthv"
-    assert at.atype is Axis.VERTICAL
+    a5 = Axis(a4)
+    assert a5.name == a4.name
+    assert a5.type is a4.type
+    assert a5._encoding == a4._encoding
+    assert a5.default_unit == Unit("degrees_east")
+    assert a5.ncvar == "ncvar_my_name"
