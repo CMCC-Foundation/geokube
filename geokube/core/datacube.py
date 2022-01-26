@@ -45,7 +45,7 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 #
 class DataCube(DomainMixin):
 
-    __slots__ = ("_fields", "_domain",  "_properties", "_encoding")
+    __slots__ = ("_fields", "_domain", "_properties", "_encoding")
 
     _LOG = HCubeLogger(name="DataCube")
 
@@ -53,10 +53,10 @@ class DataCube(DomainMixin):
         self,
         fields: List[Field],
         properties: Mapping[Any, Any],
-        encoding: Mapping[Any, Any]
+        encoding: Mapping[Any, Any],
     ) -> None:
         # TO DO save only fields variables and coordinates names to build the field domain
-        self._fields = {f.name: f for f in fields} 
+        self._fields = {f.name: f for f in fields}
         self._domain = Domain.merge([f.domain for f in fields])
         self._properties = properties if properties is not None else {}
         self._encoding = encoding if encoding is not None else {}
@@ -101,7 +101,8 @@ class DataCube(DomainMixin):
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
-#        return formatting.array_repr(self.to_xarray())
+
+    #        return formatting.array_repr(self.to_xarray())
 
     def _repr_html_(self):
         return self.to_xarray(encoding=False)._repr_html_()
@@ -192,8 +193,8 @@ class DataCube(DomainMixin):
                 )
                 for k in self._fields.keys()
             ],
-            properties = self.properties,
-            encoding = self.encoding
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -203,7 +204,7 @@ class DataCube(DomainMixin):
         return DataCube(
             fields=[self._fields[k].to_regular() for k in self._fields.keys()],
             properties=self.properties,
-            encoding = self.encoding
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -224,8 +225,8 @@ class DataCube(DomainMixin):
                 )
                 for k in self._fields.keys()
             ],
-            properties = self.properties,
-            encoding = self.encoding
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @classmethod
@@ -245,11 +246,9 @@ class DataCube(DomainMixin):
         for dv in ds.data_vars:
             print(dv)
             fields.append(
-                Field.from_xarray(
-                    ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
-                )
+                Field.from_xarray(ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping)
             )
-        return DataCube(fields=fields, properties = ds.attrs, encoding=ds.encoding)
+        return DataCube(fields=fields, properties=ds.attrs, encoding=ds.encoding)
 
     @log_func_debug
     def to_xarray(self, encoding=True):

@@ -3,17 +3,18 @@ from .axis import Axis, AxisType
 from geokube.utils.hcube_logger import HCubeLogger
 from typing import Mapping, Any, Union
 
+
 class Dimension(Axis):
 
-    __slots__ = ("_encoding")
+    __slots__ = "_encoding"
 
     _LOG = HCubeLogger(name="Dimension")
 
     def __init__(
         self,
         name: Union[str, Axis, Dimension],
-        axistype: AxisType=None,
-        encoding: Mapping[Any, Any]=None,
+        axistype: AxisType = None,
+        encoding: Mapping[Any, Any] = None,
     ):
         if isinstance(name, Dimension):
             self.copy(name)
@@ -24,7 +25,7 @@ class Dimension(Axis):
     @property
     def ncvar(self):
         return self._encoding.get("name", self.name)
-    
+
     @property
     def encoding(self):
         return self._encoding

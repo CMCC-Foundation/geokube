@@ -37,12 +37,8 @@ def test_from_xarray_dataarray_2(era5_rotated_netcdf_wso):
         _ = Field.from_xarray_dataarray(era5_rotated_netcdf_wso)
 
     field = Field.from_xarray_dataarray(era5_rotated_netcdf_wso["W_SO"])
-    assert np.all(
-        field.domain[Axis.X].data == era5_rotated_netcdf_wso["rlon"].values
-    )
-    assert np.all(
-        field.domain[Axis.Y].data == era5_rotated_netcdf_wso["rlat"].values
-    )
+    assert np.all(field.domain[Axis.X].data == era5_rotated_netcdf_wso["rlon"].values)
+    assert np.all(field.domain[Axis.Y].data == era5_rotated_netcdf_wso["rlat"].values)
     assert np.all(
         field.domain[Axis.TIME].data == era5_rotated_netcdf_wso["time"].values
     )
@@ -70,12 +66,8 @@ def test_from_xarray_dataset(era5_globe_netcdf):
 
 def test_from_xarray_dataset_2(era5_rotated_netcdf_wso):
     field = Field.from_xarray_dataset(era5_rotated_netcdf_wso, field_name="W_SO")
-    assert np.all(
-        field.domain[Axis.X].data == era5_rotated_netcdf_wso["rlon"].values
-    )
-    assert np.all(
-        field.domain[Axis.Y].data == era5_rotated_netcdf_wso["rlat"].values
-    )
+    assert np.all(field.domain[Axis.X].data == era5_rotated_netcdf_wso["rlon"].values)
+    assert np.all(field.domain[Axis.Y].data == era5_rotated_netcdf_wso["rlat"].values)
     assert np.all(
         field.domain[Axis.TIME].data == era5_rotated_netcdf_wso["time"].values
     )
@@ -90,18 +82,14 @@ def test_from_xarray_dataset_3(nemo_ocean_16):
     field = Field.from_xarray_dataset(nemo_ocean_16, field_name="vt")
     assert np.all(field.domain[Axis.X].data == nemo_ocean_16["x"].values)
     assert np.all(field.domain[Axis.Y].data == nemo_ocean_16["y"].values)
-    assert np.all(
-        field.domain[Axis.TIME].data == nemo_ocean_16["time_counter"].values
-    )
+    assert np.all(field.domain[Axis.TIME].data == nemo_ocean_16["time_counter"].values)
     assert field.domain[Axis.TIME].bounds is not None
     assert field.domain[Axis.VERTICAL].bounds is not None
     assert np.all(
-        field.domain[Axis.LONGITUDE].bounds.data
-        == nemo_ocean_16["bounds_lon"].values
+        field.domain[Axis.LONGITUDE].bounds.data == nemo_ocean_16["bounds_lon"].values
     )
     assert np.all(
-        field.domain[Axis.LATITUDE].bounds.data
-        == nemo_ocean_16["bounds_lat"].values
+        field.domain[Axis.LATITUDE].bounds.data == nemo_ocean_16["bounds_lat"].values
     )
 
 
@@ -202,9 +190,7 @@ def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):
     assert np.all(res.domain[Axis.LATITUDE].data <= 90)
     assert np.all(res.domain[Axis.LONGITUDE].data <= 20)
     assert np.all(res.domain[Axis.LONGITUDE].data >= 0)
-    assert (
-        res.domain[Axis.LONGITUDE].convention is LongitudeConvention.POSITIVE_WEST
-    )
+    assert res.domain[Axis.LONGITUDE].convention is LongitudeConvention.POSITIVE_WEST
     da = res.domain[Axis.TIME].to_xarray_dataarray()
     assert np.all((da.dt.day == 10))
     assert np.all((da.dt.hour == 15))
@@ -214,9 +200,7 @@ def test_sel(era5_globe_netcdf, era5_netcdf, nemo_ocean_16):
     assert np.all(res.domain[Axis.LATITUDE].data <= 90)
     assert np.all(res.domain[Axis.LONGITUDE].data <= 20)
     assert np.all(res.domain[Axis.LONGITUDE].data >= -20)
-    assert (
-        res.domain[Axis.LONGITUDE].convention is LongitudeConvention.NEGATIVE_WEST
-    )
+    assert res.domain[Axis.LONGITUDE].convention is LongitudeConvention.NEGATIVE_WEST
     da = res.domain[Axis.TIME].to_xarray_dataarray()
     assert np.all((da.dt.day == 10))
     assert np.all((da.dt.hour == 15))

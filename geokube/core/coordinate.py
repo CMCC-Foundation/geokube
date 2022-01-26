@@ -16,12 +16,14 @@ from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
 from .unit import Unit
 
+
 class CoordinateType(Enum):
     SCALAR = "scalar"
     DEPENDENT = "dependent"  # equivalent to CF AUXILIARY Coordinate
     INDEPENDENT = "independent"  # equivalent to CF DIMENSION Coordinate
 
-# 
+
+#
 # coordinate is a dimension or axis with data and units
 # coordinate name is dimension/axis name
 # coordinate axis type is dimension/axis type
@@ -33,16 +35,17 @@ class CoordinateType(Enum):
 #        self,
 #        name
 #        data: Union[np.ndarray, da.Array, Variable],
-        # axis: Optional[Union[str, AxisType, Axis, Dimension]],
-        # dims: Optional[Tuple[Dimension]] = None,
-        # units: Optional[Union[Unit, str]] = None,
-        # bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
-        # properties: Optional[Mapping[Any, Any]] = None,
-        # encoding: Optional[Mapping[Any, Any]] = None
+# axis: Optional[Union[str, AxisType, Axis, Dimension]],
+# dims: Optional[Tuple[Dimension]] = None,
+# units: Optional[Union[Unit, str]] = None,
+# bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
+# properties: Optional[Mapping[Any, Any]] = None,
+# encoding: Optional[Mapping[Any, Any]] = None
 
 # )
 
-class Coordinate(Variable): 
+
+class Coordinate(Variable):
     __slots__ = ("_axis", "_bounds")
 
     _LOG = HCubeLogger(name="Coordinate")
@@ -55,11 +58,16 @@ class Coordinate(Variable):
         units: Optional[Union[Unit, str]] = None,
         bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
         properties: Optional[Mapping[Any, Any]] = None,
-        encoding: Optional[Mapping[Any, Any]] = None
+        encoding: Optional[Mapping[Any, Any]] = None,
     ):
         if data is not None:
-            super().__init__(data=data, dims=dims, units=units,
-                             properties=properties, encoding=encoding)
+            super().__init__(
+                data=data,
+                dims=dims,
+                units=units,
+                properties=properties,
+                encoding=encoding,
+            )
         else:
             raise ex.HCubeTypeError(
                 f"Data is not provided",
@@ -67,7 +75,7 @@ class Coordinate(Variable):
             )
 
         if isinstance(axis, Axis) or isinstance(axis, Dimension):
-            self._axis = axis        
+            self._axis = axis
         elif isinstance(axis, str):
             self._axis = Axis(axis)
         else:
@@ -81,7 +89,7 @@ class Coordinate(Variable):
                 # we need to check each element of dict; in case build a variable
                 self._bounds = bounds
             if isinstance(bounds, Variable):
-                self._bounds = { f"{self.name}_bounds": bounds }
+                self._bounds = {f"{self.name}_bounds": bounds}
             else:
                 # in this case when only a numpy array is passed
                 # we assume 2-D numpy array with shape(coord.dim, 2)
@@ -91,13 +99,13 @@ class Coordinate(Variable):
                         f"Expected shape for bounds is `({len(self._variable)},2)` but provided shape is `{bounds.shape}`",
                         logger=self._LOG,
                     )
-                
-                self._bounds = { 
-                    f"{self.name}_bounds":
-                        Variable(data=bounds,
-                                 units=self.units,
-                                 dims=tuple(self.axis, Dimension("bounds", AxisType.GENERIC)),
-                                )
+
+                self._bounds = {
+                    f"{self.name}_bounds": Variable(
+                        data=bounds,
+                        units=self.units,
+                        dims=tuple(self.axis, Dimension("bounds", AxisType.GENERIC)),
+                    )
                 }
 
     @property
@@ -110,7 +118,7 @@ class Coordinate(Variable):
 
     @property
     def ncvar(self) -> str:
-        return self.axis.encoding.get('ncvar', self.name)
+        return self.axis.encoding.get("ncvar", self.name)
 
     @property
     def is_dimension(self) -> str:
@@ -188,20 +196,27 @@ class Coordinate(Variable):
             )
 
         da = ds[ncvar]
-        
+
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
         name = Variable._get_name(ds[ncvar], mapping, id_pattern)
         var.encoding.update(name=ncvar)
         axis = Axis(da.attrs.get("axis", Variable._get_name(da, mapping, id_pattern)))
         if ncvar in da.dims:
-            axis = Dimension(name=axis.name, axistype = axis.type, encoding={'name': ncvar})
+            axis = Dimension(
+                name=axis.name, axistype=axis.type, encoding={"name": ncvar}
+            )
         bnds_ncvar = da.encoding.pop("bounds", da.attrs.pop("bounds", None))
         if bnds_ncvar:
             bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
             bounds = {
-                bnds_name: Variable.from_xarray(ds[bnds_ncvar], id_pattern=id_pattern, copy=copy, mapping=mapping)
+                bnds_name: Variable.from_xarray(
+                    ds[bnds_ncvar], id_pattern=id_pattern, copy=copy, mapping=mapping
+                )
             }
-            if 'units' not in ds[bnds_ncvar].attrs and 'units' not in ds[bnds_ncvar].encoding:
+            if (
+                "units" not in ds[bnds_ncvar].attrs
+                and "units" not in ds[bnds_ncvar].encoding
+            ):
                 bounds[bnds_name].units = var.units
         else:
             bounds = None

@@ -73,11 +73,14 @@ ENCODING_PROP = (
     CFAttributes.ADD_OFFSET.value,
 )
 
+
 def is_time_unit(unit):
     return "since" in unit if isinstance(unit, str) else False
 
+
 def in_encoding(key, unit=None):
     return is_time_unit(unit) or key in ENCODING_PROP
+
 
 def split_to_xr_attrs_and_encoding(
     mapping: Mapping[str, str]

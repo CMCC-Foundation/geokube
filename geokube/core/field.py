@@ -49,7 +49,6 @@ _CARTOPY_FEATURES = {
 }
 
 
-
 class Field(Variable, DomainMixin):
 
     __slots__ = ("_domain", "_cell_methods", "_ancillary_data")
@@ -69,8 +68,10 @@ class Field(Variable, DomainMixin):
         ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
     ) -> None:
 
-        super().__init__(data=data, units=units, dims=dims, properties=properties, encoding=encoding)
-        
+        super().__init__(
+            data=data, units=units, dims=dims, properties=properties, encoding=encoding
+        )
+
         self._name = name
 
         if isinstance(domain, Domain):
@@ -99,7 +100,7 @@ class Field(Variable, DomainMixin):
 
     @property
     def ncvar(self) -> str:
-        return self._encoding.get('name', self.name)
+        return self._encoding.get("name", self.name)
 
     @property
     def cell_methods(self) -> Optional[CellMethod]:
@@ -115,7 +116,8 @@ class Field(Variable, DomainMixin):
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
-#        return formatting.array_repr(self.to_xarray())
+
+    #        return formatting.array_repr(self.to_xarray())
 
     def _repr_html_(self):
         return self.to_xarray(encoding=False)._repr_html_()
@@ -388,9 +390,7 @@ class Field(Variable, DomainMixin):
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
-        indexers = {
-            self.get_netcdf_name_for_Axis(k): v for k, v in indexers.items()
-        }
+        indexers = {self.get_netcdf_name_for_Axis(k): v for k, v in indexers.items()}
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
         return Field.from_xarray_dataset(ds, field_name=self.name)
 
@@ -490,10 +490,8 @@ class Field(Variable, DomainMixin):
         regrid_dset = regrid_dset.drop(labels=[domain.x.nc_name, domain.y.nc_name])
         fillValue = -9.0e-20
         regrid_dset.fillna(fillValue)
-        regrid_dset[self.nc_name].encoding['_FillValue'] = fillValue
-        field = Field.from_xarray(
-            ds=regrid_dset, ncvar_name=self.nc_name, copy=False
-        )
+        regrid_dset[self.nc_name].encoding["_FillValue"] = fillValue
+        field = Field.from_xarray(ds=regrid_dset, ncvar_name=self.nc_name, copy=False)
         field.domain._crs = RegularLatLon()
 
         return field
@@ -859,7 +857,6 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.Dataset:
         data_vars = {}
@@ -868,18 +865,20 @@ class Field(Variable, DomainMixin):
         else:
             var_name = self.name
 
-        data_vars[var_name] = super().to_xarray(encoding) # use Variable to_array
+        data_vars[var_name] = super().to_xarray(encoding)  # use Variable to_array
 
         coords = self.domain.aux_coords
 
-        if coords: 
+        if coords:
             if encoding:
                 coords_names = " ".join([self.domain.coords[x].ncvar for x in coords])
             else:
                 coords_names = " ".join([self.domain.coords[x].name for x in coords])
-            data_vars[var_name].encoding['coordinates'] = coords_names 
+            data_vars[var_name].encoding["coordinates"] = coords_names
 
-        coords = self.domain.to_xarray(encoding) # return xarray.core.coordinates.DatasetCoordinates
+        coords = self.domain.to_xarray(
+            encoding
+        )  # return xarray.core.coordinates.DatasetCoordinates
 
         data_vars[var_name].encoding["grid_mapping"] = "crs"
 
@@ -907,17 +906,23 @@ class Field(Variable, DomainMixin):
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
                 logger=cls._LOG,
             )
-        
+
         print(f"field {ncvar}")
         da = ds[ncvar].copy(copy)  # TO CHECK
         cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
         var = Variable.from_xarray(da, id_pattern, mapping=mapping)
-        domain = Domain.from_xarray(ds, field_name=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping)
+        domain = Domain.from_xarray(
+            ds, field_name=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
+        )
         # TODO ancillary variables
-        field = Field(data=var.data, dims=var.dims, units=var.units, 
-                    properties=var.properties, 
-                    encoding=var.encoding,
-                    domain=domain, 
-                    cell_methods=cell_methods)
+        field = Field(
+            data=var.data,
+            dims=var.dims,
+            units=var.units,
+            properties=var.properties,
+            encoding=var.encoding,
+            domain=domain,
+            cell_methods=cell_methods,
+        )
         print(field)
         return field

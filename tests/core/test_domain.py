@@ -77,9 +77,7 @@ def test_construct_1():
     assert dom.crs == crs.RotatedGeogCS(
         grid_north_pole_latitude=10, grid_north_pole_longitude=-25
     )
-    assert id(dom[Axis.LATITUDE].dims[0].atype) == id(
-        dom[Axis.LONGITUDE].dims[0].atype
-    )
+    assert id(dom[Axis.LATITUDE].dims[0].atype) == id(dom[Axis.LONGITUDE].dims[0].atype)
     assert dom[Axis.LATITUDE].axis.name == "latT"
     assert dom[Axis.LATITUDE].axis.atype is Axis.LATITUDE
     assert dom[Axis.LONGITUDE].axis.name == "longitude"
@@ -234,14 +232,8 @@ def test_compute_bounds(era5_netcdf, nemo_ocean_16):
     dom.compute_bounds(coord="latitude")
     assert dom[Axis.LATITUDE].has_bounds
     assert dom[Axis.LATITUDE].bounds.data.ndim == 2
-    assert (
-        np.min(dom[Axis.LATITUDE].bounds.data)
-        < era5_netcdf["latitude"].values.min()
-    )
-    assert (
-        np.max(dom[Axis.LATITUDE].bounds.data)
-        > era5_netcdf["latitude"].values.max()
-    )
+    assert np.min(dom[Axis.LATITUDE].bounds.data) < era5_netcdf["latitude"].values.min()
+    assert np.max(dom[Axis.LATITUDE].bounds.data) > era5_netcdf["latitude"].values.max()
     assert dom[Axis.LATITUDE].bounds.dims[0].atype is Axis.LATITUDE
     assert dom[Axis.LATITUDE].bounds.dims[1].atype is Axis.GENERIC
     assert not dom[Axis.LONGITUDE].has_bounds

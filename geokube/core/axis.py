@@ -118,6 +118,10 @@ class Axis(CFObjectMixin):
     def ncvar(self):
         return self._encoding.get("name", self.name)
 
+    @property
+    def encoding(self):
+        return self._encoding
+
     def __eq__(self, other):
         return (self.name == other.name) and (self.type == other.type)
 

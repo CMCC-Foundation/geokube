@@ -26,7 +26,7 @@ def test_axis_2():
 
     assert a1.name == "LAT"
     assert a1.type is AxisType.LATITUDE
-    assert a1._encoding is None
+    assert a1.encoding is None
 
     with pytest.raises(
         ex.HCubeTypeError,
@@ -50,19 +50,19 @@ def test_axis_2():
     assert id(a3) != id(a1)
     assert a3.name == a1.name
     assert a3.type is a1.type
-    assert a3._encoding == a1._encoding
+    assert a3.encoding == a1.encoding
     assert a3.default_unit == Unit("degrees_north")
 
     a4 = Axis("lon", encoding={"name": "ncvar_my_name"})
     assert a4.name == "lon"
     assert a4.type is AxisType.LONGITUDE
-    assert a4._encoding == {"name": "ncvar_my_name"}
+    assert a4.encoding == {"name": "ncvar_my_name"}
     assert a4.default_unit == Unit("degrees_east")
     assert a4.ncvar == "ncvar_my_name"
 
     a5 = Axis(a4)
     assert a5.name == a4.name
     assert a5.type is a4.type
-    assert a5._encoding == a4._encoding
+    assert a5.encoding == a4.encoding
     assert a5.default_unit == Unit("degrees_east")
     assert a5.ncvar == "ncvar_my_name"

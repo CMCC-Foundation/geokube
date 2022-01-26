@@ -5,8 +5,8 @@ from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
 from .coordinate import Coordinate, CoordinateType
 
-class DomainMixin():
 
+class DomainMixin:
     def __init__():
         pass
 
@@ -56,10 +56,10 @@ class DomainMixin():
         if isinstance(key, str):
             return self.coords[key]
         elif isinstance(key, AxisType):
-            return self.coords[self._axis_to_name.get(key)]         
+            return self.coords[self._axis_to_name.get(key)]
         elif isinstance(key, Axis):
-            return self.coords[self._axis_to_name.get(key.type)]         
+            return self.coords[self._axis_to_name.get(key.type)]
         raise ex.HCubeTypeError(
-             f"Indexing coordinates for Domain is supported only for object of types [string, Axis]. Provided type: {type(key)}",
-             logger=self._LOG,
-         )
+            f"Indexing coordinates for Domain is supported only for object of types [string, Axis]. Provided type: {type(key)}",
+            logger=self._LOG,
+        )

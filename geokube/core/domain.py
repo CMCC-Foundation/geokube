@@ -27,9 +27,11 @@ from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
 from .domainmixin import DomainMixin
 
+
 class DomainType(Enum):
     GRIDDED = "gridded"
     TIMESERIES = "timeseries"
+
 
 class Domain(DomainMixin):
 
@@ -43,7 +45,7 @@ class Domain(DomainMixin):
     _LOG = HCubeLogger(name="Domain")
 
     def _as_coordinate(self, coord, name) -> Coordinate:
-        if (isinstance(coord,Coordinate)):
+        if isinstance(coord, Coordinate):
             return coord
         elif isinstance(coord, tuple):
             # tupl -> (data, dims, axis)
@@ -53,7 +55,9 @@ class Domain(DomainMixin):
 
     def __init__(
         self,
-        coords: Union[Mapping[Hashable, Tuple[np.ndarray, ...]], Iterable[Coordinate], Domain],
+        coords: Union[
+            Mapping[Hashable, Tuple[np.ndarray, ...]], Iterable[Coordinate], Domain
+        ],
         crs: CoordSystem,
         domaintype: Optional[DomainType] = None,
     ) -> None:
@@ -86,10 +90,11 @@ class Domain(DomainMixin):
     @property
     def crs(self) -> CoordSystem:  # horizontal coordinate reference system
         return self._crs
-        
+
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
-#        return formatting.array_repr(self.to_xarray())
+
+    #        return formatting.array_repr(self.to_xarray())
 
     def _repr_html_(self):
         return self.to_xarray(encoding=False)._repr_html_()
@@ -122,9 +127,7 @@ class Domain(DomainMixin):
         self._coords[key] = value
 
     def __contains__(self, key: str):
-        return (key in self._coords) or (
-            Axis.parse(key) in self._axis_to_name
-        )
+        return (key in self._coords) or (Axis.parse(key) in self._axis_to_name)
 
     def nbytes(self) -> int:
         return sum(coord.nbytes for coord in self._coords)
@@ -223,10 +226,7 @@ class Domain(DomainMixin):
             name=name,
             data=Domain.convert_bounds_1d_to_2d(val_b),
             units=coord.units,
-            dims=(
-                coord.dims[0].name,
-                "bounds"
-            ),
+            dims=(coord.dims[0].name, "bounds"),
         )
 
     @staticmethod
@@ -265,18 +265,28 @@ class Domain(DomainMixin):
         copy: bool = False,
         mapping: Optional[Mapping[str, str]] = None,
     ) -> "Domain":
-        
+
         da = ds[ncvar]
         coords = []
-       
+
         for dim in da.dims:
             if dim in coords:
-                coords.append(Coordinate.from_xarray(ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping))
+                coords.append(
+                    Coordinate.from_xarray(
+                        ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
+                    )
+                )
 
-        xr_coords = ds[ncvar].attrs.pop("coordinates", ds[ncvar].encoding.pop("coordinates", None))
+        xr_coords = ds[ncvar].attrs.pop(
+            "coordinates", ds[ncvar].encoding.pop("coordinates", None)
+        )
         if xr_coords is not None:
             for coord in xr_coords.split(" "):
-                coords.append(Coordinate.from_xarray(ds=ds, ncvar=coord, id_pattern=id_pattern, mapping=mapping))       
+                coords.append(
+                    Coordinate.from_xarray(
+                        ds=ds, ncvar=coord, id_pattern=id_pattern, mapping=mapping
+                    )
+                )
         if "grid_mapping" in da.encoding:
             crs = parse_crs(da[da.encoding.pop("grid_mapping")])
         elif "grid_mapping" in da.attrs:
@@ -294,16 +304,16 @@ class Domain(DomainMixin):
                 coord_name = coord.ncvar
             else:
                 coord_name = coord.name
-            grid[coord_name] = coord.to_xarray(encoding) # to xarray variable
+            grid[coord_name] = coord.to_xarray(encoding)  # to xarray variable
             if (bounds := coord.bounds) is not None:
                 if encoding:
                     bounds_name = bounds.ncvar
                 else:
                     bounds_name = bounds.name
-                grid[bounds_name] = bounds.to_xarray(encoding) # to xarray variable
-    
+                grid[bounds_name] = bounds.to_xarray(encoding)  # to xarray variable
+
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-            grid['crs'] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
+            grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
         return xr.Dataset(coords=grid).coords

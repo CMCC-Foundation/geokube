@@ -51,8 +51,8 @@ def open_datacube(
         ds = _read_cache(metadata_cache_path)
         if ds is not None:
             return ds
-    if 'decode_coords' not in kwargs:
-        kwargs.update(decode_coords='all')
+    if "decode_coords" not in kwargs:
+        kwargs.update(decode_coords="all")
     ds = geokube.core.datacube.DataCube.from_xarray(
         xr.open_mfdataset(path, **kwargs), id_pattern=id_pattern, mapping=mapping
     )
@@ -134,11 +134,17 @@ def open_dataset(
                     new_files = [*cached_ds[FILES_COL][i], *not_cached_ds[FILES_COL][i]]
                     if delay_read_cubes:
                         cube = dask.delayed(open_datacube)(
-                            path=new_files, id_pattern=id_pattern, mapping=mapping, **kwargs
+                            path=new_files,
+                            id_pattern=id_pattern,
+                            mapping=mapping,
+                            **kwargs,
                         )
                     else:
                         cube = open_datacube(
-                            path=new_files, id_pattern=id_pattern, mapping=mapping, **kwargs
+                            path=new_files,
+                            id_pattern=id_pattern,
+                            mapping=mapping,
+                            **kwargs,
                         )
                     cached_ds.loc[i] = {FILES_COL: new_files, DATACUBE_COL: cube}
                 elif i in not_cached_ds.index:
@@ -174,14 +180,20 @@ def open_dataset(
         for i in df.index:
             cubes.append(
                 dask.delayed(open_datacube)(
-                    path=df[FILES_COL][i], id_pattern=id_pattern, mapping=mapping, **kwargs
+                    path=df[FILES_COL][i],
+                    id_pattern=id_pattern,
+                    mapping=mapping,
+                    **kwargs,
                 )
             )
     else:
         for i in df.index:
             cubes.append(
                 open_datacube(
-                    path=df[FILES_COL][i], id_pattern=id_pattern, mapping=mapping, **kwargs
+                    path=df[FILES_COL][i],
+                    id_pattern=id_pattern,
+                    mapping=mapping,
+                    **kwargs,
                 )
             )  # we do not need to enable caching here!
     df[DATACUBE_COL] = cubes
