@@ -7,7 +7,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, 
 import dask.array as da
 import numpy as np
 from geokube.core.axis import AxisStrType, Axis, AxisType
-from geokube.core.cfobject_mixin import CFObjectMixin
+from geokube.core.cfobject import CFObjectAbstract
 import xarray as xr
 from xarray.core.options import OPTIONS
 
@@ -20,7 +20,7 @@ import geokube.utils.xarray_parser as xrp
 from geokube.utils.type_utils import AllowedDataType, OptStrMapType, XrDsDaType
 
 
-class Variable(xr.Variable, CFObjectMixin):
+class Variable(xr.Variable):
 
     __slots__ = (
         "_dimensions",
@@ -50,7 +50,7 @@ class Variable(xr.Variable, CFObjectMixin):
         if isinstance(data, Number):
             data = np.array(data)
         if isinstance(data, Variable):
-            super().apply_from_other(data)
+            Variable.apply_from_other(self, data)
         else:
             self._dimensions = None
             if dims is not None:
@@ -229,4 +229,16 @@ class Variable(xr.Variable, CFObjectMixin):
             attrs=nc_attrs,
             encoding=nc_encoding,
             fastpath=True,
+        )
+
+    @staticmethod
+    def apply_from_other(current, other, shallow=False):
+        current._dimensions = other._dimensions
+        current._units = other._units
+        xr.Variable.__init__(
+            current,
+            data=other.data,
+            dims=other.dim_names,
+            attrs=other.properties,
+            encoding=other.encoding,
         )

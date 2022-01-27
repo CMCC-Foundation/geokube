@@ -10,7 +10,7 @@ import xarray as xr
 import geokube.utils.exceptions as ex
 from geokube.core.unit import Unit
 from geokube.utils.hcube_logger import HCubeLogger
-from geokube.core.cfobject_mixin import CFObjectMixin
+from geokube.core.cfobject import CFObjectAbstract
 
 AxisStrType = Union["Axis", str]
 
@@ -71,7 +71,7 @@ class AxisType(Enum):
         return cls.GENERIC
 
 
-class Axis(CFObjectMixin):
+class Axis:
 
     _LOG = HCubeLogger(name="Axis")
 
@@ -83,7 +83,7 @@ class Axis(CFObjectMixin):
         is_dim: Optional[bool] = False,
     ):
         if isinstance(name, Axis):
-            self.apply_from_other(name)
+            Axis.apply_from_other(self, name)
         else:
             self._is_dim = is_dim
             self._name = name
@@ -137,8 +137,9 @@ class Axis(CFObjectMixin):
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
 
-    def apply_from_other(self, other, shallow=False):
-        self._name = other._name
-        self._type = other._type
-        self._encoding = other._encoding
-        self._is_dim = other._is_dim
+    @staticmethod
+    def apply_from_other(current, other, shallow=False):
+        current._name = other._name
+        current._type = other._type
+        current._encoding = other._encoding
+        current._is_dim = other._is_dim

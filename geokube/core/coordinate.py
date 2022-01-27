@@ -4,6 +4,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+from geokube.core.cfobject import CFObjectAbstract
 from geokube.utils.type_utils import AllowedDataType, OptStrMapType
 from geokube.utils import util_methods
 import xarray as xr
@@ -68,11 +69,17 @@ class Coordinate(Variable, Axis):
                 f"Expected argument is one of the following types `geokube.Axis` or `str`, but provided {type(data)}",
                 logger=Coordinate._LOG,
             )
+        # import pdb;pdb.set_trace()
         Axis.__init__(self, name=axis)
         # We need to update as when calling constructor of Variable, encoding will be overwritten
         if encoding is not None:
             self.encoding.update(encoding)
-        if not self.is_dim and dims is None and not isinstance(data, Number):
+        if (
+            not self.is_dim
+            and dims is None
+            and not isinstance(data, Number)
+            and not hasattr(data, "dims")
+        ):
             raise ex.HCubeValueError(
                 "If coordinate is not a dimension, you need to supply `dims` argument!",
                 logger=Coordinate._LOG,
@@ -106,13 +113,13 @@ class Coordinate(Variable, Axis):
             for k, v in bounds.items():
                 if isinstance(v, Variable):
                     Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
-                    _bounds[f"{k}_bounds"] = v
+                    _bounds[k] = v
                 elif isinstance(v, (np.ndarray, da.Array)):
                     # in this case when only a numpy array is passed
                     # we assume 2-D numpy array with shape(coord.dim, 2)
                     #
                     Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
-                    _bounds[f"{k}_bounds"] = Variable(
+                    _bounds[k] = Variable(
                         data=v,
                         units=units,
                         dims=(axis, Axis("bounds", AxisType.GENERIC)),
@@ -179,7 +186,7 @@ class Coordinate(Variable, Axis):
 
     @property
     def bounds(self):
-        return self._bounds if self._bounds is not None else {}
+        return self._bounds
 
     @bounds.setter
     def bounds(self, value):
@@ -228,14 +235,15 @@ class Coordinate(Variable, Axis):
             )
 
         da = ds[ncvar]
-
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
-        name = Variable._get_name(ds[ncvar], mapping, id_pattern)
         var.encoding.update(name=ncvar)
         axis = Axis(da.attrs.get("axis", Variable._get_name(da, mapping, id_pattern)))
         if ncvar in da.dims:
-            axis = Dimension(
-                name=axis.name, axistype=axis.type, encoding={"name": ncvar}
+            axis = Axis(
+                name=axis.name,
+                is_dim=True,
+                axistype=axis.type,
+                encoding={"name": ncvar},
             )
         bnds_ncvar = da.encoding.pop("bounds", da.attrs.pop("bounds", None))
         if bnds_ncvar:
@@ -249,7 +257,19 @@ class Coordinate(Variable, Axis):
                 "units" not in ds[bnds_ncvar].attrs
                 and "units" not in ds[bnds_ncvar].encoding
             ):
-                bounds[bnds_name].units = var.units
+                bounds[bnds_name]._units = var.units
         else:
             bounds = None
         return Coordinate(data=var, axis=axis, bounds=bounds)
+
+    @staticmethod
+    def apply_from_other(current, other, shallow=False):
+        current._bounds = other._bounds
+        Variable.__init__(
+            current,
+            data=other.data,
+            dims=other.dims,
+            units=other.units,
+            properties=other.properties,
+            encoding=other.encoding,
+        )

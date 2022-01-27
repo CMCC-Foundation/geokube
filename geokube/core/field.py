@@ -26,7 +26,7 @@ from geokube.core.unit import Unit
 from geokube.core.axis import Axis
 from geokube.core.cell_methods import CellMethod
 from geokube.core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
-from geokube.core.dimension import Dimension
+from geokube.core.axis import Axis
 from geokube.core.domain import Domain
 from geokube.core.coordinate import Coordinate
 from geokube.core.enums import MethodType, RegridMethod
@@ -59,7 +59,7 @@ class Field(Variable, DomainMixin):
         self,
         name: str,
         data: Union[np.ndarray, da.Array, Variable] = None,
-        dims: Optional[Tuple[Dimension]] = None,
+        dims: Optional[Tuple[Axis]] = None,
         units: Optional[Union[Unit, str]] = None,
         properties: Optional[Mapping[Any, Any]] = None,
         encoding: Optional[Mapping[Any, Any]] = None,

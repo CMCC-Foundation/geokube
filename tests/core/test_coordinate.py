@@ -115,7 +115,9 @@ def test_process_bounds_2():
 def test_process_bounds_3():
     d = {
         "q": np.ones((100, 2)),
-        "w": Variable(data=np.full((100, 2), fill_value=10), dims=("lat", "bounds")),
+        "w_bounds": Variable(
+            data=np.full((100, 2), fill_value=10), dims=("lat", "bounds")
+        ),
     }
 
     with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
@@ -126,10 +128,10 @@ def test_process_bounds_3():
     r = Coordinate._process_bounds(
         d, name="name2", units="m", axis=Axis("lon"), variable_shape=(100, 1)
     )
-    assert "q_bounds" in r
+    assert "q" in r
     assert "w_bounds" in r
-    assert r["q_bounds"].units == Unit("m")
-    assert set(r["q_bounds"].dim_names) == {"lon", "bounds"}
+    assert r["q"].units == Unit("m")
+    assert set(r["q"].dim_names) == {"lon", "bounds"}
     assert r["w_bounds"].units == Unit(
         None
     )  # no unit provided in `w` Variable definition
@@ -246,3 +248,48 @@ def test_init_7():
     assert c.dim_names == ("x", "y")
     assert c.dim_ncvars == ("x", "y")
     assert c.is_dependent
+
+
+def test_from_xarray_1(era5_netcdf):
+    c = Coordinate.from_xarray(era5_netcdf, "time")
+    assert c.type is CoordinateType.INDEPENDENT
+    assert c.axis_type is AxisType.TIME
+    assert c.dim_names == ("time",)
+    assert c.units == Unit(
+        era5_netcdf["time"].encoding["units"], era5_netcdf["time"].encoding["calendar"]
+    )
+    assert c.bounds is None
+    assert not c.has_bounds
+
+
+def test_from_xarray_2(era5_rotated_netcdf):
+    c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
+    assert c.dim_names == ("depth",)
+    assert c.dim_ncvars == ("soil1",)
+    assert c.has_bounds
+    assert c.bounds is not None
+    assert c.name == "Z"  # `axis`` attribute is provided
+    assert c.ncvar == "soil1"
+    assert c.type is CoordinateType.INDEPENDENT
+    assert c.axis_type is AxisType.VERTICAL or c.axis_type is AxisType.Z
+    assert c.dim_names == ("depth",)
+    assert c.dim_ncvars == ("soil1",)
+    assert c.units == Unit("m")
+    assert c.bounds["soil1_bnds"].units == Unit("m")
+
+
+def test_from_xarray_3(era5_rotated_netcdf):
+    c = Coordinate.from_xarray(
+        era5_rotated_netcdf, "soil1", mapping={"soil1": {"name": "new_soil"}}
+    )
+    assert c.has_bounds
+    assert c.bounds is not None
+    assert c.name == "Z"
+    assert c.ncvar == "soil1"
+    assert c.dim_names == ("new_soil",)
+    assert c.dim_ncvars == ("soil1",)
+    assert c.type is CoordinateType.INDEPENDENT
+    assert c.axis_type is AxisType.VERTICAL or c.axis_type is AxisType.Z
+    assert c.dim_ncvars == ("soil1",)
+    assert c.units == Unit("m")
+    assert c.bounds["soil1_bnds"].units == Unit("m")

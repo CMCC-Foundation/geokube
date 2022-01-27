@@ -1,5 +1,5 @@
+from geokube.core.unit import Unit
 import pytest
-from cf_units import Unit
 
 import geokube.utils.exceptions as ex
 from geokube.core.axis import Axis, Axis, AxisType
@@ -30,19 +30,19 @@ def test_axis_2():
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected type: str or geokube.AxisType, provided type *",
+        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
     ):
         _ = Axis("lon", axistype=10)
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected type: str or geokube.AxisType, provided type *",
+        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
     ):
         _ = Axis("lon", axistype={"lat"})
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected type: str or geokube.AxisType, provided type *",
+        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
     ):
         _ = Axis("lon", axistype=["lon"])
 

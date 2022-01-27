@@ -44,7 +44,7 @@ def test_1():
 
     xrv = v2.to_xarray(encoding=True)
     assert isinstance(xrv, xr.Variable)
-    assert xrv.attrs == v.properties
+    assert xrv.attrs == dict(**v.properties, units="m")
     assert xrv.encoding == v.encoding
     assert np.all(xrv.values == d)
     assert set(xrv.dims) == {"latitude", "longitude"}
