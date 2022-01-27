@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+from numbers import Number
 from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 import dask.array as da
@@ -16,7 +17,7 @@ from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 import geokube.utils.xarray_parser as xrp
-from geokube.utils.type_utils import OptStrMapType, XrDsDaType
+from geokube.utils.type_utils import AllowedDataType, OptStrMapType, XrDsDaType
 
 
 class Variable(xr.Variable, CFObjectMixin):
@@ -30,7 +31,7 @@ class Variable(xr.Variable, CFObjectMixin):
 
     def __init__(
         self,
-        data: Union[np.ndarray, da.Array, Variable],
+        data: AllowedDataType,
         dims: Optional[Union[Sequence[AxisStrType], AxisStrType]] = None,
         units: Optional[Union[Unit, str]] = None,
         properties: OptStrMapType = None,
@@ -40,12 +41,14 @@ class Variable(xr.Variable, CFObjectMixin):
             isinstance(data, np.ndarray)
             or isinstance(data, da.Array)
             or isinstance(data, Variable)
+            or isinstance(data, Number)
         ):
             raise ex.HCubeTypeError(
-                f"Expected argument is one of the following types `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`, but provided {type(data)}",
+                f"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`, but provided {type(data)}",
                 logger=Variable._LOG,
             )
-
+        if isinstance(data, Number):
+            data = np.array(data)
         if isinstance(data, Variable):
             super().apply_from_other(data)
         else:
@@ -55,12 +58,13 @@ class Variable(xr.Variable, CFObjectMixin):
                 dims = np.array(dims, ndmin=1, dtype=Axis)
                 if len(dims) != data.ndim:
                     raise ex.HCubeValueError(
-                        f"Provided data have {data.ndim} dimensions but {len(dims)} Dimensions provided in `dims` argument",
+                        f"Provided data have {data.ndim} dimension(s) but {len(dims)} Dimension(s) provided in `dims` argument",
                         logger=Variable._LOG,
                     )
 
                 self._dimensions = dims
-            super(Variable, self).__init__(
+            # xarray.Variable must be created with non-None `dims`
+            super().__init__(
                 data=data,
                 dims=self.dim_names,
                 attrs=properties,
@@ -74,7 +78,9 @@ class Variable(xr.Variable, CFObjectMixin):
     def _as_dimension_tuple(self, dims) -> Tuple[Axis, ...]:
         if isinstance(dims, str):
             return (Axis(dims, is_dim=True),)
-        if isinstance(dims, Iterable):
+        elif isinstance(dims, Axis):
+            return (dims,)
+        elif isinstance(dims, Iterable):
             _dims = []
             for d in dims:
                 if isinstance(d, str):
@@ -100,11 +106,19 @@ class Variable(xr.Variable, CFObjectMixin):
 
     @property
     def dim_names(self):
-        return tuple([d.name for d in self._dimensions])
+        return (
+            tuple([d.name for d in self._dimensions])
+            if self._dimensions is not None
+            else ()
+        )
 
     @property
     def dim_ncvars(self):
-        return tuple([d.ncvar for d in self._dimensions])
+        return (
+            tuple([d.ncvar for d in self._dimensions])
+            if self._dimensions is not None
+            else ()
+        )
 
     @property
     def properties(self):

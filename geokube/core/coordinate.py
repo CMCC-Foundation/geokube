@@ -1,8 +1,10 @@
 from enum import Enum
+from numbers import Number
 from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+from geokube.utils.type_utils import AllowedDataType, OptStrMapType
 from geokube.utils import util_methods
 import xarray as xr
 
@@ -11,7 +13,6 @@ from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 
 from .axis import Axis, AxisType
-from .dimension import Dimension
 from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
 from .unit import Unit
@@ -45,109 +46,140 @@ class CoordinateType(Enum):
 # )
 
 
-class Coordinate(Variable):
-    __slots__ = ("_axis", "_bounds")
+class Coordinate(Variable, Axis):
+    __slots__ = ("_bounds",)
 
     _LOG = HCubeLogger(name="Coordinate")
 
     def __init__(
         self,
-        data: Union[np.ndarray, da.Array, Variable],
-        axis: Optional[Union[str, Axis, Dimension]],
-        dims: Optional[Tuple[Dimension]] = None,
+        data: AllowedDataType,
+        axis: Union[str, Axis],
+        dims: Optional[Tuple[Axis]] = None,
         units: Optional[Union[Unit, str]] = None,
-        bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
-        properties: Optional[Mapping[Any, Any]] = None,
-        encoding: Optional[Mapping[Any, Any]] = None,
+        bounds: Optional[AllowedDataType] = None,
+        properties: OptStrMapType = None,
+        encoding: OptStrMapType = None,
     ):
-        if data is not None:
-            super().__init__(
-                data=data,
-                dims=dims,
-                units=units,
-                properties=properties,
-                encoding=encoding,
+        if data is None:
+            raise ex.HCubeValueError("`data` cannot be `None`", logger=Coordinate._LOG)
+        if not isinstance(axis, (Axis, str)):
+            raise ex.HCubeTypeError(
+                f"Expected argument is one of the following types `geokube.Axis` or `str`, but provided {type(data)}",
+                logger=Coordinate._LOG,
             )
+        Axis.__init__(self, name=axis)
+        # We need to update as when calling constructor of Variable, encoding will be overwritten
+        if encoding is not None:
+            self.encoding.update(encoding)
+        if not self.is_dim and dims is None and not isinstance(data, Number):
+            raise ex.HCubeValueError(
+                "If coordinate is not a dimension, you need to supply `dims` argument!",
+                logger=Coordinate._LOG,
+            )
+        if self.is_dim and (dims is None or len(dims) == 0):
+            dims = ()
+        Variable.__init__(
+            self,
+            data=data,
+            dims=dims,
+            units=units,
+            properties=properties,
+            encoding=self.encoding,
+        )
+        self._bounds = Coordinate._process_bounds(
+            bounds,
+            name=self.name,
+            variable_shape=self.shape,
+            units=self.units,
+            axis=(Axis)(self),
+        )
+
+    @classmethod
+    @log_func_debug
+    def _process_bounds(cls, bounds, name, variable_shape, units, axis):
+        if bounds is None:
+            return None
+        if isinstance(bounds, dict):
+            if len(bounds) > 0:
+                _bounds = {}
+            for k, v in bounds.items():
+                if isinstance(v, Variable):
+                    Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
+                    _bounds[f"{k}_bounds"] = v
+                elif isinstance(v, (np.ndarray, da.Array)):
+                    # in this case when only a numpy array is passed
+                    # we assume 2-D numpy array with shape(coord.dim, 2)
+                    #
+                    Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
+                    _bounds[f"{k}_bounds"] = Variable(
+                        data=v,
+                        units=units,
+                        dims=(axis, Axis("bounds", AxisType.GENERIC)),
+                    )
+                else:
+                    raise ex.HCubeTypeError(
+                        f"Each defined bound is expected to be one of the following types `geokube.Variable`, `numpy.array`, or `dask.Array`, but provided {type(bounds)}",
+                        logger=Coordinate._LOG,
+                    )
+        elif isinstance(bounds, Variable):
+            Coordinate._assert_dims_compliant(bounds.shape, (variable_shape[0], 2))
+            _bounds = {f"{name}_bounds": bounds}
+        elif isinstance(bounds, (np.ndarray, da.Array)):
+            Coordinate._assert_dims_compliant(bounds.shape, (variable_shape[0], 2))
+            _bounds = {
+                f"{name}_bounds": Variable(
+                    data=bounds,
+                    units=units,
+                    dims=(axis, Axis("bounds", AxisType.GENERIC)),
+                )
+            }
         else:
             raise ex.HCubeTypeError(
-                f"Data is not provided",
-                logger=self._LOG,
+                f"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided {type(bounds)}",
+                logger=Coordinate._LOG,
+            )
+        return _bounds
+
+    @classmethod
+    def _assert_dims_compliant(cls, provided_shape, required_shape):
+        if not util_methods.are_dims_compliant(provided_shape, required_shape):
+            raise ex.HCubeValueError(
+                f"Expected shape is `{required_shape}` but provided one is `{provided_shape}`",
+                logger=Coordinate._LOG,
             )
 
-        if isinstance(axis, Axis) or isinstance(axis, Dimension):
-            self._axis = axis
-        elif isinstance(axis, str):
-            self._axis = Axis(axis)
-        else:
-            raise ex.HCubeTypeError(
-                f"Expected argument of one of the following types `Axis`, `Dimension`, or `String` but provided {type(data)}",
-                logger=self._LOG,
-            )
-
-        if bounds is not None:
-            if isinstance(bounds, dict):
-                # we need to check each element of dict; in case build a variable
-                self._bounds = bounds
-            if isinstance(bounds, Variable):
-                self._bounds = {f"{self.name}_bounds": bounds}
-            else:
-                # in this case when only a numpy array is passed
-                # we assume 2-D numpy array with shape(coord.dim, 2)
-                #
-                if bounds.ndim != 2 or bounds.shape != (self.shape[0], 2):
-                    raise ex.HCubeValueError(
-                        f"Expected shape for bounds is `({len(self._variable)},2)` but provided shape is `{bounds.shape}`",
-                        logger=self._LOG,
-                    )
-
-                self._bounds = {
-                    f"{self.name}_bounds": Variable(
-                        data=bounds,
-                        units=self.units,
-                        dims=tuple(self.axis, Dimension("bounds", AxisType.GENERIC)),
-                    )
-                }
+    @property
+    def is_dimension(self) -> bool:
+        return super().is_dim
 
     @property
-    def axis(self) -> str:
-        return self._axis
+    def is_independent(self) -> bool:
+        return self.is_dimension or self.type is CoordinateType.SCALAR
 
     @property
-    def name(self) -> str:
-        return self.axis.name
-
-    @property
-    def ncvar(self) -> str:
-        return self.axis.encoding.get("ncvar", self.name)
-
-    @property
-    def is_dimension(self) -> str:
-        return isinstance(self.axis, Dimension)
-
-    @property
-    def is_independent(self) -> str:
-        return self.is_dimension()
-
-    @property
-    def is_dependent(self) -> str:
-        return not self.is_dimension()
+    def is_dependent(self) -> bool:
+        return not self.is_independent
 
     @property
     def type(self):
-        if self.dims is None or self.dims == ():
+        # Cooridnate is scalar if data shows so. Dim(s) --  always defined
+        if self.shape == ():
             return CoordinateType.SCALAR
         else:
-            if self.is_dimension():
-                return CoordinateType.DEPENDENT
-            else:
-                return CoordinateType.INDEPENDENT
+            return (
+                CoordinateType.INDEPENDENT
+                if self.is_dimension
+                else CoordinateType.DEPENDENT
+            )
+
+    @property
+    def axis_type(self):
+        return self._type
 
     @property
     def bounds(self):
-        if self._bounds is not None:
-            return self._bounds
-        else:
-            return {}
+        return self._bounds if self._bounds is not None else {}
 
     @bounds.setter
     def bounds(self, value):

@@ -1,111 +1,248 @@
 import numpy as np
+import dask.array as da
 import pytest
 
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, Axis
+from geokube.core.unit import Unit
+from geokube.core.axis import Axis, Axis, AxisType
 from geokube.core.coordinate import Coordinate, CoordinateType
-from geokube.core.dimension import Dimension
 from geokube.core.variable import Variable
 from tests.fixtures import *
 
 
-def test_construct_1():
-    with pytest.raises(ex.HCubeTypeError):
-        var = Variable(
-            data="aaaa",
-            name="lat",
-            units="degrees_north",
-            dims=[Dimension("y", Axis.Y), Dimension("x", Axis.X)],
+def test_process_bounds_1():
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+    ):
+        Coordinate._process_bounds(
+            [1, 2, 3, 4],
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
         )
-    data = np.random.random((10, 5))
-    var = Variable(
-        data=data,
-        name="lat",
-        units="degrees_north",
-        dims=[Dimension("y", Axis(Axis.Y)), Dimension("x", Axis(Axis.X))],
-    )
-    coord = Coordinate(variable=var, axis=Axis("latitude"), bounds=None)
-    assert coord.bounds is None
-    assert coord.name == "lat"
-    assert coord.dims_names == ("y", "x")
-    assert coord.ctype is CoordinateType.DEPENDENT
 
-    data = np.random.random(
-        10,
-    )
-    var = Variable(
-        data=data,
-        name="lat",
-        units="degrees_north",
-        dims=Dimension("lat", Axis(Axis.LATITUDE)),
-    )
-    coord = Coordinate(
-        variable=var, axis=Axis("latitude"), bounds=np.random.random((10, 2))
-    )
-    assert coord.has_bounds
-    assert coord.bounds.dims[0].atype is Axis.LATITUDE
-    assert coord.bounds.dims[1].atype is Axis.GENERIC
-    assert coord.bounds.dims[1].name == "bounds"
-    assert coord.bounds.name == "lat_bounds"
-    assert coord.ctype is CoordinateType.INDEPENDENT
-
-    var = Variable(data=np.array(10), name="lat", units="degrees_north")
-    coord = Coordinate(variable=var, axis=Axis("latitude"))
-    assert not coord.has_bounds
-    assert coord.ctype is CoordinateType.SCALAR
-
-
-def test_from_xarray_dataarray(era5_rotated_netcdf_tmin2m):
-    res = Coordinate.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["time"])
-    assert res.axis.atype is Axis.TIME
-    assert res.units.cftime_unit == era5_rotated_netcdf_tmin2m["time"].encoding["units"]
-    assert res.units.calendar == era5_rotated_netcdf_tmin2m["time"].encoding["calendar"]
-    assert res.bounds is None
-    assert res.name == "time"
-
-
-def test_from_xarray_dataset(era5_rotated_netcdf_tmin2m):
-    res = Coordinate.from_xarray_dataset(era5_rotated_netcdf_tmin2m, coord_name="time")
-    assert res.axis.atype is Axis.TIME
-    assert res.units.cftime_unit == era5_rotated_netcdf_tmin2m["time"].encoding["units"]
-    assert res.units.calendar == era5_rotated_netcdf_tmin2m["time"].encoding["calendar"]
-    assert res.bounds is not None
-    assert res.bounds.dims_names == ("time", "bnds")
-    assert res.bounds.dims[0].atype is Axis.TIME
-    assert res.bounds.dims[1].atype is Axis.GENERIC
-    assert res.bounds.dims[0].name == "time"
-    assert res.bounds.dims[1].name == "bnds"
-    assert res.name == "time"
-    assert res.ctype is CoordinateType.INDEPENDENT
-
-
-def test_from_xarray_dataset_2(era5_rotated_netcdf_tmin2m):
-    with pytest.raises(ex.HCubeKeyError):
-        _ = Coordinate.from_xarray_dataset(
-            era5_rotated_netcdf_tmin2m, coord_name="some_new_lat"
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+    ):
+        Coordinate._process_bounds(
+            "bounds",
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
         )
-    res = Coordinate.from_xarray_dataset(era5_rotated_netcdf_tmin2m, coord_name="lat")
-    assert res.axis.atype is Axis.LATITUDE
-    assert str(res.units) == era5_rotated_netcdf_tmin2m["lat"].attrs["units"]
-    assert res.bounds is None
-    assert res.name == "lat"
-    assert res.dims[0].atype is Axis.Y
-    assert res.dims[0].name == "grid_latitude"
-    assert res.dims[0].axis.name == "rlat"
-    assert res.dims[1].atype is Axis.X
-    assert res.dims[1].name == "grid_longitude"
-    assert res.dims[1].axis.name == "rlon"
-    assert res.ctype is CoordinateType.DEPENDENT
+
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+    ):
+        Coordinate._process_bounds(
+            xr.DataArray([1, 2, 3, 4]),
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
+        )
 
 
-def test_to_xarray_dataarray(era5_rotated_netcdf_tmin2m):
-    res = Coordinate.from_xarray_dataset(era5_rotated_netcdf_tmin2m, coord_name="time")
-    darr = res.to_xarray_dataarray()
-    # TODO: more test
+def test_process_bounds_2():
+    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+        _ = Coordinate._process_bounds(
+            Variable(data=np.random.rand(100, 5), dims=["time", "bounds"]),
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
+        )
+
+    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+        _ = Coordinate._process_bounds(
+            Variable(data=np.random.rand(100, 5), dims=["time", "bounds"], units="m"),
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
+        )
+
+    D = np.random.rand(100, 2)
+    r = Coordinate._process_bounds(
+        Variable(data=D, dims=["time", "bounds"]),
+        name="name",
+        units="units",
+        axis=Axis("time"),
+        variable_shape=(100, 1),
+    )
+    assert isinstance(r, dict)
+    assert "name_bounds" in r
+    assert np.all(r["name_bounds"] == D)
+
+    r = Coordinate._process_bounds(
+        bounds=D, name="name", units="units", axis=Axis("time"), variable_shape=(100, 1)
+    )
+    assert isinstance(r, dict)
+    assert "name_bounds" in r
+    assert isinstance(r["name_bounds"], Variable)
+    assert r["name_bounds"].units == Unit("units")
+    assert np.all(r["name_bounds"] == D)
+
+    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+        _ = Coordinate._process_bounds(
+            bounds=da.random.random((400, 2)),
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
+        )
+
+    D = da.random.random((400, 2))
+    r = Coordinate._process_bounds(
+        bounds=D,
+        name="name2",
+        units="units",
+        axis=Axis("time"),
+        variable_shape=(400, 1),
+    )
+    assert isinstance(r, dict)
+    assert "name2_bounds" in r
+    assert isinstance(r["name2_bounds"], Variable)
+    assert r["name2_bounds"].units == Unit("units")
+    assert np.all(r["name2_bounds"] == D)
 
 
-def test_to_xarray_dataset(era5_rotated_netcdf_tmin2m):
-    res = Coordinate.from_xarray_dataset(era5_rotated_netcdf_tmin2m, coord_name="time")
-    darr = res.to_xarray_dataset()
-    assert darr.time.encoding["bounds"] == "time_bnds"
-    # TODO: more test
+def test_process_bounds_3():
+    d = {
+        "q": np.ones((100, 2)),
+        "w": Variable(data=np.full((100, 2), fill_value=10), dims=("lat", "bounds")),
+    }
+
+    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+        _ = Coordinate._process_bounds(
+            d, name="name2", units="m", axis=Axis("lat"), variable_shape=(400, 1)
+        )
+
+    r = Coordinate._process_bounds(
+        d, name="name2", units="m", axis=Axis("lon"), variable_shape=(100, 1)
+    )
+    assert "q_bounds" in r
+    assert "w_bounds" in r
+    assert r["q_bounds"].units == Unit("m")
+    assert set(r["q_bounds"].dim_names) == {"lon", "bounds"}
+    assert r["w_bounds"].units == Unit(
+        None
+    )  # no unit provided in `w` Variable definition
+    assert set(r["w_bounds"].dim_names) == {
+        "lat",
+        "bounds",
+    }  # `lat` defined as `w` Variable dim
+
+
+def test_init_1():
+    with pytest.raises(ex.HCubeValueError, match=r"`data` cannot be `None`"):
+        _ = Coordinate(data=None, axis="lat")
+
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `geokube.Axis` or `str`, but provided *",
+    ):
+        _ = Coordinate(data=np.ones(100), axis=["lat"])
+
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `geokube.Axis` or `str`, but provided *",
+    ):
+        _ = Coordinate(data=np.ones(100), axis=15670)
+
+    with pytest.raises(
+        ex.HCubeValueError,
+        match=r"If coordinate is not a dimension, you need to supply `dims` argument!",
+    ):
+        _ = Coordinate(data=np.ones(100), axis=Axis("lat", is_dim=False))
+
+
+def test_init_2():
+    D = da.random.random((100,))
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
+    assert c.dim_names == ("latitude",)
+    assert c.dim_ncvars == ("latitude",)
+    assert c.type is CoordinateType.INDEPENDENT
+    assert c.axis_type is AxisType.LATITUDE
+    assert c.is_independent
+
+
+def test_init_3():
+    D = da.random.random((100,))
+
+    with pytest.raises(ex.HCubeValueError, match=r"Provided data have *"):
+        _ = Coordinate(
+            data=D,
+            axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
+            dims=None,
+        )
+
+
+def test_init_4():
+    D = da.random.random((100,))
+    c = Coordinate(
+        data=D,
+        axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
+        dims="lon2",
+    )
+    assert c.name == "lon"
+    assert c.ncvar == "new_lon_name"
+    assert c.dim_names == ("lon2",)
+    assert c.dim_ncvars == ("lon2",)
+    assert c.type is CoordinateType.INDEPENDENT
+    assert c.axis_type is AxisType.LONGITUDE
+    assert c.is_independent
+
+
+def test_init_5():
+    D = da.random.random((100,))
+    with pytest.raises(ex.HCubeValueError, match=r"Expected shape is*"):
+        _ = Coordinate(
+            data=D,
+            axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
+            dims="lon2",
+            bounds=np.ones((104, 2)),
+        )
+    c = Coordinate(
+        data=D,
+        axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
+        dims="lon2",
+        encoding={"name": "my_lon_name"},
+    )
+    assert c.name == "lon"
+    # if encoding provieded for Axis and Cooridnate, they are merged. Keys in Axis encoding will be overwritten
+    assert c.ncvar == "my_lon_name"
+    assert c.dim_names == ("lon2",)
+    assert c.dim_ncvars == ("lon2",)
+    assert c.type is CoordinateType.INDEPENDENT
+    assert c.axis_type is AxisType.LONGITUDE
+    assert c.is_independent
+
+
+def test_init_6():
+    with pytest.raises(ex.HCubeValueError, match=r"Provided data have *"):
+        _ = Coordinate(data=10, axis="longitude", dims="longitude")
+
+    c = Coordinate(data=10, axis="longitude")
+    assert c.type is CoordinateType.SCALAR
+    assert c.axis_type is AxisType.LONGITUDE
+    assert np.all(c.values == 10)
+    assert c.is_independent  # Scalar treated as independent
+
+
+def test_init_7():
+    D = da.random.random((100, 50))
+    with pytest.raises(ex.HCubeValueError, match=r"Provided data have *"):
+        _ = Coordinate(data=D, axis="longitude", dims="longitude")
+
+    c = Coordinate(data=D, axis="longitude", dims=["x", "y"])
+    assert c.type is CoordinateType.DEPENDENT
+    assert c.axis_type is AxisType.LONGITUDE
+    assert c.dim_names == ("x", "y")
+    assert c.dim_ncvars == ("x", "y")
+    assert c.is_dependent

@@ -15,7 +15,7 @@ from tests.fixtures import *
 def test_1():
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
     ):
         _ = Variable({1, 2, 3, 4})
 
@@ -35,6 +35,7 @@ def test_1():
 
     v2 = Variable(data=v)
     assert id(v) != id(v2)
+    assert np.all(v._data == v2._data)
     assert id(v._data) == id(v2._data)
     assert set(v2.dim_names) == {"latitude", "longitude"}
     assert set(v2.dim_ncvars) == {"latitude", "longitude"}

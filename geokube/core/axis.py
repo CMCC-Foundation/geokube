@@ -73,8 +73,6 @@ class AxisType(Enum):
 
 class Axis(CFObjectMixin):
 
-    __slots__ = ("_name", "_type", "_encoding", "_is_dim")
-
     _LOG = HCubeLogger(name="Axis")
 
     def __init__(
@@ -85,7 +83,7 @@ class Axis(CFObjectMixin):
         is_dim: Optional[bool] = False,
     ):
         if isinstance(name, Axis):
-            super().apply_from_other(name)
+            self.apply_from_other(name)
         else:
             self._is_dim = is_dim
             self._name = name
@@ -125,7 +123,7 @@ class Axis(CFObjectMixin):
 
     @property
     def is_dim(self):
-        return self._is_dimension
+        return self._is_dim
 
     def __eq__(self, other):
         return (self.name == other.name) and (self.type == other.type)
@@ -138,3 +136,9 @@ class Axis(CFObjectMixin):
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
+
+    def apply_from_other(self, other, shallow=False):
+        self._name = other._name
+        self._type = other._type
+        self._encoding = other._encoding
+        self._is_dim = other._is_dim

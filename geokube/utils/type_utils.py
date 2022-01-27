@@ -5,11 +5,13 @@ from typing import Any, Hashable, Mapping, Optional, Union
 
 import numpy as np
 import xarray as xr
+import dask.array as da
 
 import geokube.core.axis
 
 OptStrMapType = Optional[Mapping[Hashable, str]]
 XrDsDaType = Union[xr.Dataset, xr.DataArray]
+AllowedDataType = Union[np.ndarray, da.Array, xr.Variable]
 
 
 class Types(Enum):
