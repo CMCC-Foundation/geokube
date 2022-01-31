@@ -1,3 +1,4 @@
+from numbers import Number
 import numpy as np
 import dask.array as da
 import pytest
@@ -268,7 +269,7 @@ def test_from_xarray_2(era5_rotated_netcdf):
     assert c.dim_ncvars == ("soil1",)
     assert c.has_bounds
     assert c.bounds is not None
-    assert c.name == "Z"  # `axis`` attribute is provided
+    assert c.name == "depth"
     assert c.ncvar == "soil1"
     assert c.type is CoordinateType.INDEPENDENT
     assert c.axis_type is AxisType.VERTICAL or c.axis_type is AxisType.Z
@@ -284,7 +285,7 @@ def test_from_xarray_3(era5_rotated_netcdf):
     )
     assert c.has_bounds
     assert c.bounds is not None
-    assert c.name == "Z"
+    assert c.name == "new_soil"
     assert c.ncvar == "soil1"
     assert c.dim_names == ("new_soil",)
     assert c.dim_ncvars == ("soil1",)
@@ -293,3 +294,75 @@ def test_from_xarray_3(era5_rotated_netcdf):
     assert c.dim_ncvars == ("soil1",)
     assert c.units == Unit("m")
     assert c.bounds["soil1_bnds"].units == Unit("m")
+
+
+def test_to_xarray_1(era5_rotated_netcdf):
+    c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
+    res = c.to_xarray(encoding=False)
+
+    assert res.name == "depth"
+    assert np.all(era5_rotated_netcdf.soil1.values == res.depth.values)
+    assert res.attrs == era5_rotated_netcdf.soil1.attrs
+    assert set(res.encoding) - {"name"} == set(
+        era5_rotated_netcdf.soil1.encoding.keys()
+    ) - {"bounds"}
+
+    # with simple `to_xarray` bounds are not returned and shouldn't be recorded
+    assert "bounds" not in res.encoding
+    assert "bounds" not in res.attrs
+    for ek in set(res.encoding):
+        if ek == "name":
+            # `name` encoding key is added
+            continue
+        if res.encoding[ek] is None:
+            assert era5_rotated_netcdf.soil1.encoding[ek] is None
+        if isinstance(res.encoding[ek], Number) and np.isnan(res.encoding[ek]):
+            assert np.isnan(era5_rotated_netcdf.soil1.encoding[ek])
+        else:
+            assert era5_rotated_netcdf.soil1.encoding[ek] == res.encoding[ek]
+
+
+def test_to_xarray_2(era5_rotated_netcdf):
+    c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
+    res = c.to_xarray(encoding=True)
+
+    assert res.name == "soil1"
+    assert np.all(era5_rotated_netcdf.soil1.values == res.soil1.values)
+    assert res.attrs == era5_rotated_netcdf.soil1.attrs
+    assert set(res.encoding) - {"name"} == set(
+        era5_rotated_netcdf.soil1.encoding.keys()
+    ) - {"bounds"}
+    for ek in set(res.encoding):
+        if ek == "name":
+            # `name` encoding key is added
+            continue
+        if res.encoding[ek] is None:
+            assert era5_rotated_netcdf.soil1.encoding[ek] is None
+        if isinstance(res.encoding[ek], Number) and np.isnan(res.encoding[ek]):
+            assert np.isnan(era5_rotated_netcdf.soil1.encoding[ek])
+        else:
+            assert era5_rotated_netcdf.soil1.encoding[ek] == res.encoding[ek]
+
+
+def test_to_xarray_3(era5_rotated_netcdf):
+    c = Coordinate.from_xarray(era5_rotated_netcdf, "lat")
+    assert c.type is CoordinateType.DEPENDENT
+    res = c.to_xarray(encoding=False)
+    assert res.name == "latitude"
+    assert "grid_latitude" in res.dims
+    assert "grid_longitude" in res.dims
+    assert np.all(era5_rotated_netcdf.lat.values == res.latitude.values)
+    assert res.attrs == era5_rotated_netcdf.lat.attrs
+    assert set(res.encoding) - {"name"} == set(
+        era5_rotated_netcdf.lat.encoding.keys()
+    ) - {"bounds"}
+
+    res = c.to_xarray(encoding=True)
+    assert res.name == "lat"
+    assert "rlat" in res.dims
+    assert "rlon" in res.dims
+    assert np.all(era5_rotated_netcdf.lat.values == res.lat.values)
+    assert res.attrs == era5_rotated_netcdf.lat.attrs
+    assert set(res.encoding) - {"name"} == set(
+        era5_rotated_netcdf.lat.encoding.keys()
+    ) - {"bounds"}

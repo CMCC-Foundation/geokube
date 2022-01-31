@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from enum import Enum
 from typing import Any, Hashable, List, Mapping, Optional, Union
-from geokube.utils.type_utils import OptStrMapType
 
 import xarray as xr
 
@@ -12,7 +11,6 @@ from geokube.core.unit import Unit
 from geokube.utils.hcube_logger import HCubeLogger
 from geokube.core.cfobject import CFObjectAbstract
 
-AxisStrType = Union["Axis", str]
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {
@@ -79,11 +77,14 @@ class Axis:
         self,
         name: Union[str, Axis],
         axistype: Optional[Union[AxisType, str]] = None,
-        encoding: OptStrMapType = None,
+        encoding: Optional[Mapping[Hashable, str]] = None,
         is_dim: Optional[bool] = False,
     ):
         if isinstance(name, Axis):
-            Axis.apply_from_other(self, name)
+            self._name = name._name
+            self._type = name._type
+            self._encoding = name._encoding
+            self._is_dim = name._is_dim
         else:
             self._is_dim = is_dim
             self._name = name
@@ -136,10 +137,3 @@ class Axis:
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
-
-    @staticmethod
-    def apply_from_other(current, other, shallow=False):
-        current._name = other._name
-        current._type = other._type
-        current._encoding = other._encoding
-        current._is_dim = other._is_dim

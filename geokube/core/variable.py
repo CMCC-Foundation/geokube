@@ -6,7 +6,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, 
 
 import dask.array as da
 import numpy as np
-from geokube.core.axis import AxisStrType, Axis, AxisType
+from geokube.core.axis import Axis, AxisType
 from geokube.core.cfobject import CFObjectAbstract
 import xarray as xr
 from xarray.core.options import OPTIONS
@@ -17,7 +17,6 @@ from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 import geokube.utils.xarray_parser as xrp
-from geokube.utils.type_utils import AllowedDataType, OptStrMapType, XrDsDaType
 
 
 class Variable(xr.Variable):
@@ -31,11 +30,11 @@ class Variable(xr.Variable):
 
     def __init__(
         self,
-        data: AllowedDataType,
-        dims: Optional[Union[Sequence[AxisStrType], AxisStrType]] = None,
+        data: Union[np.ndarray, da.Array, xr.Variable, Number],
+        dims: Optional[Union[Sequence[Union["Axis", str]], Union["Axis", str]]] = None,
         units: Optional[Union[Unit, str]] = None,
-        properties: OptStrMapType = None,
-        encoding: OptStrMapType = None,
+        properties: Optional[Mapping[Hashable, str]] = None,
+        encoding: Optional[Mapping[Hashable, str]] = None,
     ):
         if not (
             isinstance(data, np.ndarray)
@@ -50,7 +49,14 @@ class Variable(xr.Variable):
         if isinstance(data, Number):
             data = np.array(data)
         if isinstance(data, Variable):
-            Variable.apply_from_other(self, data)
+            self._dimensions = data._dimensions
+            self._units = data._units
+            super().__init__(
+                data=data.data,
+                dims=data.dim_names,
+                attrs=data.properties,
+                encoding=data.encoding,
+            )
         else:
             self._dimensions = None
             if dims is not None:
@@ -155,7 +161,12 @@ class Variable(xr.Variable):
 
     @classmethod
     @log_func_debug
-    def _get_name(cls, da: XrDsDaType, mapping: OptStrMapType, id_pattern: str) -> str:
+    def _get_name(
+        cls,
+        da: Union[xr.Dataset, xr.DataArray],
+        mapping: Optional[Mapping[Hashable, str]],
+        id_pattern: str,
+    ) -> str:
         if mapping is not None and da.name in mapping:
             return mapping[da.name]["name"]
         if id_pattern is not None:
@@ -214,14 +225,14 @@ class Variable(xr.Variable):
         nc_encoding = self.encoding
         if encoding:
             dims = self.dim_ncvars
-            if self.units is not None and not self.units.is_unknown:
-                if self.units.is_time_reference():
-                    nc_encoding["units"] = self.units.cftime_unit
-                    nc_encoding["calendar"] = self.units.calendar
-                else:
-                    nc_attrs["units"] = str(self.units)
         else:
             dims = self.dim_names
+        if self.units is not None and not self.units.is_unknown:
+            if self.units.is_time_reference():
+                nc_encoding["units"] = self.units.cftime_unit
+                nc_encoding["calendar"] = self.units.calendar
+            else:
+                nc_attrs["units"] = str(self.units)
 
         return xr.Variable(
             data=self._data,
@@ -229,16 +240,4 @@ class Variable(xr.Variable):
             attrs=nc_attrs,
             encoding=nc_encoding,
             fastpath=True,
-        )
-
-    @staticmethod
-    def apply_from_other(current, other, shallow=False):
-        current._dimensions = other._dimensions
-        current._units = other._units
-        xr.Variable.__init__(
-            current,
-            data=other.data,
-            dims=other.dim_names,
-            attrs=other.properties,
-            encoding=other.encoding,
         )
