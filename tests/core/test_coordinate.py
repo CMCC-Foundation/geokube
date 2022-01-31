@@ -9,6 +9,7 @@ from geokube.core.axis import Axis, Axis, AxisType
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.variable import Variable
 from tests.fixtures import *
+from tests import compare_dicts
 
 
 def test_process_bounds_1():
@@ -50,7 +51,7 @@ def test_process_bounds_1():
 
 
 def test_process_bounds_2():
-    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+    with pytest.raises(ex.HCubeValueError, match=r"Bounds should *"):
         _ = Coordinate._process_bounds(
             Variable(data=np.random.rand(100, 5), dims=["time", "bounds"]),
             name="name",
@@ -59,7 +60,7 @@ def test_process_bounds_2():
             variable_shape=(100, 1),
         )
 
-    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+    with pytest.raises(ex.HCubeValueError, match=r"Bounds should *"):
         _ = Coordinate._process_bounds(
             Variable(data=np.random.rand(100, 5), dims=["time", "bounds"], units="m"),
             name="name",
@@ -89,7 +90,7 @@ def test_process_bounds_2():
     assert r["name_bounds"].units == Unit("units")
     assert np.all(r["name_bounds"] == D)
 
-    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
+    with pytest.raises(ex.HCubeValueError, match=r"Bounds should *"):
         _ = Coordinate._process_bounds(
             bounds=da.random.random((400, 2)),
             name="name",
@@ -121,10 +122,10 @@ def test_process_bounds_3():
         ),
     }
 
-    with pytest.raises(ex.HCubeValueError, match=r"Expected shape *"):
-        _ = Coordinate._process_bounds(
-            d, name="name2", units="m", axis=Axis("lat"), variable_shape=(400, 1)
-        )
+    # with pytest.raises(ex.HCubeValueError, match=r"Bounds should*"):
+    #     _ = Coordinate._process_bounds(
+    #         d, name="name2", units="m", axis=Axis("lat"), variable_shape=(400, 1)
+    #     )
 
     r = Coordinate._process_bounds(
         d, name="name2", units="m", axis=Axis("lon"), variable_shape=(100, 1)
@@ -204,7 +205,7 @@ def test_init_4():
 
 def test_init_5():
     D = da.random.random((100,))
-    with pytest.raises(ex.HCubeValueError, match=r"Expected shape is*"):
+    with pytest.raises(ex.HCubeValueError, match=r"Bounds should*"):
         _ = Coordinate(
             data=D,
             axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
@@ -310,16 +311,12 @@ def test_to_xarray_1(era5_rotated_netcdf):
     # with simple `to_xarray` bounds are not returned and shouldn't be recorded
     assert "bounds" not in res.encoding
     assert "bounds" not in res.attrs
-    for ek in set(res.encoding):
-        if ek == "name":
-            # `name` encoding key is added
-            continue
-        if res.encoding[ek] is None:
-            assert era5_rotated_netcdf.soil1.encoding[ek] is None
-        if isinstance(res.encoding[ek], Number) and np.isnan(res.encoding[ek]):
-            assert np.isnan(era5_rotated_netcdf.soil1.encoding[ek])
-        else:
-            assert era5_rotated_netcdf.soil1.encoding[ek] == res.encoding[ek]
+    compare_dicts(
+        res.encoding,
+        era5_rotated_netcdf.soil1.encoding,
+        exclude_d1="name",
+        exclude_d2="bounds",
+    )  # TODO: currently bounds are not included
 
 
 def test_to_xarray_2(era5_rotated_netcdf):
@@ -332,16 +329,12 @@ def test_to_xarray_2(era5_rotated_netcdf):
     assert set(res.encoding) - {"name"} == set(
         era5_rotated_netcdf.soil1.encoding.keys()
     ) - {"bounds"}
-    for ek in set(res.encoding):
-        if ek == "name":
-            # `name` encoding key is added
-            continue
-        if res.encoding[ek] is None:
-            assert era5_rotated_netcdf.soil1.encoding[ek] is None
-        if isinstance(res.encoding[ek], Number) and np.isnan(res.encoding[ek]):
-            assert np.isnan(era5_rotated_netcdf.soil1.encoding[ek])
-        else:
-            assert era5_rotated_netcdf.soil1.encoding[ek] == res.encoding[ek]
+    compare_dicts(
+        res.encoding,
+        era5_rotated_netcdf.soil1.encoding,
+        exclude_d1="name",
+        exclude_d2="bounds",
+    )  # TODO: currently bounds are not included
 
 
 def test_to_xarray_3(era5_rotated_netcdf):

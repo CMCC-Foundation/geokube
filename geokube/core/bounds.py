@@ -2,7 +2,12 @@ from geokube.core.variable import Variable
 
 
 class Bounds(Variable):
-    pass
+
+    __slots__ = ("_name",)
+
+    @property
+    def name(self):
+        return self._name
 
 
 class Bounds1D(Bounds):

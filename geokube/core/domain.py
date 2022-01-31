@@ -12,7 +12,7 @@ import xarray as xr
 
 import geokube.utils.exceptions as ex
 import geokube.utils.xarray_parser as xrp
-from geokube.core.axis import Axis
+from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import (
     CoordSystem,
     CurvilinearGrid,
@@ -44,15 +44,6 @@ class Domain(DomainMixin):
 
     _LOG = HCubeLogger(name="Domain")
 
-    def _as_coordinate(self, coord, name) -> Coordinate:
-        if isinstance(coord, Coordinate):
-            return coord
-        elif isinstance(coord, tuple):
-            # tupl -> (data, dims, axis)
-            return Coordinate(data=coord[0], dims=coord[1], axis=coord[2])
-        else:
-            return Coordinate(data=coord, axis=name)
-
     def __init__(
         self,
         coords: Union[
@@ -64,20 +55,29 @@ class Domain(DomainMixin):
         if isinstance(coords, dict):
             self._coords = {}
             for name, coord in coords.items():
-                self._coord[name] = self._as_coordinate(coord, name)
+                self._coord[name] = Domain._as_coordinate(coord, name)
         if isinstance(coords, list):
             # TODO: check if it is a coordinate or just data!
             self._coords = {c.name: c for c in coords}
         if isinstance(coords, Domain):
-            self._coords = coords
+            self._coords = coords._coords
+            self._crs = coords._crs
+            self._type = coords._type
+            self._axis_to_name = coords._axis_to_name
 
         self._crs = crs
         self._type = domaintype
-        print("Domain coordinates")
-        for c in self._coords:
-            print(c)
-        print("*****************")
-        self._axis_to_name = {c.axis.type: c.name for c in self._coords}
+        self._axis_to_name = {c.axis_type: c.name for c in self._coords.values()}
+
+    @classmethod
+    def _as_coordinate(cls, coord, name) -> Coordinate:
+        if isinstance(coord, Coordinate):
+            return coord
+        elif isinstance(coord, tuple):
+            # tupl -> (data, dims, axis)
+            return Coordinate(data=coord[0], dims=coord[1], axis=coord[2])
+        else:
+            return Coordinate(data=coord, axis=name)
 
     @property
     def type(self):
@@ -127,7 +127,7 @@ class Domain(DomainMixin):
         self._coords[key] = value
 
     def __contains__(self, key: str):
-        return (key in self._coords) or (Axis.parse(key) in self._axis_to_name)
+        return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
 
     def nbytes(self) -> int:
         return sum(coord.nbytes for coord in self._coords)
@@ -270,15 +270,14 @@ class Domain(DomainMixin):
         coords = []
 
         for dim in da.dims:
-            if dim in coords:
-                coords.append(
-                    Coordinate.from_xarray(
-                        ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
-                    )
+            coords.append(
+                Coordinate.from_xarray(
+                    ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
                 )
+            )
 
-        xr_coords = ds[ncvar].attrs.pop(
-            "coordinates", ds[ncvar].encoding.pop("coordinates", None)
+        xr_coords = ds[ncvar].attrs.get(
+            "coordinates", ds[ncvar].encoding.get("coordinates", None)
         )
         if xr_coords is not None:
             for coord in xr_coords.split(" "):
@@ -288,9 +287,9 @@ class Domain(DomainMixin):
                     )
                 )
         if "grid_mapping" in da.encoding:
-            crs = parse_crs(da[da.encoding.pop("grid_mapping")])
+            crs = parse_crs(da[da.encoding.get("grid_mapping")])
         elif "grid_mapping" in da.attrs:
-            crs = parse_crs(da[da.attrs.pop("grid_mapping")])
+            crs = parse_crs(da[da.attrs.get("grid_mapping")])
         else:
             crs = Domain.guess_crs(da)
 
@@ -306,11 +305,18 @@ class Domain(DomainMixin):
                 coord_name = coord.name
             grid[coord_name] = coord.to_xarray(encoding)  # to xarray variable
             if (bounds := coord.bounds) is not None:
-                if encoding:
-                    bounds_name = bounds.ncvar
-                else:
-                    bounds_name = bounds.name
-                grid[bounds_name] = bounds.to_xarray(encoding)  # to xarray variable
+                continue
+                # TODO: bounds support latter
+                if len(bounds) > 1:
+                    raise ex.HCubeNotImplementedError(
+                        f"Multiple bounds are currently not supported!"
+                    )
+                for bnd in bounds.values():
+                    if encoding:
+                        bounds_name = bnd.ncvar
+                    else:
+                        bounds_name = bnd.name
+                    grid[bounds_name] = bnd.to_xarray(encoding)  # to xarray variable
 
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()

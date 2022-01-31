@@ -58,7 +58,7 @@ class Field(Variable, DomainMixin):
     def __init__(
         self,
         name: str,
-        data: Union[np.ndarray, da.Array, xr.Variable] = None,
+        data: Union[Number, np.ndarray, da.Array, xr.Variable] = None,
         dims: Optional[Tuple[Axis]] = None,
         units: Optional[Union[Unit, str]] = None,
         properties: Optional[Mapping[Hashable, str]] = None,
@@ -82,14 +82,6 @@ class Field(Variable, DomainMixin):
         self._cell_methods = cell_methods
         # TO DO: convert any ancillary data to Variable
         self._ancillary = ancillary
-
-    def __repr__(self) -> str:
-        return formatting.dataset_repr(self.to_xarray())
-
-    def _repr_html_(self):
-        if OPTIONS["display_style"] == "text":
-            return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
-        return formatting_html.dataset_repr(self.to_xarray())
 
     def __str__(self) -> str:
         return f"Field {self.name}:{self.variable.name} with cell method: {self.cell_methods}"

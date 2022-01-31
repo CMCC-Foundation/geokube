@@ -57,7 +57,10 @@ class AxisType(Enum):
         if isinstance(name, AxisType):
             return name
         try:
-            return cls[name.upper() if isinstance(name, str) else name]
+            res = cls[name.upper() if isinstance(name, str) else name]
+            if res is AxisType.Z:
+                return AxisType.VERTICAL
+            return res
         except KeyError:
             for ax, regexp in coordinate_criteria_regular_expression.items():
                 if re.match(regexp, name.lower(), re.IGNORECASE):

@@ -5,7 +5,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 import dask.array as da
 import numpy as np
 from geokube.core.cfobject import CFObjectAbstract
-from geokube.core.bounds import Bounds
+from geokube.core.bounds import Bounds, Bounds1D, BoundsND
 from geokube.utils import util_methods
 import xarray as xr
 
@@ -111,17 +111,17 @@ class Coordinate(Variable, Axis):
                 _bounds = {}
             for k, v in bounds.items():
                 if isinstance(v, Bounds):
-                    Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
+                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
                     _bounds[k] = v
                 if isinstance(v, Variable):
-                    Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
-                    _bounds[k] = Bounds(data=v)
+                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    _bounds[k] = bound_class(data=v)
                 elif isinstance(v, (np.ndarray, da.Array)):
                     # in this case when only a numpy array is passed
                     # we assume 2-D numpy array with shape(coord.dim, 2)
                     #
-                    Coordinate._assert_dims_compliant(v.shape, (variable_shape[0], 2))
-                    _bounds[k] = Bounds(
+                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    _bounds[k] = bound_class(
                         data=v,
                         units=units,
                         dims=(axis, Axis("bounds", AxisType.GENERIC)),
@@ -132,15 +132,15 @@ class Coordinate(Variable, Axis):
                         logger=Coordinate._LOG,
                     )
         elif isinstance(bounds, Bounds):
-            Coordinate._assert_dims_compliant(bounds.shape, (variable_shape[0], 2))
+            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
             _bounds = {f"{name}_bounds": bounds}
         elif isinstance(bounds, Variable):
-            Coordinate._assert_dims_compliant(bounds.shape, (variable_shape[0], 2))
-            _bounds = {f"{name}_bounds": Bounds(bounds)}
+            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            _bounds = {f"{name}_bounds": bound_class(bounds)}
         elif isinstance(bounds, (np.ndarray, da.Array)):
-            Coordinate._assert_dims_compliant(bounds.shape, (variable_shape[0], 2))
+            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
             _bounds = {
-                f"{name}_bounds": Bounds(
+                f"{name}_bounds": bound_class(
                     data=bounds,
                     units=units,
                     dims=(axis, Axis("bounds", AxisType.GENERIC)),
@@ -154,10 +154,22 @@ class Coordinate(Variable, Axis):
         return _bounds
 
     @classmethod
-    def _assert_dims_compliant(cls, provided_shape, required_shape):
-        if not util_methods.are_dims_compliant(provided_shape, required_shape):
+    def _get_bounds_cls(cls, provided_bnds_shape, provided_data_shape):
+        ndim = len(provided_bnds_shape) - 1
+        if (
+            2 * ndim == 2
+            and provided_bnds_shape[-1] == 2
+            and provided_bnds_shape[0] == provided_data_shape[0]
+        ):
+            return Bounds1D
+        elif (
+            provided_bnds_shape[-1] == 2 * ndim
+            and tuple(provided_bnds_shape[:-1]) == provided_data_shape
+        ):
+            return BoundsND
+        else:
             raise ex.HCubeValueError(
-                f"Expected shape is `{required_shape}` but provided one is `{provided_shape}`",
+                f"Bounds should have dimensions: (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
                 logger=Coordinate._LOG,
             )
 
