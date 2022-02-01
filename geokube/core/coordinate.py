@@ -1,20 +1,22 @@
-import warnings
 from enum import Enum
+from numbers import Number
 from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+from geokube.core.cfobject import CFObjectAbstract
+from geokube.core.bounds import Bounds, Bounds1D, BoundsND
 from geokube.utils import util_methods
 import xarray as xr
 
 import geokube.utils.exceptions as ex
-from geokube.core.agg_mixin import AggMixin
-from geokube.core.axis import Axis, AxisType
-from geokube.core.dimension import Dimension
-from geokube.core.enums import LatitudeConvention, LongitudeConvention
-from geokube.core.variable import Variable
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
+
+from .axis import Axis, AxisType
+from .enums import LatitudeConvention, LongitudeConvention
+from .variable import Variable
+from .unit import Unit
 
 
 class CoordinateType(Enum):
@@ -23,139 +25,181 @@ class CoordinateType(Enum):
     INDEPENDENT = "independent"  # equivalent to CF DIMENSION Coordinate
 
 
-class Coordinate(AggMixin):
-    __slots__ = ("_variable", "_axis", "_bounds")
+#
+# coordinate is a dimension or axis with data and units
+# coordinate name is dimension/axis name
+# coordinate axis type is dimension/axis type
+#
+
+# class Coordinate(Variable, Dimension):
+# __slots__ = ("_bounds")
+#    def __init__(
+#        self,
+#        name
+#        data: Union[np.ndarray, da.Array, Variable],
+# axis: Optional[Union[str, AxisType, Axis, Dimension]],
+# dims: Optional[Tuple[Dimension]] = None,
+# units: Optional[Union[Unit, str]] = None,
+# bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
+# properties: Optional[Mapping[Any, Any]] = None,
+# encoding: Optional[Mapping[Any, Any]] = None
+
+# )
+
+
+class Coordinate(Variable, Axis):
+    __slots__ = ("_bounds",)
 
     _LOG = HCubeLogger(name="Coordinate")
 
     def __init__(
         self,
-        variable: Union[np.ndarray, da.Array, Variable],
-        axis: Axis,
-        bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
-        mapping: Optional[Mapping[str, str]] = None,
+        data: Union[np.ndarray, da.Array, xr.Variable],
+        axis: Union[str, Axis],
+        dims: Optional[Tuple[Axis]] = None,
+        units: Optional[Union[Unit, str]] = None,
+        bounds: Optional[Union[Bounds, np.ndarray, da.Array, xr.Variable]] = None,
+        properties: Optional[Mapping[Hashable, str]] = None,
+        encoding: Optional[Mapping[Hashable, str]] = None,
     ):
-        self._bounds = None
-        if mapping is None:
-            mapping = {}
-        if isinstance(variable, Variable):
-            self._variable = variable
-            if self._variable.name in mapping:
-                self._variable.properties.update(
-                    util_methods.trim_key(mapping[self._variable.name], exclude="api")
-                )
-                self._variable._name = mapping[self._variable.name]["api"]
-        elif isinstance(variable, np.ndarray) or isinstance(variable, da.Array):
-            # in this case, we assume an independent variable - passing only a numpy array
-            # as name the axis name will be used
-            # example:
-            #    latitude = Coordinate([70, 68, 66, 64, 62, 60], Axis('latitude', AxisType.LATITUDE))
-            #
-            props = {}
-            name = axis.name
-            if name in mapping:
-                name = mapping[name]["api"]
-                props = util_methods.trim_key(
-                    mapping[self._variable.name], exclude="api"
-                )
-            name = mapping.get(axis.name, axis.name)
-            self._variable = Variable(
-                name=name,
-                data=variable,
-                dims=Dimension(name=axis.name, axis=axis),
-                units=axis.default_units,
-                properties=props,
-            )
-        else:
+        if data is None:
+            raise ex.HCubeValueError("`data` cannot be `None`", logger=Coordinate._LOG)
+        if not isinstance(axis, (Axis, str)):
             raise ex.HCubeTypeError(
-                f"Expected types `numpy.ndarray`, `dask.Array`, or `geokube.Variable` but provided `{type(variable)}`",
-                logger=self._LOG,
+                f"Expected argument is one of the following types `geokube.Axis` or `str`, but provided {type(data)}",
+                logger=Coordinate._LOG,
             )
-        if not isinstance(axis, Axis):
-            raise ex.HCubeTypeError(
-                f"Expected types `geokube.Axis` but provided `{type(axis)}`",
-                logger=self._LOG,
+        Axis.__init__(self, name=axis)
+        # We need to update as when calling constructor of Variable, encoding will be overwritten
+        if encoding is not None:
+            self.encoding.update(encoding)
+        if (
+            not self.is_dim
+            and dims is None
+            and not isinstance(data, Number)
+            and not hasattr(data, "dims")
+        ):
+            raise ex.HCubeValueError(
+                "If coordinate is not a dimension, you need to supply `dims` argument!",
+                logger=Coordinate._LOG,
             )
-        self._axis = axis
-        if bounds is not None:
-            if isinstance(bounds, Variable):
-                self._bounds = bounds
-            else:
-                # in this case when only a numpy array is passed
-                # we assume 2-D numpy array with shape(coord.dim, 2)
-                #
-                if bounds.ndim != 2 or bounds.shape != (self._variable.shape[0], 2):
-                    raise ex.HCubeValueError(
-                        f"Expected shape for bounds is `({len(self._variable)},2)` but provided shape is `{bounds.shape}`",
-                        logger=self._LOG,
-                    )
-                self._bounds = Variable(
-                    name=f"{self._variable.name}_bounds",
-                    data=bounds,
-                    units=self._variable.units,
-                    dims=[self.axis, Dimension("bounds", Axis(AxisType.GENERIC))],
-                )
-
-    @property
-    def variable(self):
-        return self._variable
-
-    @property
-    def name(self) -> str:
-        return self._variable.name
-
-    @property
-    def dims_names(self):
-        return self._variable.dims_names
-
-    @property
-    def dims_axis_names(self):
-        return self._variable.dims_axis_names
-
-    @property
-    def dims(self):
-        return self._variable.dims
-
-    @property
-    def axis(self):
-        return self._axis
-
-    @property
-    def units(self):
-        return (
-            self._variable.units
-            if self._variable.units is not None
-            else self.axis.atype.default_units
+        if self.is_dim and (dims is None or len(dims) == 0):
+            dims = ()
+        Variable.__init__(
+            self,
+            data=data,
+            dims=dims,
+            units=units,
+            properties=properties,
+            encoding=self.encoding,
+        )
+        self._bounds = Coordinate._process_bounds(
+            bounds,
+            name=self.name,
+            variable_shape=self.shape,
+            units=self.units,
+            axis=(Axis)(self),
         )
 
-    @property
-    def data(self):
-        return self._variable.data
-
-    @property
-    def values(self):
-        return self._variable.values
-
-    @property
-    def properties(self):
-        return self._variable.properties
-
-    @property
-    def cf_encoding(self):
-        return self._variable.cf_encoding
-
-    @property
-    def ctype(self):
-        # TODO: verify logic!
-        if self.dims is None or self.dims == ():
-            if self.data.ndim == 0:  # it doesn't depend on any dim
-                return CoordinateType.SCALAR
+    @classmethod
+    @log_func_debug
+    def _process_bounds(cls, bounds, name, variable_shape, units, axis):
+        if bounds is None:
+            return None
+        if isinstance(bounds, dict):
+            if len(bounds) > 0:
+                _bounds = {}
+            for k, v in bounds.items():
+                if isinstance(v, Bounds):
+                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    _bounds[k] = v
+                if isinstance(v, Variable):
+                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    _bounds[k] = bound_class(data=v)
+                elif isinstance(v, (np.ndarray, da.Array)):
+                    # in this case when only a numpy array is passed
+                    # we assume 2-D numpy array with shape(coord.dim, 2)
+                    #
+                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    _bounds[k] = bound_class(
+                        data=v,
+                        units=units,
+                        dims=(axis, Axis("bounds", AxisType.GENERIC)),
+                    )
+                else:
+                    raise ex.HCubeTypeError(
+                        f"Each defined bound is expected to be one of the following types `geokube.Variable`, `numpy.array`, or `dask.Array`, but provided {type(bounds)}",
+                        logger=Coordinate._LOG,
+                    )
+        elif isinstance(bounds, Bounds):
+            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            _bounds = {f"{name}_bounds": bounds}
+        elif isinstance(bounds, Variable):
+            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            _bounds = {f"{name}_bounds": bound_class(bounds)}
+        elif isinstance(bounds, (np.ndarray, da.Array)):
+            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            _bounds = {
+                f"{name}_bounds": bound_class(
+                    data=bounds,
+                    units=units,
+                    dims=(axis, Axis("bounds", AxisType.GENERIC)),
+                )
+            }
         else:
-            if (len(self.dims) == 1) and (self.dims[0].axis == self.axis):
-                return CoordinateType.INDEPENDENT
-            if (len(self.dims) > 1) or (self.dims[0].axis == self.axis):
-                return CoordinateType.DEPENDENT
-        raise ex.HCubeValueError("Couldn't infer coordinate type!", logger=self._LOG)
+            raise ex.HCubeTypeError(
+                f"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided {type(bounds)}",
+                logger=Coordinate._LOG,
+            )
+        return _bounds
+
+    @classmethod
+    def _get_bounds_cls(cls, provided_bnds_shape, provided_data_shape):
+        ndim = len(provided_bnds_shape) - 1
+        if (
+            2 * ndim == 2
+            and provided_bnds_shape[-1] == 2
+            and provided_bnds_shape[0] == provided_data_shape[0]
+        ):
+            return Bounds1D
+        elif (
+            provided_bnds_shape[-1] == 2 * ndim
+            and tuple(provided_bnds_shape[:-1]) == provided_data_shape
+        ):
+            return BoundsND
+        else:
+            raise ex.HCubeValueError(
+                f"Bounds should have dimensions: (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
+                logger=Coordinate._LOG,
+            )
+
+    @property
+    def is_dimension(self) -> bool:
+        return super().is_dim
+
+    @property
+    def is_independent(self) -> bool:
+        return self.is_dimension or self.type is CoordinateType.SCALAR
+
+    @property
+    def is_dependent(self) -> bool:
+        return not self.is_independent
+
+    @property
+    def type(self):
+        # Cooridnate is scalar if data shows so. Dim(s) --  always defined
+        if self.shape == ():
+            return CoordinateType.SCALAR
+        else:
+            return (
+                CoordinateType.INDEPENDENT
+                if self.is_dimension
+                else CoordinateType.DEPENDENT
+            )
+
+    @property
+    def axis_type(self):
+        return self._type
 
     @property
     def bounds(self):
@@ -172,107 +216,97 @@ class Coordinate(AggMixin):
     @property
     # TODO:  check! I think this works only if lat/lon are independent!
     def convention(self) -> Optional[Union[LatitudeConvention, LongitudeConvention]]:
-        if self._axis.atype is AxisType.LATITUDE:
+        if self._axis.type is AxisType.LATITUDE:
             return (
                 LatitudeConvention.POSITIVE_TOP
                 if self.first() > self.last()
                 else LatitudeConvention.NEGATIVE_TOP
             )
-        if self._axis.atype is AxisType.LONGITUDE:
+        if self._axis.type is AxisType.LONGITUDE:
             return (
                 LongitudeConvention.POSITIVE_WEST
                 if self.min() >= 0
                 else LongitudeConvention.NEGATIVE_WEST
             )
 
+    @log_func_debug
+    # def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
+    #     da = self.to_xarray(encoding)
+    #     if not self.has_bounds:
+    #         return da
+    #     res_name = self.ncvar if encoding else self.name
+    #     bds = {k:v.to_xarray(encoding=encoding) for k,v in self.bounds.items()}
+    #     # TODO: how to store many bounds in `bounds` attribute? Should they be separated with a space, `bound1 bound2 bound3`?
+    #     da.attrs["bounds"] = " ".join(self.bounds.keys())
+    #     import pdb;pdb.set_trace()
+    #     return xr.DataArray(data=da, name=res_name, coords=bds)
+
+    @log_func_debug
+    def to_xarray(self, encoding=False) -> xr.DataArray:
+        var = Variable.to_xarray(self, encoding=encoding)
+        # In this method bounds are note returned, so also information about bounds shouldn't be encoded
+        _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
+        res_name = self.ncvar if encoding else self.name
+        dim_names = self.dim_ncvars if encoding else self.dim_names
+        return xr.DataArray(var, name=res_name, coords={res_name: var}, dims=dim_names)[
+            res_name
+        ]
+
+    @log_func_debug
+    def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
+        # TODO:
+        pass
+
     @classmethod
     @log_func_debug
-    def from_xarray_dataarray(
-        cls, da: xr.DataArray, mapping: Optional[Mapping[str, str]] = None
-    ) -> "Coordinate":
-        if not isinstance(da, xr.DataArray):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.DataArray` but provided `{type(da)}`",
-                logger=cls._LOG,
-            )
-        if (bounds := da.encoding.get("bounds")) is not None:
-            warnings.warn(
-                f"Bound(s) `{bounds}`` defined for the provided xarray.DataArray but couldn't be found! Bound(s) will be skipped!"
-            )
-
-        axis = Axis.from_xarray_dataarray(da, mapping=mapping)
-        var = Variable.from_xarray_dataarray(da, mapping=mapping)
-        return Coordinate(variable=var, axis=axis, bounds=None, mapping=mapping)
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataset(
+    def from_xarray(
         cls,
         ds: xr.Dataset,
-        coord_name: str,
-        errors: Optional[str] = "raise",
+        ncvar: str,
+        id_pattern: Optional[str] = None,
         mapping: Optional[Mapping[str, str]] = None,
+        copy: Optional[bool] = False,
     ) -> "Coordinate":
+
         if not isinstance(ds, xr.Dataset):
             raise ex.HCubeTypeError(
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
                 logger=cls._LOG,
             )
 
-        try:
-            darr = ds[coord_name]
-        except KeyError:
-            # Checking `coord_name not in ds` doesn't work for integer values, like x = {0,1,2,3,....}(for example: nemo-ocean-16)
-            if errors == "raise":
-                raise ex.HCubeKeyError(
-                    f"Requested coordinate `{coord_name}` does not exists in the provided dataset!",
-                    logger=cls._LOG,
+        da = ds[ncvar]
+        var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
+        var.encoding.update(name=ncvar)
+        axis_name = Variable._get_name(da, mapping, id_pattern)
+        axistype = AxisType.parse(da.attrs.get("axis", ncvar))
+        axis = Axis(
+            name=axis_name,
+            is_dim=ncvar in da.dims,
+            axistype=axistype,
+            encoding={"name": ncvar},
+        )
+
+        bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds", None))
+        if bnds_ncvar:
+            bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
+            bounds = {
+                bnds_name: Variable.from_xarray(
+                    ds[bnds_ncvar], id_pattern=id_pattern, copy=copy, mapping=mapping
                 )
-            elif errors == "warn":
-                warnings.warn(
-                    f"Requested coordinate `{coord_name}` does not exists in the provided dataset!"
-                )
-            return
+            }
+            if (
+                "units" not in ds[bnds_ncvar].attrs
+                and "units" not in ds[bnds_ncvar].encoding
+            ):
+                bounds[bnds_name]._units = var.units
+        else:
+            bounds = None
+        return Coordinate(data=var, axis=axis, bounds=bounds)
 
-        axis = Axis.from_xarray_dataarray(darr, mapping=mapping)
-        var = Variable.from_xarray_dataarray(darr, mapping=mapping)
-        bounds = darr.encoding.get("bounds", darr.attrs.get("bounds"))
-        if bounds:
-            bounds = Variable.from_xarray_dataarray(ds[bounds])
-            bounds._units = var.units
-        return Coordinate(variable=var, axis=axis, bounds=bounds, mapping=mapping)
 
-    @log_func_debug
-    def to_xarray_dataarray(self):
-        xr_var = self._variable.to_xarray_dataarray()
+class ArrayCoordinate(Coordinate):
+    pass
 
-        coords = self.to_dict_of_tuple()
 
-        if self.has_bounds:
-            # TODO: maybe we can return time_bounds as DataArray and it wouold have associated time dimension? or just raise a warning
-            warnings.warn(
-                "Coordinate contains bounds but they cannot be stored with time as xarray.DataArray. Bounds will be skipped!"
-            )
-            coords.pop(self.bounds.name, None)
-        xr_var = xr_var.assign_coords(coords)
-        return xr_var
-
-    @log_func_debug
-    def to_xarray_dataset(self):
-        coords = self.to_dict_of_tuple()
-        if self.has_bounds:
-            xr_bounds = self.bounds.to_xarray_dataset()
-            xr_bounds = xr_bounds.assign_coords(coords)
-            xr_bounds[self.name].encoding["bounds"] = self.bounds.name
-            return xr_bounds
-        xr_var = self._variable.to_xarray_dataarray()
-        xr_var = xr_var.assign_coords(coords)
-        return xr_var
-
-    def to_dict_of_tuple(self) -> Mapping[Hashable, Tuple[Any]]:
-        # return a mapping of coordinates dims_names, data and attributes
-        coords = {}
-        coords[self.name] = self.variable.to_tuple(return_variable=False)
-        if self.has_bounds:
-            coords[self.bounds.name] = self.bounds.to_tuple(return_variable=False)
-        return coords
+class ParametricCoordinate(Coordinate):
+    pass

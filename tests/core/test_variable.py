@@ -1,195 +1,189 @@
 import cf_units as cf
 import dask.array as da
 import numpy as np
+from geokube.core.unit import Unit
 import pytest
 import xarray as xr
 
 from geokube.core.axis import Axis, AxisType
-from geokube.core.dimension import Dimension
 from geokube.core.variable import Variable
 from geokube.utils.attrs_encoding import CFAttributes
+import geokube.utils.exceptions as ex
 from tests.fixtures import *
 
 
-def test_construct_from_numpy():
+def test_1():
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+    ):
+        _ = Variable({1, 2, 3, 4})
+
     d = np.random.random((10, 50))
     v = Variable(
-        name="var1",
         data=d,
-        units=cf.Unit("m"),
-        dims=[
-            Dimension("lat", Axis(atype=AxisType.LATITUDE)),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
-        ],
+        dims=[AxisType.LATITUDE, AxisType.LONGITUDE],
+        units="m",
+        properties={"prop1": "aaa"},
+        encoding={"enc1": "bbb"},
     )
-    assert v.name == "var1"
-    assert v.units
-    assert v.dims_names == ("lat", "lon")
-    assert v.ndim == 2
-    assert v.shape == (10, 50)
-    assert v.dims[0].atype is AxisType.LATITUDE
-    assert v.dims[1].atype is AxisType.LONGITUDE
 
-    v = Variable(
-        name="var1",
-        data=d,
-        units=cf.Unit("m"),
-        dims=[
-            Dimension("lat", Axis(atype=AxisType.LATITUDE, name="lat")),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
-        ],
-        cf_encoding={"standard_name": "variable_1"},
-    )
-    assert v.name == "var1"
-    assert v.units
-    assert v.dims_names == ("lat", "lon")
-    assert v.ndim == 2
-    assert v.shape == (10, 50)
-    assert v.dims[0].atype is AxisType.LATITUDE
-    assert v.dims[1].atype is AxisType.LONGITUDE
-    xrv = v.to_xarray_variable()
-    assert isinstance(xrv, xr.Variable)
-    assert xrv.attrs["standard_name"] == "variable_1"
-    assert np.all(xrv.values == d)
-    assert xrv.dims == ("lat", "longitude")
+    assert set(v.dim_names) == {"latitude", "longitude"}
+    assert set(v.dim_ncvars) == {"latitude", "longitude"}
+    assert v.properties == {"prop1": "aaa"}
+    assert v.units == Unit("m")
 
-
-def test_construct_from_dask():
-    d = da.random.random((10, 50, 5))
-    v = Variable(
-        name="var2",
-        data=d,
-        units=cf.Unit("m"),
-        dims=[
-            Dimension("time", Axis(atype=AxisType.TIME)),
-            Dimension("lat", Axis(atype=AxisType.LATITUDE)),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
-        ],
-    )
-    assert v.name == "var2"
-    assert v.units
-    assert v.dims_names == ("time", "lat", "lon")
-    assert v.ndim == 3
-    assert v.shape == (10, 50, 5)
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[1].atype is AxisType.LATITUDE
-    assert v.dims[2].atype is AxisType.LONGITUDE
-    assert isinstance(v.data, da.Array)
-
-
-def test_construct_from_xarray():
-    d = da.random.random((10, 50, 5))
-    xrv = xr.Variable(data=d, dims=("lat", "lon", "time"))
-    v = Variable(
-        name="var2",
-        data=xrv,
-        units="K",
-        dims=[
-            Dimension("time", Axis(atype=AxisType.TIME)),
-            Dimension("lat", Axis(atype=AxisType.LATITUDE)),
-            Dimension("lon", Axis(atype=AxisType.LONGITUDE)),
-        ],
-    )
-    assert v.name == "var2"
-    assert v.units == cf.Unit("K")
-    assert v.dims_names == ("time", "lat", "lon")
-    assert v.ndim == 3
-    assert v.shape == (10, 50, 5)
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[1].atype is AxisType.LATITUDE
-    assert v.dims[2].atype is AxisType.LONGITUDE
-
-
-def test_convert_units(era5_netcdf):
-    v = Variable.from_xarray_dataarray(era5_netcdf["tp"])
-    v.convert_units(unit="cm")
-    assert np.allclose(era5_netcdf["tp"].values * 100, v._variable.values)
-    assert v.units == cf.Unit("cm")
-
-    v = Variable.from_xarray_dataarray(era5_netcdf["tp"])
-    assert v.units == cf.Unit("m")
-    v2 = v.convert_units(unit="cm", inplace=False)
+    v2 = Variable(data=v)
     assert id(v) != id(v2)
-    assert v.units == cf.Unit("m")
-    assert v2.units == cf.Unit("cm")
-    assert np.allclose(v._variable.values, era5_netcdf["tp"])
-    assert np.allclose(v2._variable.values, era5_netcdf["tp"] * 100)
+    assert np.all(v._data == v2._data)
+    assert id(v._data) == id(v2._data)
+    assert set(v2.dim_names) == {"latitude", "longitude"}
+    assert set(v2.dim_ncvars) == {"latitude", "longitude"}
+    assert v2.properties == {"prop1": "aaa"}
+    assert v2.units == Unit("m")
+
+    xrv = v2.to_xarray(encoding=True)
+    assert isinstance(xrv, xr.Variable)
+    assert xrv.attrs == dict(**v.properties, units="m")
+    assert xrv.encoding == v.encoding
+    assert np.all(xrv.values == d)
+    assert set(xrv.dims) == {"latitude", "longitude"}
+
+    v3 = Variable.from_xarray(xr.DataArray(xrv))
+    assert id(v3) != id(v2)
+    assert id(v3._data) == id(v2._data)
+    assert set(v3.dim_names) == {"latitude", "longitude"}
+    assert set(v3.dim_ncvars) == {"latitude", "longitude"}
+    assert v3.properties == {"prop1": "aaa"}
+    assert v3.units == Unit("m")
 
 
-def test_from_xarray_dataarray_1(
-    era5_netcdf, era5_rotated_netcdf_tmin2m, nemo_ocean_16
-):
-    v = Variable.from_xarray_dataarray(era5_netcdf["longitude"])
-    assert v.name == "longitude"
-    assert v.dims_names == ("longitude",)
-    xrv = v.to_xarray_variable()
-    assert np.all(xrv == era5_netcdf["longitude"]._variable)
+def test_2():
+    d = np.random.random((10, 50, 20))
+    v = Variable(
+        data=d,
+        dims=[
+            Axis("lat", is_dim=True),
+            Axis("lon", is_dim=True),
+            Axis("depth", is_dim=True),
+        ],
+        units="m",
+        properties={"prop1": "aaa"},
+        encoding={"enc1": "bbb"},
+    )
+    assert set(v.dim_ncvars) == {"lat", "lon", "depth"}
+    xrv = v.to_xarray(encoding=True)
+    assert isinstance(xrv, xr.Variable)
+    assert xrv.attrs == v.properties
+    assert xrv.encoding == v.encoding
+    assert np.all(xrv.values == d)
+    assert set(xrv.dims) == {"lat", "lon", "depth"}
 
-    v = Variable.from_xarray_dataarray(era5_netcdf["tp"])
-    assert v.name == "tp"
-    assert v.dims_names == ("time", "latitude", "longitude")
-    assert v.units == cf.Unit("m")
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[2].atype is AxisType.LONGITUDE
-    assert v.dims[1].atype is AxisType.LATITUDE
-    xrv = v.to_xarray_variable()
-    assert np.all(xrv == era5_netcdf["tp"]._variable)
+    xrv = v.to_xarray(encoding=False)
+    assert isinstance(xrv, xr.Variable)
+    assert xrv.attrs == v.properties
+    assert xrv.encoding == v.encoding
+    assert np.all(xrv.values == d)
+    assert set(xrv.dims) == {"lat", "lon", "depth"}
 
-    v = Variable.from_xarray_dataarray(era5_netcdf["d2m"])
-    assert v.name == "d2m"
-    assert v.dims_names == ("time", "latitude", "longitude")
-    assert v.units == cf.Unit("K")
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[2].atype is AxisType.LONGITUDE
-    assert v.dims[1].atype is AxisType.LATITUDE
-    xrv = v.to_xarray_variable()
-    assert np.all(xrv == era5_netcdf["d2m"]._variable)
+    d = da.random.random((10, 50, 20))
+    v = Variable(
+        data=d,
+        dims=[
+            Axis(
+                name="lat",
+                axistype=AxisType.LATITUDE,
+                is_dim=True,
+                encoding={"name": "latT"},
+            ),
+            Axis(
+                name="lon",
+                axistype=AxisType.LONGITUDE,
+                is_dim=True,
+                encoding={"name": "lonN"},
+            ),
+            Axis(
+                name="depth",
+                axistype=AxisType.VERTICAL,
+                is_dim=True,
+                encoding={"name": "depthH"},
+            ),
+        ],
+        units="m",
+        properties={"prop1": "aaa"},
+        encoding={"enc1": "bbb"},
+    )
+    assert isinstance(v._data, da.Array)
+    assert set(v.dim_ncvars) == {"latT", "lonN", "depthH"}
+    assert set(v.dim_names) == {"lat", "lon", "depth"}
+    assert v.units == Unit("m")
 
-    v = Variable.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["TMIN_2M"])
-    assert v.name == "TMIN_2M"
-    assert v._cf_encoding["standard_name"] == "air_temperature"
-    assert v.units == cf.Unit("K")
-    assert v.dims_names == ("time", "grid_latitude", "grid_longitude")
-    assert v.dims[0].atype is AxisType.TIME
-    assert v.dims[0].axis.name == "time"
-    assert v.dims[1].atype is AxisType.Y
-    assert v.dims[1].axis.name == "rlat"
-    assert v.dims[2].atype is AxisType.X
-    assert v.dims[2].axis.name == "rlon"
+    xrv = v.to_xarray(encoding=True)
+    assert isinstance(xrv, xr.Variable)
+    assert xrv.attrs == v.properties
+    assert xrv.encoding == v.encoding
+    assert np.all(xrv.values == d)
+    assert set(xrv.dims) == {"latT", "lonN", "depthH"}
 
-
-def test_to_xarray_dataarray_1(era5_netcdf, era5_rotated_netcdf_tmin2m, nemo_ocean_16):
-    v = Variable.from_xarray_dataarray(era5_rotated_netcdf_tmin2m["TMIN_2M"])
-    res = v.to_xarray_dataarray()
-    assert set(res.coords.keys()) == {"time", "rlat", "rlon"}
-    assert res["rlat"].shape == (259,)
-
-
-def test_to_xarray_dataarray_2(nemo_ocean_16):
-    v = Variable.from_xarray_dataarray(nemo_ocean_16["vt"])
-    res = v.to_xarray_dataarray()
-    assert set(res.coords.keys()) == {"time_counter", "depthv", "y", "x"}
-
-
-def test_to_xarray_dataset(nemo_ocean_16):
-    v = Variable.from_xarray_dataarray(nemo_ocean_16["vt"])
-    res = v.to_xarray_dataset()
-    assert isinstance(res, xr.Dataset)
-    assert list(res.data_vars.keys()) == ["vt"]
-    assert set(res.coords.keys()) == {"time_counter", "depthv", "y", "x"}
-
-
-def test_split_attrs():
-    attrs = {"standard_name": "aa", "some_text": "bb", "positive": "up"}
-    properties, cf_encoding = CFAttributes.split_attrs(attrs)
-    assert "standard_name" in cf_encoding
-    assert "positive" in cf_encoding
-    assert "some_text" in properties
-    assert len(properties) == 1
-    assert len(cf_encoding) == 2
+    xrv = v.to_xarray(encoding=False)
+    assert isinstance(xrv, xr.Variable)
+    assert xrv.attrs == v.properties
+    assert xrv.encoding == v.encoding
+    assert np.all(xrv.values == d)
+    assert set(xrv.dims) == {"lat", "lon", "depth"}
+    assert xrv.attrs["units"] == "m"
 
 
-# def test_variable_getitem(era5_netcdf):
-#     v = Variable.from_xarray_dataarray(era5_netcdf["tp"]).to_xarray_variable()
-#     import pdb;pdb.set_trace()
-#     pass
+def test_3(era5_netcdf):
+    v = Variable.from_xarray(era5_netcdf["tp"], id_pattern="prefix:{units}_{long_name}")
+
+    d1 = v.dims[0]
+    assert d1.type is AxisType.TIME
+    assert (
+        d1.name == "time"
+    )  # if any id_pattern component is not found, then defaults is taken
+
+    d2 = v.dims[1]
+    assert d2.type is AxisType.LATITUDE
+    assert d2.name == "prefix:degrees_north_latitude"
+    assert d2.ncvar == "latitude"
+
+    d3 = v.dims[2]
+    assert d3.type is AxisType.LONGITUDE
+    assert d3.name == "prefix:degrees_east_longitude"
+    assert d3.ncvar == "longitude"
+
+    xrv1 = v.to_xarray(encoding=True)
+    assert xrv1.attrs == era5_netcdf["tp"].attrs
+    assert xrv1.encoding == era5_netcdf["tp"].encoding
+    assert set(xrv1.dims) == set(era5_netcdf["tp"].dims)
+
+    xrv1 = v.to_xarray(encoding=False)
+    assert xrv1.attrs == era5_netcdf["tp"].attrs
+    assert xrv1.encoding == era5_netcdf["tp"].encoding
+    assert set(xrv1.dims) == {
+        "prefix:degrees_east_longitude",
+        "prefix:degrees_north_latitude",
+        "time",
+    }
+
+
+def test_4(era5_rotated_netcdf_wso):
+    v = Variable.from_xarray(
+        era5_rotated_netcdf_wso["W_SO"], mapping={"soil1": {"name": "my_depth"}}
+    )
+    assert set(v.dim_ncvars) == (set(era5_rotated_netcdf_wso.dims.keys()) - {"bnds"})
+    mask = ~np.isnan(v._data)
+    assert np.allclose(
+        np.array(v._data)[mask],
+        np.array(era5_rotated_netcdf_wso["W_SO"]._variable._data[mask]),
+    )
+    r1 = v.to_xarray(encoding=True)
+    assert r1.dims == era5_rotated_netcdf_wso["W_SO"].dims
+    assert r1.encoding == era5_rotated_netcdf_wso["W_SO"].encoding
+    assert r1.attrs == era5_rotated_netcdf_wso["W_SO"].attrs
+
+    r2 = v.to_xarray(encoding=False)
+    assert set(r2.dims) == {"my_depth", "time", "grid_latitude", "grid_longitude"}
+    assert r2.encoding == era5_rotated_netcdf_wso["W_SO"].encoding
+    assert r2.attrs == era5_rotated_netcdf_wso["W_SO"].attrs

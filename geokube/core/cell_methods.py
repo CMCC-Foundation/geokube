@@ -1,7 +1,6 @@
+from __future__ import annotations
 from typing import Iterable, Union
-
 import numpy as np
-
 from geokube.core.enums import MethodType
 
 
@@ -38,7 +37,7 @@ class CellMethod:
         return not (self == other)
 
     @classmethod
-    def parse_cellmethods(cls, val: str) -> "CellMethod":
+    def parse(cls, val: str) -> "CellMethod":
         if val is None:
             return None
         interval_start_idx = (
@@ -104,9 +103,6 @@ class CellMethod:
             where=where_val,
             comment=comment_val,
         )
-
-    def encode_for_netcdf(self):
-        return self.__str__()
 
     def __str__(self) -> str:
         res_str = self.method.value[0]

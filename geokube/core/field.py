@@ -6,6 +6,8 @@ from itertools import chain
 from numbers import Number
 from typing import Any, Callable, Hashable, List, Mapping, Optional, Tuple, Union
 
+import numpy as np
+
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
 import dask.array as da
@@ -20,13 +22,11 @@ from xarray.core.options import OPTIONS
 import geokube
 
 import geokube.utils.exceptions as ex
-import geokube.utils.xarray_parser as xrp
 from geokube.core.unit import Unit
-from geokube.core.agg_mixin import AggMixin
-from geokube.core.axis import Axis, AxisType
+from geokube.core.axis import Axis
 from geokube.core.cell_methods import CellMethod
 from geokube.core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
-from geokube.core.dimension import Dimension
+from geokube.core.axis import Axis
 from geokube.core.domain import Domain
 from geokube.core.coordinate import Coordinate
 from geokube.core.enums import MethodType, RegridMethod
@@ -35,7 +35,8 @@ from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
 from geokube.utils.indexer_dict import IndexerDict
-from geokube.utils.attrs_encoding import split_to_attrs_and_encoding
+
+from .domainmixin import DomainMixin
 
 _CARTOPY_FEATURES = {
     "borders": cartf.BORDERS,
@@ -48,63 +49,60 @@ _CARTOPY_FEATURES = {
 }
 
 
-class Field(AggMixin):
+class Field(Variable, DomainMixin):
 
-    __slots__ = (
-        "_variable",
-        "_domain",
-        "_cell_methods",
-        "_ancillary",
-    )
+    __slots__ = ("_name", "_domain", "_cell_methods", "_ancillary_data")
 
     _LOG = HCubeLogger(name="Field")
 
     def __init__(
         self,
-        variable: Variable = None,
-        domain: Domain = None,
+        name: str,
+        data: Union[Number, np.ndarray, da.Array, xr.Variable] = None,
+        dims: Optional[Tuple[Axis]] = None,
+        units: Optional[Union[Unit, str]] = None,
+        properties: Optional[Mapping[Hashable, str]] = None,
+        encoding: Optional[Mapping[Hashable, str]] = None,
+        domain: Optional[Union[Mapping[Hashable, Any], Domain]] = None,
         cell_methods: Optional[CellMethod] = None,
-        ancillary: Optional[Mapping[Hashable, Variable]] = None,
+        ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
     ) -> None:
-        self._variable = variable
-        self._domain = domain
+
+        super().__init__(
+            data=data, units=units, dims=dims, properties=properties, encoding=encoding
+        )
+        self._ancillary = None
+        self._name = name
+        self._domain = domain if isinstance(domain, Domain) else Domain(domain)
+
         self._cell_methods = cell_methods
-        self._ancillary = ancillary
-
-    def __repr__(self) -> str:
-        return formatting.dataset_repr(self.to_xarray())
-
-    def _repr_html_(self):
-        if OPTIONS["display_style"] == "text":
-            return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
-        return formatting_html.dataset_repr(self.to_xarray())
+        if ancillary is not None:
+            if not isinstance(ancillary, dict):
+                raise ex.HCubeTypeError(
+                    f"Expected type of `ancillary` argument is dict, but the provided one if {type(ancillary)}",
+                    logger=Field._LOG,
+                )
+            res_anc = {}
+            for k, v in ancillary.items():
+                if not isinstance(v, (np.ndarray, da.Array, Variable, Number)):
+                    raise ex.HCubeTypeError(
+                        f"Expected type of single ancillary variable is: `numpy.ndarray`, `dask.Array`, `geokube.Variable`, or `Number`, but the provided one if {type(v)}",
+                        logger=Field._LOG,
+                    )
+                # TODO: what should be axis and dims for ancillary variables? SHould it be `Variable`?
+                res_anc[k] = Variable(data=v)
+            self._ancillary = res_anc
 
     def __str__(self) -> str:
-        return f"Field {self.name}:{self.variable.name} with cell method: {self.cell_methods}"
-
-    @property
-    def variable(self) -> Variable:
-        return self._variable
-
-    @property
-    def data(self):
-        return self.variable.data
-
-    @property
-    def values(self):
-        return self._variable.values
-
-    @property
-    def units(self) -> Unit:
-        return self.variable.units
+        return f"Field {self.name}:{self.ncvar} with cell method: {self.cell_methods}"
 
     @property
     def name(self) -> str:
-        return self.variable.name
+        return self._name
 
     @property
-    def properties(self) -> Optional[Mapping[Hashable, str]]:
-        return self.variable.properties
+    def ncvar(self) -> str:
+        return self._encoding.get("name", self.name)
 
     @property
     def cell_methods(self) -> Optional[CellMethod]:
@@ -115,143 +113,24 @@ class Field(AggMixin):
         return self._domain
 
     @property
-    def dims(self) -> Tuple[Dimension]:
-        return self.variable.dims
-
-    @property
-    def dims_names(self) -> Tuple[str]:
-        return self.variable.dims_names
-
-    @property
     def ancillary(self) -> Optional[Mapping[Hashable, Variable]]:
         return self._ancillary
 
-    def get_nbytes(self):
-        return self.values.nbytes
-
-    @staticmethod
-    def _get_variable_name_and_props(
-        da: xr.DataArray,
-        field_id: Optional[str] = None,
-        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
-    ):
-        name = da.name
-        props = {}
-        # Mapping has higher priority than field_id
-        if mapping is not None and da.name in mapping:
-            name = mapping[da.name]["api"]
-            props = util_methods.trim_key(mapping[da.name], exclude="api")
-        elif field_id is not None:
-            name = xrp.form_field_id(field_id, da.attrs)
-        return name, props
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataarray(
-        cls,
-        da: xr.DataArray,
-        deep_copy=False,
-        field_id: Optional[str] = None,
-        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
-    ):
-        if not isinstance(da, xr.DataArray):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.DataArray` but provided `{type(da)}`",
-                logger=cls._LOG,
-            )
-        _da = da.copy(deep_copy)  # TO CHECK
-        cell_methods = CellMethod.parse_cellmethods(_da.attrs.pop("cell_methods", None))
-        variable = Variable.from_xarray_dataarray(_da, mapping=mapping)
-        domain = Domain.from_xarray_dataarray(_da, mapping=mapping)
-
-        name, props = Field._get_variable_name_and_props(
-            _da, field_id=field_id, mapping=mapping
-        )
-        variable._name = name
-        variable.properties.update(props)
-        return Field(variable, domain, cell_methods)
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataset(
-        cls,
-        ds: xr.Dataset,
-        field_name: str,
-        deep_copy=False,
-        field_id: Optional[str] = None,
-        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
-    ):
-        if not isinstance(ds, xr.Dataset):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
-                logger=cls._LOG,
-            )
-        _da = ds[field_name].copy(deep_copy)  # TO CHECK
-
-        cell_methods = CellMethod.parse_cellmethods(_da.attrs.pop("cell_methods", None))
-        variable = Variable.from_xarray_dataarray(_da, mapping=mapping)
-        # ignore if in `coordinates` attribute are coords not defined in dataset.
-        domain = Domain.from_xarray_dataset(
-            ds, field_name=field_name, errors="ignore", mapping=mapping
-        )
-        _replace_coordinates_encoding(variable, domain.as_cf_coordinates_encoding())
-
-        name, props = Field._get_variable_name_and_props(
-            _da, field_id=field_id, mapping=mapping
-        )
-        variable._name = name
-        variable.properties.update(props)
-        return Field(variable, domain, cell_methods)
-
-    @staticmethod
-    def _to_xarray(variable, domain, cell_methods, ancillary):
-        data_vars = {}
-
-        data_vars[variable.name] = variable.to_xarray_dataarray()
-        _replace_coordinates_encoding(
-            data_vars[variable.name], domain.as_cf_coordinates_encoding()
-        )
-        if cell_methods is not None:
-            data_vars[variable.name].attrs[
-                "cell_methods"
-            ] = cell_methods.encode_for_netcdf()
-
-        if ancillary is not None:
-            for a in ancillary:
-                data_vars[a] = a.to_xarray_dataarray()
-
-        coords_dim = domain.to_dict_of_tuple()
-        coords_dict = {}
-        dataset_coords = {}
-        # Needed to split tuples for existing dims
-        # and for dims that must be created, like bounds (dataset_coords)
-        # Combining both in xr.Dataset(...., coords=...) fails
-        for k, v in coords_dim.items():
-            if k in data_vars[variable.name].dims:
-                coords_dict[k] = v
-            else:
-                dataset_coords[k] = v
-
-        if (crs_ds := domain._to_xarray_crs()) is not None:
-            data_vars[variable.name].attrs["grid_mapping"] = "crs"
-            dataset_coords["crs"] = crs_ds
-        data_vars[variable.name] = data_vars[variable.name].assign_coords(coords_dict)
-        return xr.Dataset(data_vars=data_vars, coords=dataset_coords)
-
-    @log_func_debug
-    def to_xarray(self) -> xr.Dataset:
-        return Field._to_xarray(
-            self.variable, self.domain, self.cell_methods, self.ancillary
+    def __contains__(self, key):
+        raise ex.HCubeNotImplementedError(
+            "You cannot check inclusion for a geokube.Files", logger=Field._LOG
         )
 
-    def get_netcdf_name_for_axistype(self, axis_type: Union[AxisType, str]):
-        axis_type = AxisType.parse_type(axis_type)
-        if axis_type not in self.domain:
-            raise ex.HCubeNoSuchAxisError(
-                f"Axis of type: `{axis_type}` is not defined for the dataset!",
-                logger=self._LOG,
-            )
-        return self.domain[axis_type].axis.name
+    def __repr__(self) -> str:
+        return self.to_xarray(encoding=False).__repr__()
+
+    #        return formatting.array_repr(self.to_xarray())
+
+    def _repr_html_(self):
+        return self.to_xarray(encoding=False)._repr_html_()
+        # if OPTIONS["display_style"] == "text":
+        #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
+        # return formatting_html.array_repr(self)
 
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
@@ -324,8 +203,8 @@ class Field(AggMixin):
 
         # Spatial subseting.
         idx = {
-            domain[AxisType.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max()],
-            domain[AxisType.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max()],
+            domain[Axis.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max()],
+            domain[Axis.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max()],
         }
         ds = (
             self._check_and_roll_longitude(self.to_xarray(), idx)
@@ -341,19 +220,18 @@ class Field(AggMixin):
     ):
         # TODO: add vertical also
         domain = self._domain
-        # TODO: Check if these are NumPy arrays.
-        lat = domain.latitude.variable.data
-        lon = domain.longitude.variable.data
+        lat = domain.latitude.values
+        lon = domain.longitude.values
 
         ind_lat = domain.is_latitude_independent
         ind_lon = domain.is_longitude_independent
         if ind_lat and ind_lon:
             idx = {
                 domain.latitude.name: np.s_[south:north]
-                if util_methods.is_nondecreasing(domain.latitude.data)
+                if util_methods.is_nondecreasing(domain.latitude.values)
                 else np.s_[north:south],
                 domain.longitude.name: np.s_[west:east]
-                if util_methods.is_nondecreasing(domain.longitude.data)
+                if util_methods.is_nondecreasing(domain.longitude.values)
                 else np.s_[east:west],
             }
             return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
@@ -368,15 +246,15 @@ class Field(AggMixin):
 
         # Spatial subseting.
         idx = {
-            domain[AxisType.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max() + 1],
-            domain[AxisType.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max() + 1],
+            domain[Axis.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max() + 1],
+            domain[Axis.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max() + 1],
         }
         ds = (
             self._check_and_roll_longitude(self.to_xarray(), idx)
             if roll_if_needed
             else self.to_xarray()
         )
-        return Field.from_xarray_dataset(
+        return Field.from_xarray(
             ds=ds.isel(indexers=idx), field_name=self.name, deep_copy=False
         )
 
@@ -446,10 +324,10 @@ class Field(AggMixin):
             # Adjusting the shape of the latitude and longitude coordinates.
             # TODO: Check if these are NumPy arrays.
             # TODO: Check axes and shapes manipulation again.
-            lat_coord = domain.latitude.variable.data
+            lat_coord = domain.latitude.values
             lat_dims = (np.s_[:],) + (np.newaxis,) * lat_coord.ndim
             lat_coord = lat_coord[np.newaxis, :]
-            lon_coord = domain.longitude.variable.data
+            lon_coord = domain.longitude.values
             lon_dims = (np.s_[:],) + (np.newaxis,) * lon_coord.ndim
             lon_coord = lon_coord[np.newaxis, :]
 
@@ -479,10 +357,10 @@ class Field(AggMixin):
             # Spatial subseting.
             idx = {
                 # The same order of dimensions for LATITUDE and LONGITUDE
-                domain[AxisType.LATITUDE]
+                domain[Axis.LATITUDE]
                 .dims[1]
                 .axis.name: xr.DataArray(data=idx[:, 1], dims="points"),
-                domain[AxisType.LATITUDE]
+                domain[Axis.LATITUDE]
                 .dims[0]
                 .axis.name: xr.DataArray(data=idx[:, 0], dims="points"),
             }
@@ -498,7 +376,7 @@ class Field(AggMixin):
     @log_func_debug
     def sel(
         self,
-        indexers: Mapping[Union[AxisType, str], Any] = None,
+        indexers: Mapping[Union[Axis, str], Any] = None,
         roll_if_needed: bool = True,
         method: str = None,
         tolerance: Number = None,
@@ -519,9 +397,7 @@ class Field(AggMixin):
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
-        indexers = {
-            self.get_netcdf_name_for_axistype(k): v for k, v in indexers.items()
-        }
+        indexers = {self.get_netcdf_name_for_Axis(k): v for k, v in indexers.items()}
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
         return Field.from_xarray_dataset(ds, field_name=self.name)
 
@@ -595,32 +471,36 @@ class Field(AggMixin):
             src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
         )
         x, y = pts[:, :, 0], pts[:, :, 1]
-        # Building the grid.
-        dims = [domain.latitude.name, domain.longitude.name]
+
+        # Building the grid (using xarray)
+        dims = [domain.latitude.nc_name, domain.longitude.nc_name]
         grid = xr.Dataset(
-            data_vars={domain.x.name: (dims, x), domain.y.name: (dims, y)},
-            coords={domain.latitude.name: lat, domain.longitude.name: lon}
+            data_vars={domain.x.nc_name: (dims, x), domain.y.nc_name: (dims, y)},
+            coords={domain.latitude.nc_name: lat, domain.longitude.nc_name: lon},
         )
 
-        # grid[domain.latitude.name].attrs.update(units=domain.latitude.units) 
-        # grid[domain.longitude.name].attrs.update(units=domain.longitude.units)
+        grid[domain.latitude.nc_name].attrs = domain.latitude.variable.properties
+        grid[domain.longitude.nc_name].attrs = domain.longitude.variable.properties
+        grid[domain.latitude.nc_name].encoding = domain.latitude.variable.encoding
+        grid[domain.longitude.nc_name].encoding = domain.longitude.variable.encoding
 
         # Interpolating the data.
         dset = self.to_xarray()
-        dset = dset.drop(labels=[domain.latitude.name, domain.longitude.name])
+        dset = dset.drop(labels=[domain.latitude.nc_name, domain.longitude.nc_name])
         regrid_dset = dset.interp(
             coords={
-                domain.x.name: grid[domain.x.name],
-                domain.y.name: grid[domain.y.name]
+                domain.x.nc_name: grid[domain.x.nc_name],
+                domain.y.nc_name: grid[domain.y.nc_name],
             },
-            method='nearest'
+            method="nearest",
         )
-        regrid_dset = regrid_dset.drop(labels=[domain.x.name, domain.y.name])
-        field = Field.from_xarray_dataset(
-            ds=regrid_dset, field_name=self.name, deep_copy=False
-        )
+        regrid_dset = regrid_dset.drop(labels=[domain.x.nc_name, domain.y.nc_name])
+        fillValue = -9.0e-20
+        regrid_dset.fillna(fillValue)
+        regrid_dset[self.nc_name].encoding["_FillValue"] = fillValue
+        field = Field.from_xarray(ds=regrid_dset, ncvar_name=self.nc_name, copy=False)
         field.domain._crs = RegularLatLon()
-        
+
         return field
 
     # TO CHECK
@@ -675,19 +555,19 @@ class Field(AggMixin):
             reuse_weights = False
 
         # Input domain
-        lat_in = self.domain[AxisType.LATITUDE]
-        lon_in = self.domain[AxisType.LONGITUDE]
+        lat_in = self.domain[Axis.LATITUDE]
+        lon_in = self.domain[Axis.LONGITUDE]
         name_map_in = {lat_in.axis.name: "lat", lon_in.axis.name: "lon"}
 
         # Output domain
-        lat_out = target_domain[AxisType.LATITUDE]
-        lon_out = target_domain[AxisType.LONGITUDE]
+        lat_out = target_domain[Axis.LATITUDE]
+        lon_out = target_domain[Axis.LONGITUDE]
         name_map_out = {lat_out.axis.name: "lat", lon_out.axis.name: "lon"}
 
         conserv_methods = {RegridMethod.CONSERVATIVE, RegridMethod.CONSERVATIVE_NORMED}
         if method in conserv_methods:
-            self.domain.compute_bounds(AxisType.LATITUDE)
-            self.domain.compute_bounds(AxisType.LONGITUDE)
+            self.domain.compute_bounds(Axis.LATITUDE)
+            self.domain.compute_bounds(Axis.LONGITUDE)
             name_map_in.update(
                 {lat_in.bounds.name: "lat_b", lon_in.bounds.name: "lon_b"}
             )
@@ -713,9 +593,9 @@ class Field(AggMixin):
         xr_ds = self.to_xarray()
         result = regridder(xr_ds, keep_attrs=True, skipna=False)
         result = result.rename({"lat": lat_in.axis.name, "lon": lon_in.axis.name})
+        result[self.variable.name].encoding = xr_ds[self.variable.name].encoding
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-
         field_out = Field.from_xarray_dataset(result, field_name=self.variable.name)
         # Take `crs`` from `target_domain` as in `result` there can be still the coordinate responsible for CRS
         field_out.domain._crs = target_domain.crs
@@ -752,7 +632,7 @@ class Field(AggMixin):
         Resample to 2 month frequency taking the sum (omitting NaNs) over each 2 months
         >>> resulting_field = field.resample("nansum", frequency='2M')
         """
-        time_axis = self.domain[AxisType.TIME]
+        time_axis = self.domain[Axis.TIME]
         time = time_axis.name
         func = None
         if isinstance(operator, str):
@@ -843,17 +723,17 @@ class Field(AggMixin):
         # Resolving dimensions, coordinates, and coordinate system:
         crs = self._domain.crs
         dims = set()
-        time = self._domain[AxisType.TIME]
+        time = self._domain[Axis.TIME]
         if time is not None:
             dims.add(time.name)
-        vert = self._domain[AxisType.VERTICAL]
+        vert = self._domain[Axis.VERTICAL]
         if vert is not None:
             dims.add(vert.name)
-        lat = self._domain[AxisType.LATITUDE]
+        lat = self._domain[Axis.LATITUDE]
         if lat is not None:
             dims.add(lat.name)
             kwargs.setdefault("y", lat.name)
-        lon = self._domain[AxisType.LONGITUDE]
+        lon = self._domain[Axis.LONGITUDE]
         if lon is not None:
             dims.add(lon.name)
             kwargs.setdefault("x", lon.name)
@@ -984,14 +864,71 @@ class Field(AggMixin):
 
         return plot
 
+    @log_func_debug
+    def to_xarray(self, encoding=True) -> xr.Dataset:
+        data_vars = {}
+        var_name = self.ncvar if encoding else self.name
 
-def _replace_coordinates_encoding(
-    da: Union[xr.DataArray, xr.Variable], coordinates_attr: str
-):
-    if isinstance(da, (xr.DataArray, xr.Variable)):
-        if "coordinates" in da.attrs:
-            da.attrs["coordinates"] = coordinates_attr
-        else:
-            da.encoding["coordinates"] = coordinates_attr
-    elif isinstance(da, Variable):
-        da._cf_encoding["coordinates"] = coordinates_attr
+        data_vars[var_name] = super().to_xarray(encoding)  # use Variable to_array
+
+        coords = self.domain.aux_coords
+
+        if coords:
+            if encoding:
+                coords_names = " ".join([self.domain.coords[x].ncvar for x in coords])
+            else:
+                coords_names = " ".join([self.domain.coords[x].name for x in coords])
+            data_vars[var_name].encoding["coordinates"] = coords_names
+
+        coords = self.domain.to_xarray(encoding)
+        data_vars[var_name].encoding["grid_mapping"] = "crs"
+
+        if self.cell_methods is not None:
+            data_vars[var_name].attrs["cell_methods"] = str(self.cell_methods)
+
+        if self._ancillary is not None:
+            for a in self.ancillary:
+                data_vars[a] = a.to_xarray(encoding)
+
+        return xr.Dataset(data_vars=data_vars, coords=coords)
+
+    @classmethod
+    @log_func_debug
+    def from_xarray(
+        cls,
+        ds: xr.Dataset,
+        ncvar: str,
+        id_pattern: Optional[str] = None,
+        mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
+        copy=False,
+    ):
+        if not isinstance(ds, xr.Dataset):
+            raise ex.HCubeTypeError(
+                f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
+                logger=cls._LOG,
+            )
+
+        print(f"field {ncvar}")
+        da = ds[ncvar].copy(copy)  # TODO: TO CHECK
+        cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
+        var = Variable.from_xarray(da, id_pattern, mapping=mapping)
+        # We need to update `encoding` of var, as `Variable` doesn't contain `name`
+        var.encoding.update(name=ncvar)
+
+        domain = Domain.from_xarray(
+            ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
+        )
+        name = Variable._get_name(da, mapping=mapping, id_pattern=id_pattern)
+        # TODO ancillary variables
+        field = Field(
+            name=name,
+            data=var.data,
+            dims=var.dims,
+            units=var.units,
+            properties=var.properties,
+            encoding=var.encoding,
+            domain=domain,
+            cell_methods=cell_methods,
+        )
+        print(field)
+        return field
