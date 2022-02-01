@@ -11,7 +11,6 @@ import numpy as np
 import xarray as xr
 
 import geokube.utils.exceptions as ex
-import geokube.utils.xarray_parser as xrp
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import (
     CoordSystem,

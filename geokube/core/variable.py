@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from html import escape
+from string import Formatter, Template
 from numbers import Number
 from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
+import warnings
 
 import dask.array as da
 import numpy as np
@@ -16,7 +18,6 @@ from geokube.core.unit import Unit
 from geokube.utils import formatting, formatting_html, util_methods
 from geokube.utils.decorators import log_func_debug
 from geokube.utils.hcube_logger import HCubeLogger
-import geokube.utils.xarray_parser as xrp
 
 
 class Variable(xr.Variable):
@@ -169,9 +170,23 @@ class Variable(xr.Variable):
     ) -> str:
         if mapping is not None and da.name in mapping:
             return mapping[da.name]["name"]
-        if id_pattern is not None:
-            return xrp.form_id(id_pattern, da.attrs)
-        return da.attrs.get("standard_name", da.name)
+        if id_pattern is None:
+            return da.attrs.get("standard_name", da.name)
+        fmt = Formatter()
+        _, field_names, _, _ = zip(*fmt.parse(id_pattern))
+        field_names = [f for f in field_names if f]
+        # Replace intake-like placeholder to string.Template-like ones
+        for k in field_names:
+            if k not in da.attrs:
+                warnings.warn(
+                    f"Requested id_pattern component - `{k}` is not present among provided attributes!"
+                )
+                return da.attrs.get("standard_name", da.name)
+            id_pattern = id_pattern.replace(
+                f"{{{k}}}", f"${{{k}}}"
+            )  # "{some_field}" -> "${some_field}"
+        template = Template(id_pattern)
+        return template.substitute(**da.attrs)
 
     @classmethod
     @log_func_debug

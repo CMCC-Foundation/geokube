@@ -139,7 +139,9 @@ def test_3(era5_netcdf):
 
     d1 = v.dims[0]
     assert d1.type is AxisType.TIME
-    assert d1.name == "prefix:<unknown>_time"
+    assert (
+        d1.name == "time"
+    )  # if any id_pattern component is not found, then defaults is taken
 
     d2 = v.dims[1]
     assert d2.type is AxisType.LATITUDE
@@ -162,7 +164,7 @@ def test_3(era5_netcdf):
     assert set(xrv1.dims) == {
         "prefix:degrees_east_longitude",
         "prefix:degrees_north_latitude",
-        "prefix:<unknown>_time",
+        "time",
     }
 
 

@@ -1,6 +1,6 @@
 import cartopy.crs as ccrs
 import numpy as np
-from geokube.geokube.core.unit import Unit
+from geokube.core.unit import Unit
 import xarray as xr
 from geokube.backend.netcdf import open_datacube
 from geokube.core.coord_system import RegularLatLon
@@ -20,8 +20,11 @@ def test_1(era5_netcdf):
     dc = DataCube.from_xarray(era5_netcdf)
     assert "tp" in dc
     assert "d2m" in dc
+    assert dc.properties == era5_netcdf.attrs
+    assert dc.encoding == era5_netcdf.encoding
 
     dc = DataCube.from_xarray(era5_netcdf, id_pattern="{__ddsapi_name}")
+    # TODO: __ddsapi_name missing for lat/lon/time, what then?
     assert "total_precipitation" in dc
     assert "2_metre_dewpoint_temperature" in dc
     assert dc["total_precipitation"].domain.crs == crs.RegularLatLon()
