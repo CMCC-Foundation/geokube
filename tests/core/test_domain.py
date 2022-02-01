@@ -70,8 +70,8 @@ def test_2(nemo_ocean_16):
     assert "longitude" in domain
     assert "depthv" in domain  # domain.depthv.attrs['name'] is `depthv`
     assert domain["depthv"].units == Unit("m")
-    assert "x" in domain
-    assert "y" in domain
+    assert "x" not in domain
+    assert "y" not in domain
     assert domain.time.has_bounds
     assert isinstance(domain.time.bounds["time_centered_bounds"], Bounds1D)
     assert domain.vertical.has_bounds

@@ -279,20 +279,12 @@ class Coordinate(Variable, Axis):
         var.encoding.update(name=ncvar)
         axis_name = Variable._get_name(da, mapping, id_pattern)
         axistype = AxisType.parse(da.attrs.get("axis", ncvar))
-        if ncvar in da.dims:
-            axis = Axis(
-                name=axis_name,
-                is_dim=True,
-                axistype=axistype,
-                encoding={"name": ncvar},
-            )
-        else:
-            axis = Axis(
-                name=axis_name,
-                is_dim=False,
-                axistype=axistype,
-                encoding={"name": ncvar},
-            )
+        axis = Axis(
+            name=axis_name,
+            is_dim=ncvar in da.dims,
+            axistype=axistype,
+            encoding={"name": ncvar},
+        )
 
         bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds", None))
         if bnds_ncvar:

@@ -55,7 +55,7 @@ class Domain(DomainMixin):
         if isinstance(coords, dict):
             self._coords = {}
             for name, coord in coords.items():
-                self._coord[name] = Domain._as_coordinate(coord, name)
+                self._coords[name] = Domain._as_coordinate(coord, name)
         if isinstance(coords, list):
             # TODO: check if it is a coordinate or just data!
             self._coords = {c.name: c for c in coords}
@@ -90,6 +90,10 @@ class Domain(DomainMixin):
     @property
     def crs(self) -> CoordSystem:  # horizontal coordinate reference system
         return self._crs
+
+    @property
+    def aux_coords(self) -> List[str]:
+        return [c.name for c in self._coords.values() if not c.is_dim]
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
@@ -270,11 +274,12 @@ class Domain(DomainMixin):
         coords = []
 
         for dim in da.dims:
-            coords.append(
-                Coordinate.from_xarray(
-                    ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
+            if dim in da.coords:
+                coords.append(
+                    Coordinate.from_xarray(
+                        ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
+                    )
                 )
-            )
 
         xr_coords = ds[ncvar].attrs.get(
             "coordinates", ds[ncvar].encoding.get("coordinates", None)

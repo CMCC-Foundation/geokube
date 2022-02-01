@@ -51,7 +51,7 @@ _CARTOPY_FEATURES = {
 
 class Field(Variable, DomainMixin):
 
-    __slots__ = ("_domain", "_cell_methods", "_ancillary_data")
+    __slots__ = ("_name", "_domain", "_cell_methods", "_ancillary_data")
 
     _LOG = HCubeLogger(name="Field")
 
@@ -71,20 +71,30 @@ class Field(Variable, DomainMixin):
         super().__init__(
             data=data, units=units, dims=dims, properties=properties, encoding=encoding
         )
-
+        self._ancillary = None
         self._name = name
-
-        if isinstance(domain, Domain):
-            self._domain = domain
-        else:
-            self._domain = Domain(domain)
+        self._domain = domain if isinstance(domain, Domain) else Domain(domain)
 
         self._cell_methods = cell_methods
-        # TO DO: convert any ancillary data to Variable
-        self._ancillary = ancillary
+        if ancillary is not None:
+            if not isinstance(ancillary, dict):
+                raise ex.HCubeTypeError(
+                    f"Expected type of `ancillary` argument is dict, but the provided one if {type(ancillary)}",
+                    logger=Field._LOG,
+                )
+            res_anc = {}
+            for k, v in ancillary.items():
+                if not isinstance(v, (np.ndarray, da.Array, Variable, Number)):
+                    raise ex.HCubeTypeError(
+                        f"Expected type of single ancillary variable is: `numpy.ndarray`, `dask.Array`, `geokube.Variable`, or `Number`, but the provided one if {type(v)}",
+                        logger=Field._LOG,
+                    )
+                # TODO: what should be axis and dims for ancillary variables? SHould it be `Variable`?
+                res_anc[k] = Variable(data=v)
+            self._ancillary = res_anc
 
     def __str__(self) -> str:
-        return f"Field {self.name}:{self.variable.name} with cell method: {self.cell_methods}"
+        return f"Field {self.name}:{self.ncvar} with cell method: {self.cell_methods}"
 
     @property
     def name(self) -> str:
@@ -105,6 +115,11 @@ class Field(Variable, DomainMixin):
     @property
     def ancillary(self) -> Optional[Mapping[Hashable, Variable]]:
         return self._ancillary
+
+    def __contains__(self, key):
+        raise ex.HCubeNotImplementedError(
+            "You cannot check inclusion for a geokube.Files", logger=Field._LOG
+        )
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
@@ -852,10 +867,7 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.Dataset:
         data_vars = {}
-        if encoding:
-            var_name = self.ncvar
-        else:
-            var_name = self.name
+        var_name = self.ncvar if encoding else self.name
 
         data_vars[var_name] = super().to_xarray(encoding)  # use Variable to_array
 
@@ -868,10 +880,7 @@ class Field(Variable, DomainMixin):
                 coords_names = " ".join([self.domain.coords[x].name for x in coords])
             data_vars[var_name].encoding["coordinates"] = coords_names
 
-        coords = self.domain.to_xarray(
-            encoding
-        )  # return xarray.core.coordinates.DatasetCoordinates
-
+        coords = self.domain.to_xarray(encoding)
         data_vars[var_name].encoding["grid_mapping"] = "crs"
 
         if self.cell_methods is not None:
@@ -900,14 +909,19 @@ class Field(Variable, DomainMixin):
             )
 
         print(f"field {ncvar}")
-        da = ds[ncvar].copy(copy)  # TO CHECK
+        da = ds[ncvar].copy(copy)  # TODO: TO CHECK
         cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
         var = Variable.from_xarray(da, id_pattern, mapping=mapping)
+        # We need to update `encoding` of var, as `Variable` doesn't contain `name`
+        var.encoding.update(name=ncvar)
+
         domain = Domain.from_xarray(
-            ds, field_name=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
+            ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
         )
+        name = Variable._get_name(da, mapping=mapping, id_pattern=id_pattern)
         # TODO ancillary variables
         field = Field(
+            name=name,
             data=var.data,
             dims=var.dims,
             units=var.units,
