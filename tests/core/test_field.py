@@ -145,11 +145,15 @@ def test_3(nemo_ocean_16):
 
 def test_4(era5_netcdf):
     field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    assert field._id_pattern is None
+    assert field._mapping is None
     assert field.name == "tp"
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
 
     field = Field.from_xarray(era5_netcdf, ncvar="tp", id_pattern="{__ddsapi_name}")
+    assert field._id_pattern == "{__ddsapi_name}"
+    assert field._mapping is None
     assert field.name == "total_precipitation"
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
@@ -164,6 +168,8 @@ def test_4(era5_netcdf):
     field = Field.from_xarray(
         era5_netcdf, ncvar="tp", mapping={"tp": {"name": "tot_prep"}}
     )
+    assert field._id_pattern is None
+    assert field._mapping == {"tp": {"name": "tot_prep"}}
     assert field.name == "tot_prep"
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
