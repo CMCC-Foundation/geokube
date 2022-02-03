@@ -23,7 +23,7 @@ import geokube
 
 import geokube.utils.exceptions as ex
 from geokube.core.unit import Unit
-from geokube.core.axis import Axis
+from geokube.core.axis import Axis, AxisType
 from geokube.core.cell_methods import CellMethod
 from geokube.core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
 from geokube.core.axis import Axis
@@ -129,9 +129,10 @@ class Field(Variable, DomainMixin):
         return self._ancillary
 
     def __contains__(self, key):
-        raise ex.HCubeNotImplementedError(
-            "You cannot check inclusion for a geokube.Files", logger=Field._LOG
-        )
+        return key in self.domain
+
+    def __getitem__(self, key):
+        return self.domain[key]
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
@@ -215,16 +216,20 @@ class Field(Variable, DomainMixin):
 
         # Spatial subseting.
         idx = {
-            domain[Axis.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max()],
-            domain[Axis.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max()],
+            domain[AxisType.LATITUDE].dims[1].ncvar: np.s_[x.min() : x.max()],
+            domain[AxisType.LATITUDE].dims[0].ncvar: np.s_[y.min() : y.max()],
         }
         ds = (
             self._check_and_roll_longitude(self.to_xarray(), idx)
             if roll_if_needed
             else self.to_xarray()
         )
-        return Field.from_xarray_dataset(
-            ds=ds.sel(indexers=idx), field_name=self.name, deep_copy=False
+        return Field.from_xarray(
+            ds=ds.sel(indexers=idx),
+            ncvar=self.ncvar,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
         )
 
     def _geobbox_idx(
@@ -256,10 +261,11 @@ class Field(Variable, DomainMixin):
             lon_mask = (lon <= float(west)) & (lon <= float(east))
         y, x = np.nonzero(lat_mask & lon_mask)
 
+        # TODO: Changing convention doesn't work since above lines are executed for original data, rather than the rolled one!
         # Spatial subseting.
         idx = {
-            domain[Axis.LATITUDE].dims[1].axis.name: np.s_[x.min() : x.max() + 1],
-            domain[Axis.LATITUDE].dims[0].axis.name: np.s_[y.min() : y.max() + 1],
+            domain[AxisType.LATITUDE].dims[1].ncvar: np.s_[x.min() : x.max() + 1],
+            domain[AxisType.LATITUDE].dims[0].ncvar: np.s_[y.min() : y.max() + 1],
         }
         ds = (
             self._check_and_roll_longitude(self.to_xarray(), idx)
@@ -267,7 +273,11 @@ class Field(Variable, DomainMixin):
             else self.to_xarray()
         )
         return Field.from_xarray(
-            ds=ds.isel(indexers=idx), field_name=self.name, deep_copy=False
+            ds=ds.isel(indexers=idx),
+            ncvar=self.ncvar,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
         )
 
     def locations(
@@ -312,10 +322,12 @@ class Field(Variable, DomainMixin):
                 domain.y.name: xr.DataArray(data=pts[:, 1], dims="points"),
             }
 
-        return Field.from_xarray_dataset(
+        return Field.from_xarray(
             ds=self.to_xarray().sel(indexers=idx, method="nearest"),
-            field_name=self.name,
-            deep_copy=False,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
         )
 
     def _locations_idx(self, latitude, longitude):
@@ -369,18 +381,20 @@ class Field(Variable, DomainMixin):
             # Spatial subseting.
             idx = {
                 # The same order of dimensions for LATITUDE and LONGITUDE
-                domain[Axis.LATITUDE]
+                domain[AxisType.LATITUDE]
                 .dims[1]
                 .axis.name: xr.DataArray(data=idx[:, 1], dims="points"),
-                domain[Axis.LATITUDE]
+                domain[AxisType.LATITUDE]
                 .dims[0]
                 .axis.name: xr.DataArray(data=idx[:, 0], dims="points"),
             }
 
-        return Field.from_xarray_dataset(
+        return Field.from_xarray(
             ds=self.to_xarray().isel(indexers=idx),
-            field_name=self.name,
-            deep_copy=False,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
         )
 
     # consider only independent coordinates
@@ -409,16 +423,18 @@ class Field(Variable, DomainMixin):
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
-        indexers = {self.get_netcdf_name_for_Axis(k): v for k, v in indexers.items()}
+        indexers = {self.domain[k].ncvar: v for k, v in indexers.items()}
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
-        return Field.from_xarray_dataset(ds, field_name=self.name)
+        return Field.from_xarray(
+            ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
+        )
 
     @log_func_debug
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
         if "longitude" not in indexers or not isinstance(indexers["longitude"], slice):
             return ds
-        if self.domain["longitude"].ctype is not CoordinateType.INDEPENDENT:
+        if self.domain["longitude"].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
             raise ex.HCubeNotImplementedError(
                 "Rolling longitude is currently supported only for independent coordinate!",
@@ -441,16 +457,23 @@ class Field(Variable, DomainMixin):
 
         if dset_pos_conv and sel_neg_conv:
             # from [0,360] to [-180,180]
+            # Attributes are lost while doing `assign_coords`. They need to be reassigned (e.q. by `update`)
             roll_value = (ds[lng_name] > 180).sum().item()
-            return ds.assign_coords(
+            res = ds.assign_coords(
                 {lng_name: (((ds[lng_name] + 180) % 360) - 180)}
             ).roll(**{lng_name: roll_value}, roll_coords=True)
+            res[lng_name].attrs.update(ds[lng_name].attrs)
+            return res
         if dset_neg_conv and sel_pos_conv:
             # from [-180,-180] to [0,360]
             roll_value = (ds[lng_name] < 0).sum().item()
-            return ds.assign_coords({lng_name: (ds[lng_name] % 360)}).roll(
-                **{lng_name: -roll_value}, roll_coords=True
+            res = (
+                ds.assign_coords({lng_name: (ds[lng_name] % 360)})
+                .roll(**{lng_name: -roll_value}, roll_coords=True)
+                .assign_attrs(**ds[lng_name].attrs)
             )
+            res[lng_name].attrs.update(ds[lng_name].attrs)
+            return res
         return ds
 
     def to_regular(self):
@@ -893,6 +916,7 @@ class Field(Variable, DomainMixin):
             data_vars[var_name].encoding["coordinates"] = coords_names
 
         coords = self.domain.to_xarray(encoding)
+
         data_vars[var_name].encoding["grid_mapping"] = "crs"
 
         if self.cell_methods is not None:

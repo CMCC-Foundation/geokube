@@ -112,7 +112,7 @@ class Domain(DomainMixin):
         if not coord_keys_eq:
             return False
         for ck in self._coords.keys():
-            if self._coords[ck].axis_type is Axis.TIME:
+            if self._coords[ck].axis_type is AxisType.TIME:
                 if not np.all(self._coords[ck].values == other._coords[ck].values):
                     return False
             else:
@@ -150,11 +150,11 @@ class Domain(DomainMixin):
                 return XX
             return True
 
-        if (time_coord := self[Axis.TIME]) is None:
+        if (time_coord := self[AxisType.TIME]) is None:
             raise ex.HCubeNoSuchAxisError(
                 f"Time axis was not found for that dataset!", logger=self._LOG
             )
-        time_coord = time_coord.to_xarray_dataarray()
+        time_coord = time_coord.to_xarray()
         time_coord_dt = time_coord.dt
 
         year_mask = _reduce_boolean_selection(time_coord_dt, "year", indexer)
@@ -209,12 +209,12 @@ class Domain(DomainMixin):
         # Making sure that longitude and latitude values are not outside their
         # ranges
         range_b = ()
-        if coord.axis.atype == Axis.LONGITUDE:
+        if coord.atype == AxisType.LONGITUDE:
             if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
                 range_b = (0.0, 360.0)
             else:
                 range_b = (-180.0, 180.0)
-        elif coord.axis.atype == Axis.LATITUDE:
+        elif coord.atype == AxisType.LATITUDE:
             range_b = (-90.0, 90.0)
 
         if range_b:

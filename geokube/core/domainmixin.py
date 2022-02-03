@@ -41,7 +41,7 @@ class DomainMixin:
 
     @property
     def latitude_convention(self) -> LatitudeConvention:
-        if AxisType.LATITUDE in self._Axis_to_name:
+        if AxisType.LATITUDE in self._axis_to_name:
             return self[AxisType.LATITUDE].convention
 
     @property
@@ -50,7 +50,7 @@ class DomainMixin:
 
     @property
     def is_longitude_independent(self):
-        return self[AxisType.LONGITUDE].ctype is CoordinateType.INDEPENDENT
+        return self[AxisType.LONGITUDE].type is CoordinateType.INDEPENDENT
 
     def __getitem__(self, key: Union[AxisType, Axis, str]) -> Coordinate:
         if isinstance(key, str):

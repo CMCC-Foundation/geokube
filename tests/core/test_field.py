@@ -173,3 +173,120 @@ def test_4(era5_netcdf):
     assert field.name == "tot_prep"
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
+
+
+def test_geobbox_1(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    with pytest.raises(
+        ex.HCubeNotImplementedError, match=r"Selecting by geobbox containing*"
+    ):
+        _ = tp.geobbox(north=10, south=-10, west=50, east=80, top=5, bottom=10)
+
+    res = tp.geobbox(north=10, south=-10, west=50, east=80)
+    assert np.all(res["latitude"].values <= 10)
+    assert np.all(res["latitude"].values >= -10)
+    assert np.all(res.latitude.values <= 10)
+    assert np.all(res.latitude.values >= -10)
+
+    assert np.all(res["longitude"].values <= 80)
+    assert np.all(res["longitude"].values >= 50)
+    assert np.all(res.longitude.values <= 80)
+    assert np.all(res.longitude.values >= 50)
+
+    dset = res.to_xarray(True)
+    assert np.all(dset.latitude <= 10)
+    assert np.all(dset.latitude >= -10)
+    assert dset.latitude.attrs["units"] == "degrees_north"
+
+    assert np.all(dset.longitude <= 80)
+    assert np.all(dset.longitude >= 50)
+    assert dset.longitude.attrs["units"] == "degrees_east"
+
+
+def test_geobbox_2(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    res = tp.geobbox(north=10, south=-10, west=-20, east=20)
+    assert np.all(res["latitude"].values <= 10)
+    assert np.all(res["latitude"].values >= -10)
+    assert np.all(res.latitude.values <= 10)
+    assert np.all(res.latitude.values >= -10)
+
+    assert np.all(res["longitude"].values <= 20)
+    assert np.all(res["longitude"].values >= -20)
+    assert np.all(res.longitude.values <= 20)
+    assert np.all(res.longitude.values >= -20)
+
+    dset = res.to_xarray(True)
+    assert np.all(dset.latitude <= 10)
+    assert np.all(dset.latitude >= -10)
+    assert dset.latitude.attrs["units"] == "degrees_north"
+
+    assert np.all(dset.longitude <= 20)
+    assert np.all(dset.longitude >= -20)
+    assert dset.longitude.attrs["units"] == "degrees_east"
+
+
+def test_geobbox_3(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    res = wso.geobbox(north=40, south=38, west=16, east=19)
+    assert res.domain.crs == crs.RotatedGeogCS(
+        grid_north_pole_latitude=47, grid_north_pole_longitude=-168
+    )
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values >= 38) / W > 0.95
+    assert np.sum(res.latitude.values <= 40) / W > 0.95
+    assert np.sum(res.longitude.values >= 16) / W > 0.95
+    assert np.sum(res.longitude.values <= 19) / W > 0.95
+
+    dset = res.to_xarray(True)
+    assert "W_SO" in dset.data_vars
+    assert "rlat" in dset.coords
+    assert "rlon" in dset.coords
+    assert "lat" in dset
+    assert dset.lat.attrs["units"] == "degrees_north"
+    assert "lon" in dset
+    assert dset.lon.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+    dset = res.to_xarray(False)
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in dset.data_vars
+    assert "latitude" in dset
+    assert dset.latitude.attrs["units"] == "degrees_north"
+    assert "longitude" in dset
+    assert dset.longitude.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+
+def test_geobbox_4(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110)
+    assert res.domain.crs == crs.CurvilinearGrid()
+
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values >= -22) / W > 0.95
+    assert np.sum(res.latitude.values <= -19) / W > 0.95
+    assert np.sum(res.longitude.values >= -115) / W > 0.95
+    assert np.sum(res.longitude.values <= -110) / W > 0.95
+
+
+def test_timecombo_1(era5_netcdf):
+    tp = Field.from_xarray(era5_netcdf, ncvar="tp")
+    res = tp.sel(time={"year": 2020, "day": [1, 6, 10], "hour": 5})
+    dset = res.to_xarray(True)
+    assert np.all(
+        (dset.time.dt.day == 1) | (dset.time.dt.day == 6) | (dset.time.dt.day == 10)
+    )
+    assert np.all(dset.time.dt.hour == 5)
+    assert np.all(dset.time.dt.month == 6)
+    assert np.all(dset.time.dt.year == 2020)
+
+    res = tp.sel(time={"year": 2020, "day": 10, "hour": [22, 5, 4]})
+    dset = res.to_xarray(True)
+    assert np.all(
+        (dset.time.dt.hour == 4) | (dset.time.dt.hour == 5) | (dset.time.dt.hour == 22)
+    )
+    assert np.all(dset.time.dt.day == 10)
+    assert np.all(dset.time.dt.month == 6)
+    assert np.all(dset.time.dt.year == 2020)
