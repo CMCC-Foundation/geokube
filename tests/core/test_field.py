@@ -290,3 +290,51 @@ def test_timecombo_1(era5_netcdf):
     assert np.all(dset.time.dt.day == 10)
     assert np.all(dset.time.dt.month == 6)
     assert np.all(dset.time.dt.year == 2020)
+
+
+def test_locations_1(era5_netcdf):
+    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
+
+    res = d2m.locations(latitude=41, longitude=[9, 12])
+    assert np.all(res.latitude.values == 41)
+    assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
+
+    dset = res.to_xarray()
+    assert np.all(dset.latitude == 41)
+    assert np.all((dset.longitude == 9) | (dset.longitude == 12))
+    assert dset["d2m"].attrs["units"] == "K"
+    coords = dset["d2m"].attrs.get(
+        "coordinates", dset["d2m"].encoding.get("coordinates")
+    )
+    assert "latitude" in coords
+
+
+def test_locations_2(era5_netcdf):
+    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
+
+    res = d2m.locations(latitude=[41, 42], longitude=[9, 12])
+    assert np.all((res.latitude.values == 41) | (res.latitude.values == 42))
+    assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
+
+    dset = res.to_xarray()
+    assert np.all((dset.latitude == 41) | (dset.latitude == 42))
+    assert np.all((dset.longitude == 9) | (dset.longitude == 12))
+    assert dset["d2m"].attrs["units"] == "K"
+    coords = dset["d2m"].attrs.get(
+        "coordinates", dset["d2m"].encoding.get("coordinates")
+    )
+    assert coords is None
+
+
+def test_locations_3(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.locations(latitude=[-20, -21], longitude=[-111, -114])
+
+    dset = res.to_xarray(True)
+    assert "points" in dset.dims
+    assert dset.points.shape == (2,)
+    assert np.all((dset.nav_lat.values + 20 < 0.2) | (dset.nav_lat.values + 21 < 0.2))
+    assert np.all((dset.nav_lon.values + 111 < 0.2) | (dset.nav_lon.values + 114 < 0.2))
+    assert dset.vt.attrs["units"] == "degree_C m/s"
+    assert "coordinates" not in dset.vt.attrs

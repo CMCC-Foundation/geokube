@@ -271,7 +271,6 @@ class Domain(DomainMixin):
 
         da = ds[ncvar]
         coords = []
-
         for dim in da.dims:
             if dim in da.coords:
                 coords.append(

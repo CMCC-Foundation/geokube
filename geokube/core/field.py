@@ -1,4 +1,5 @@
 import functools as ft
+from itertools import chain
 import os
 import warnings
 from html import escape
@@ -294,9 +295,11 @@ class Field(Variable, DomainMixin):
                 "Selecting by location with vertical is currently not supported!",
                 logger=self._LOG,
             )
-        return self._locations_idx(latitude=latitude, longitude=longitude)
+        return self._locations_idx(
+            latitude=latitude, longitude=longitude, vertical=vertical
+        )
 
-    def _locations_cartopy(self, latitude, longitude):
+    def _locations_cartopy(self, latitude, longitude, vertical=None):
         domain = self._domain
 
         # Specifying the location points in the rectangular coordinate system
@@ -330,13 +333,14 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-    def _locations_idx(self, latitude, longitude):
+    def _locations_idx(self, latitude, longitude, vertical=None):
         lats = np.array(latitude, dtype=np.float32, ndmin=1)
         lons = np.array(longitude, dtype=np.float32, ndmin=1)
 
         domain = self._domain
         ind_lat = domain.is_latitude_independent
         ind_lon = domain.is_longitude_independent
+
         if ind_lat and ind_lon:
             idx = {
                 domain.latitude.name: lats.item() if len(lats) == 1 else lats,
@@ -383,10 +387,10 @@ class Field(Variable, DomainMixin):
                 # The same order of dimensions for LATITUDE and LONGITUDE
                 domain[AxisType.LATITUDE]
                 .dims[1]
-                .axis.name: xr.DataArray(data=idx[:, 1], dims="points"),
+                .ncvar: xr.DataArray(data=idx[:, 1], dims="points"),
                 domain[AxisType.LATITUDE]
                 .dims[0]
-                .axis.name: xr.DataArray(data=idx[:, 0], dims="points"),
+                .ncvar: xr.DataArray(data=idx[:, 0], dims="points"),
             }
 
         return Field.from_xarray(
@@ -424,7 +428,13 @@ class Field(Variable, DomainMixin):
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
         indexers = {self.domain[k].ncvar: v for k, v in indexers.items()}
+
+        # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
+        # and then selecting this location from Domain fails
+        ds_dims = set(ds.dims)
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
+        lost_dims = ds_dims - set(ds.dims)
+        Field._update_coordinates(ds[self.ncvar], lost_dims)
         return Field.from_xarray(
             ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
         )
@@ -969,3 +979,16 @@ class Field(Variable, DomainMixin):
             _mapping=mapping,
         )
         return field
+
+    @staticmethod
+    def _update_coordinates(da: xr.DataArray, coords):
+        if coords is None or len(coords) == 0:
+            return
+        if "coordinates" in da.attrs:
+            da.attrs["coordinates"] = " ".join(chain([da.attrs["coordinates"]], coords))
+        elif "coordinates" in da.encoding:
+            da.encoding["coordinates"] = " ".join(
+                chain([da.encoding["coordinates"]], coords)
+            )
+        else:
+            da.encoding["coordinates"] = " ".join(coords)

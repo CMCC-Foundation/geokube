@@ -134,7 +134,8 @@ class DataCube(DomainMixin):
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -151,7 +152,8 @@ class DataCube(DomainMixin):
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -176,7 +178,8 @@ class DataCube(DomainMixin):
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
