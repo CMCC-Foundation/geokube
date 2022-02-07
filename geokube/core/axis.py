@@ -6,7 +6,7 @@ from typing import Any, Hashable, List, Mapping, Optional, Union
 
 import xarray as xr
 
-from ..core.unit import Unit
+from .unit import Unit
 from ..utils import exceptions as ex
 from ..utils.hcube_logger import HCubeLogger
 
@@ -127,8 +127,16 @@ class Axis:
     def is_dim(self):
         return self._is_dim
 
+    def __hash__(self):
+        return hash((self._name, self._type, self._encoding, self._is_dim))
+
     def __eq__(self, other):
-        return (self.name == other.name) and (self.type == other.type)
+        return (
+            (self.name == other.name)
+            and (self.type == other.type)
+            and (self._is_dim == other.is_dim)
+            and (self._encoding == other._encoding)
+        )
 
     def __ne__(self, other):
         return not (self == other)

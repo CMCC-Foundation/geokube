@@ -11,12 +11,12 @@ import numpy as np
 import xarray as xr
 from xarray.core.options import OPTIONS
 
-from ..core.axis import Axis, AxisType
-from ..core.unit import Unit
 from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis, AxisType
+from .unit import Unit
 
 
 class Variable(xr.Variable):

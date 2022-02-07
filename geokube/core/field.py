@@ -18,18 +18,18 @@ import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
-from ..core.axis import Axis, AxisType
-from ..core.cell_methods import CellMethod
-from ..core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
-from ..core.coordinate import CoordinateType
-from ..core.domain import Domain
-from ..core.enums import MethodType, RegridMethod
-from ..core.unit import Unit
-from ..core.variable import Variable
 from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis, AxisType
+from .cell_methods import CellMethod
+from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
+from .coordinate import CoordinateType
+from .domain import Domain
+from .enums import MethodType, RegridMethod
+from .unit import Unit
+from .variable import Variable
 from .domainmixin import DomainMixin
 
 _CARTOPY_FEATURES = {
@@ -385,19 +385,17 @@ class Field(Variable, DomainMixin):
         **indexers_kwargs: Any,
     ) -> "Field":
         indexers = xr.core.utils.either_dict_or_kwargs(indexers, indexers_kwargs, "sel")
+        indexers = Domain.str_to_axis_indexers(indexers)
         # TODO: indexers from this place should be always of type -> Mapping[Axis, Any]
         #   ^ it can be done in Domain
         indexers = indexers.copy()
         ds = self.to_xarray()
 
-        # TODO: if Axis("time") in indexers and util_methods.is_time_combo(indexers["time"]):
-        if "time" in indexers and util_methods.is_time_combo(indexers["time"]):
+        if (
+            time_ind := indexers.pop(Axis("time"), None)
+        ) is not None and util_methods.is_time_combo(time_ind):
             # time is always independent coordinate
-            # updating with standard names of axis/axis types
-            # using integer indices!!!
-            ds = ds.isel(
-                self.domain._process_time_combo(indexers.pop("time")), drop=drop
-            )
+            ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
@@ -409,7 +407,6 @@ class Field(Variable, DomainMixin):
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
         lost_dims = ds_dims - set(ds.dims)
         Field._update_coordinates(ds[self.ncvar], lost_dims)
-        # TODO: check if single loc lat/lon is parsed to SCALAR CoordinteType
         return Field.from_xarray(
             ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
         )

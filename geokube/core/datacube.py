@@ -25,13 +25,13 @@ import numpy as np
 import pyarrow as pa
 import xarray as xr
 
-from ..core.axis import Axis
-from ..core.domain import Domain
-from ..core.enums import RegridMethod
-from ..core.field import Field
 from ..utils import exceptions as ex
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis
+from .domain import Domain
+from .enums import RegridMethod
+from .field import Field
 from .domainmixin import DomainMixin
 
 IndexerType = Union[slice, List[slice], Number, List[Number]]

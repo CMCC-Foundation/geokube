@@ -4,7 +4,7 @@ from typing import Iterable, Union
 
 import numpy as np
 
-from ..core.enums import MethodType
+from .enums import MethodType
 
 
 class CellMethod:

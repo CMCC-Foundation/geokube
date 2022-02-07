@@ -10,10 +10,10 @@ import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
 
-from ..core.axis import Axis
-from ..core.datacube import DataCube
 from ..utils import exceptions as ex
 from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis
+from .datacube import DataCube
 
 
 class Dataset:

@@ -1,4 +1,4 @@
-from ..core.variable import Variable
+from .variable import Variable
 
 
 class Bounds(Variable):

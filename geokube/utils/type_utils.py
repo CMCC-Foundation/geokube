@@ -7,8 +7,6 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
-import geokube.core.axis
-
 
 class Types(Enum):
     INT = "int"

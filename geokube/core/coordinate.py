@@ -6,10 +6,10 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
-from ..core.bounds import Bounds, Bounds1D, BoundsND
 from ..utils import exceptions as ex
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
+from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
 from .unit import Unit

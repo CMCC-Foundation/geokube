@@ -73,3 +73,31 @@ def test_axis_2():
     assert a6.name == "time"
     assert a6.type is AxisType.TIME
     assert a6.is_dim
+
+
+def test_axis_hash():
+    a1 = Axis(AxisType.LONGITUDE)
+    a2 = Axis(AxisType.LONGITUDE)
+    assert a1 == a2
+    assert hash(a1) == hash(a2)
+
+    a1 = Axis("longitude")
+    a2 = Axis(name="longitude", axistype=AxisType.LONGITUDE)
+    assert a1 == a2
+    assert hash(a1) == hash(a2)
+
+    a1 = Axis("longitude", is_dim=True)
+    a2 = Axis(AxisType.LONGITUDE, is_dim=False)
+    assert a1 != a2
+    assert hash(a1) != hash(a2)
+
+    a1 = Axis("lat", AxisType.LONGITUDE)
+    a2 = Axis(AxisType.LONGITUDE)
+    assert a1 != a2
+    assert hash(a1) != hash(a2)
+
+    d = {Axis("lat"): [1, 2, 3], Axis("depth"): [-1, -2, -3]}
+    assert Axis("lat") in d
+    assert Axis("depth") in d
+    assert d[Axis("lat")] == [1, 2, 3]
+    assert d[Axis("depth")] == [-1, -2, -3]

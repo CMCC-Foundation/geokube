@@ -10,12 +10,12 @@ from typing import Any, Hashable, List, Mapping, Optional, Tuple, Union
 import numpy as np
 import xarray as xr
 
-from ..core.axis import AxisType
-from ..core.coord_system import CoordSystem, CurvilinearGrid, RegularLatLon, parse_crs
 from ..utils import exceptions as ex
 from ..utils import util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis, AxisType
+from .coord_system import CoordSystem, CurvilinearGrid, RegularLatLon, parse_crs
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
@@ -321,3 +321,7 @@ class Domain(DomainMixin):
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
         return xr.Dataset(coords=grid).coords
+
+    @staticmethod
+    def str_to_axis_indexers(indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
+        return {Axis(n): v for n, v in indexers.items()}

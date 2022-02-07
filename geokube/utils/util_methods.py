@@ -9,6 +9,8 @@ import numpy as np
 import xarray as xr
 from dask import is_dask_collection
 
+from ..core.axis import Axis
+
 
 def are_dims_compliant(provided_shape, expected_shape):
     return provided_shape == expected_shape
