@@ -360,7 +360,7 @@ class Field(Variable, DomainMixin):
             idx = {
                 ax.ncvar: xr.DataArray(data=v, dims="points")
                 for ax, v in zip(
-                    domain[AxisType.LATITUDE].dims[::-1], idx.transpose()[::-1]
+                    domain[AxisType.LATITUDE].dims, idx.transpose()
                 )
             }
 
