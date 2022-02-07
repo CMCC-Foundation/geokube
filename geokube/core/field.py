@@ -114,6 +114,10 @@ class Field(Variable, DomainMixin):
         return self._domain
 
     @property
+    def coords(self):
+        return self._domain._coords
+
+    @property
     def ancillary(self) -> Optional[Mapping[Hashable, Variable]]:
         return self._ancillary
 
@@ -203,7 +207,7 @@ class Field(Variable, DomainMixin):
             for ax, v in zip(domain[AxisType.LATITUDE].dims, pts.transpose())
         }
 
-        ds = self.to_xarray()
+        ds = self.to_xarray(encoding=False)
         return Field.from_xarray(
             ds=ds.sel(indexers=idx),
             ncvar=self.ncvar,
@@ -240,16 +244,16 @@ class Field(Variable, DomainMixin):
         x = np.nonzero(lat_mask & lon_mask)
         # lat(x), lon(x); lat(x,y), lon(x,y); lat(x,y,z), lon(x,y,z), etc.
         idx = {
-            ax.ncvar: np.s_[v.min() : v.max() + 1]
+            ax.name: np.s_[v.min() : v.max() + 1]
             for ax, v in zip(domain[AxisType.LATITUDE].dims, x)
         }
 
         # Dependent coordinates cannot be rolled (no changing convention)
         # TODO: We may warn a user if there is wrong convention for dependent coordinate
-        ds = self.to_xarray()
+        ds = self.to_xarray(encoding=False)
         return Field.from_xarray(
             ds=ds.isel(indexers=idx),
-            ncvar=self.ncvar,
+            ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
             mapping=self._mapping,
@@ -300,7 +304,7 @@ class Field(Variable, DomainMixin):
             }
 
         return Field.from_xarray(
-            ds=self.to_xarray().sel(indexers=idx, method="nearest"),
+            ds=self.to_xarray(encoding=False).sel(indexers=idx, method="nearest"),
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
@@ -359,13 +363,11 @@ class Field(Variable, DomainMixin):
             # Spatial subseting.
             idx = {
                 ax.ncvar: xr.DataArray(data=v, dims="points")
-                for ax, v in zip(
-                    domain[AxisType.LATITUDE].dims, idx.transpose()
-                )
+                for ax, v in zip(domain[AxisType.LATITUDE].dims, idx.transpose())
             }
 
         return Field.from_xarray(
-            ds=self.to_xarray().isel(indexers=idx),
+            ds=self.to_xarray(encoding=False).isel(indexers=idx),
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
@@ -389,16 +391,18 @@ class Field(Variable, DomainMixin):
         # TODO: indexers from this place should be always of type -> Mapping[Axis, Any]
         #   ^ it can be done in Domain
         indexers = indexers.copy()
-        ds = self.to_xarray()
+        ds = self.to_xarray(encoding=False)
 
         if (
-            time_ind := indexers.pop(Axis("time"), None)
+            time_ind := indexers.get(Axis("time"))
         ) is not None and util_methods.is_time_combo(time_ind):
             # time is always independent coordinate
             ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
+            del indexers[Axis("time")]
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
+
         indexers = {self.domain[k].ncvar: v for k, v in indexers.items()}
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
@@ -406,7 +410,7 @@ class Field(Variable, DomainMixin):
         ds_dims = set(ds.dims)
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
         lost_dims = ds_dims - set(ds.dims)
-        Field._update_coordinates(ds[self.ncvar], lost_dims)
+        Field._update_coordinates(ds[self.name], lost_dims)
         return Field.from_xarray(
             ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
         )
@@ -503,7 +507,7 @@ class Field(Variable, DomainMixin):
         grid[domain.longitude.nc_name].encoding = domain.longitude.variable.encoding
 
         # Interpolating the data.
-        dset = self.to_xarray()
+        dset = self.to_xarray(encoding=False)
         dset = dset.drop(labels=[domain.latitude.nc_name, domain.longitude.nc_name])
         regrid_dset = dset.interp(
             coords={
@@ -516,7 +520,13 @@ class Field(Variable, DomainMixin):
         fillValue = -9.0e-20
         regrid_dset.fillna(fillValue)
         regrid_dset[self.nc_name].encoding["_FillValue"] = fillValue
-        field = Field.from_xarray(ds=regrid_dset, ncvar_name=self.nc_name, copy=False)
+        field = Field.from_xarray(
+            ds=regrid_dset,
+            ncvar_name=self.nc_name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
+        )
         field.domain._crs = RegularLatLon()
 
         return field
@@ -608,7 +618,7 @@ class Field(Variable, DomainMixin):
             regridder = xe.Regridder(**regrid_kwa, reuse_weights=reuse_weights)
         except PermissionError:
             regridder = xe.Regridder(**regrid_kwa)
-        xr_ds = self.to_xarray()
+        xr_ds = self.to_xarray(encoding=False)
         result = regridder(xr_ds, keep_attrs=True, skipna=False)
         result = result.rename({"lat": lat_in.axis.name, "lon": lon_in.axis.name})
         result[self.variable.name].encoding = xr_ds[self.variable.name].encoding
@@ -679,7 +689,7 @@ class Field(Variable, DomainMixin):
         # TODO: handle `formula_terms` bounds attribute
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
         tb = time_axis.bounds
-        ds = self.to_xarray()
+        ds = self.to_xarray(encoding=False)
         if self.cell_methods and tb is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
@@ -927,17 +937,17 @@ class Field(Variable, DomainMixin):
                 logger=cls._LOG,
             )
 
-        print(f"field {ncvar}")
         da = ds[ncvar].copy(copy)  # TODO: TO CHECK
         cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
         var = Variable.from_xarray(da, id_pattern, mapping=mapping)
         # We need to update `encoding` of var, as `Variable` doesn't contain `name`
-        var.encoding.update(name=ncvar)
 
         domain = Domain.from_xarray(
             ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
         )
         name = Variable._get_name(da, mapping=mapping, id_pattern=id_pattern)
+
+        var.encoding.update(name=da.encoding.get("name", ncvar))
         # TODO ancillary variables
         field = Field(
             name=name,

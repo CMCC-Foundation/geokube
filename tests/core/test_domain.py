@@ -14,7 +14,7 @@ from tests import compare_dicts
 from tests.fixtures import *
 
 
-def test_1(era5_rotated_netcdf):
+def test_from_xarray_rotated_pole_wso(era5_rotated_netcdf):
     domain = Domain.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
     # TODO: domaintype is currently not set
     # assert domain.type is DomainType.GRIDDED
@@ -39,6 +39,8 @@ def test_1(era5_rotated_netcdf):
     assert "grid_latitude" in res
     assert "grid_longitude" in res
 
+
+def test_from_xarray_rotated_pole_tmin2m(era5_rotated_netcdf):
     domain = Domain.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
     # TODO: domaintype is currently not set
     # assert domain.type is DomainType.GRIDDED
@@ -62,7 +64,7 @@ def test_1(era5_rotated_netcdf):
     assert "rlon" in res
 
 
-def test_2(nemo_ocean_16):
+def test_from_xarray_curvilinear_grid(nemo_ocean_16):
     domain = Domain.from_xarray(nemo_ocean_16, ncvar="vt")
     assert "time" in domain
     assert "latitude" in domain
@@ -81,7 +83,7 @@ def test_2(nemo_ocean_16):
     assert isinstance(domain.longitude.bounds["bounds_lon"], BoundsND)
 
 
-def test_3(era5_globe_netcdf):
+def test_from_xarray_regular_latlon(era5_globe_netcdf):
     domain = Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
     res = domain.to_xarray()
     assert "latitude" in domain

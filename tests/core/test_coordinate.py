@@ -13,7 +13,7 @@ from tests import compare_dicts
 from tests.fixtures import *
 
 
-def test_process_bounds_1():
+def test_process_bounds_fails():
     with pytest.raises(
         ex.HCubeTypeError,
         match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
@@ -50,8 +50,6 @@ def test_process_bounds_1():
             variable_shape=(100, 1),
         )
 
-
-def test_process_bounds_2():
     with pytest.raises(ex.HCubeValueError, match=r"Bounds should *"):
         _ = Coordinate._process_bounds(
             Variable(data=np.random.rand(100, 5), dims=["time", "bounds"]),
@@ -70,6 +68,17 @@ def test_process_bounds_2():
             variable_shape=(100, 1),
         )
 
+    with pytest.raises(ex.HCubeValueError, match=r"Bounds should *"):
+        _ = Coordinate._process_bounds(
+            bounds=da.random.random((400, 2)),
+            name="name",
+            units="units",
+            axis=Axis("time"),
+            variable_shape=(100, 1),
+        )
+
+
+def test_process_bounds_proper_attrs_setting():
     D = np.random.rand(100, 2)
     r = Coordinate._process_bounds(
         Variable(data=D, dims=["time", "bounds"]),
@@ -91,15 +100,6 @@ def test_process_bounds_2():
     assert r["name_bounds"].units == Unit("units")
     assert np.all(r["name_bounds"] == D)
 
-    with pytest.raises(ex.HCubeValueError, match=r"Bounds should *"):
-        _ = Coordinate._process_bounds(
-            bounds=da.random.random((400, 2)),
-            name="name",
-            units="units",
-            axis=Axis("time"),
-            variable_shape=(100, 1),
-        )
-
     D = da.random.random((400, 2))
     r = Coordinate._process_bounds(
         bounds=D,
@@ -115,7 +115,7 @@ def test_process_bounds_2():
     assert np.all(r["name2_bounds"] == D)
 
 
-def test_process_bounds_3():
+def test_process_bounds_using_dict():
     d = {
         "q": np.ones((100, 2)),
         "w_bounds": Variable(
@@ -144,7 +144,7 @@ def test_process_bounds_3():
     }  # `lat` defined as `w` Variable dim
 
 
-def test_init_1():
+def test_init_fails():
     with pytest.raises(ex.HCubeValueError, match=r"`data` cannot be `None`"):
         _ = Coordinate(data=None, axis="lat")
 
@@ -167,7 +167,7 @@ def test_init_1():
         _ = Coordinate(data=np.ones(100), axis=Axis("lat", is_dim=False))
 
 
-def test_init_2():
+def test_init_from_dask():
     D = da.random.random((100,))
     c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
     assert c.dim_names == ("latitude",)
@@ -177,7 +177,7 @@ def test_init_2():
     assert c.is_independent
 
 
-def test_init_3():
+def test_init_from_dask_fail():
     D = da.random.random((100,))
 
     with pytest.raises(ex.HCubeValueError, match=r"Provided data have *"):
@@ -188,7 +188,7 @@ def test_init_3():
         )
 
 
-def test_init_4():
+def test_init_from_dask_proper_attrs_setting():
     D = da.random.random((100,))
     c = Coordinate(
         data=D,
@@ -204,7 +204,7 @@ def test_init_4():
     assert c.is_independent
 
 
-def test_init_5():
+def test_init_from_dask_fail_on_bounds_shape():
     D = da.random.random((100,))
     with pytest.raises(ex.HCubeValueError, match=r"Bounds should*"):
         _ = Coordinate(
@@ -213,6 +213,10 @@ def test_init_5():
             dims="lon2",
             bounds=np.ones((104, 2)),
         )
+
+
+def test_init_from_numpy_proper_attrs_setting():
+    D = np.random.random((100,))
     c = Coordinate(
         data=D,
         axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
@@ -229,10 +233,12 @@ def test_init_5():
     assert c.is_independent
 
 
-def test_init_6():
+def test_init_fails_on_scalar_data_if_dims_passed():
     with pytest.raises(ex.HCubeValueError, match=r"Provided data have *"):
         _ = Coordinate(data=10, axis="longitude", dims="longitude")
 
+
+def test_init_with_scalar_data():
     c = Coordinate(data=10, axis="longitude")
     assert c.type is CoordinateType.SCALAR
     assert c.axis_type is AxisType.LONGITUDE
@@ -240,11 +246,14 @@ def test_init_6():
     assert c.is_independent  # Scalar treated as independent
 
 
-def test_init_7():
+def test_init_fails_on_missing_dim():
     D = da.random.random((100, 50))
     with pytest.raises(ex.HCubeValueError, match=r"Provided data have *"):
         _ = Coordinate(data=D, axis="longitude", dims="longitude")
 
+
+def test_init_proper_multidim_coord():
+    D = da.random.random((100, 50))
     c = Coordinate(data=D, axis="longitude", dims=["x", "y"])
     assert c.type is CoordinateType.DEPENDENT
     assert c.axis_type is AxisType.LONGITUDE
@@ -253,7 +262,7 @@ def test_init_7():
     assert c.is_dependent
 
 
-def test_from_xarray_1(era5_netcdf):
+def test_from_xarray__regular_latlon(era5_netcdf):
     c = Coordinate.from_xarray(era5_netcdf, "time")
     assert c.type is CoordinateType.INDEPENDENT
     assert c.axis_type is AxisType.TIME
@@ -265,7 +274,7 @@ def test_from_xarray_1(era5_netcdf):
     assert not c.has_bounds
 
 
-def test_from_xarray_2(era5_rotated_netcdf):
+def test_from_xarray_rotated_pole(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
     assert c.dim_names == ("depth",)
     assert c.dim_ncvars == ("soil1",)
@@ -281,7 +290,7 @@ def test_from_xarray_2(era5_rotated_netcdf):
     assert c.bounds["soil1_bnds"].units == Unit("m")
 
 
-def test_from_xarray_3(era5_rotated_netcdf):
+def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf):
     c = Coordinate.from_xarray(
         era5_rotated_netcdf, "soil1", mapping={"soil1": {"name": "new_soil"}}
     )
@@ -298,7 +307,7 @@ def test_from_xarray_3(era5_rotated_netcdf):
     assert c.bounds["soil1_bnds"].units == Unit("m")
 
 
-def test_to_xarray_1(era5_rotated_netcdf):
+def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
     res = c.to_xarray(encoding=False)
 
@@ -320,7 +329,7 @@ def test_to_xarray_1(era5_rotated_netcdf):
     )  # TODO: currently bounds are not included
 
 
-def test_to_xarray_2(era5_rotated_netcdf):
+def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
     res = c.to_xarray(encoding=True)
 
@@ -338,7 +347,7 @@ def test_to_xarray_2(era5_rotated_netcdf):
     )  # TODO: currently bounds are not included
 
 
-def test_to_xarray_3(era5_rotated_netcdf):
+def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "lat")
     assert c.type is CoordinateType.DEPENDENT
     res = c.to_xarray(encoding=False)
@@ -351,6 +360,9 @@ def test_to_xarray_3(era5_rotated_netcdf):
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
+
+def test_to_xarray_rotated_pole_without_encoding_2(era5_rotated_netcdf):
+    c = Coordinate.from_xarray(era5_rotated_netcdf, "lat")
     res = c.to_xarray(encoding=True)
     assert res.name == "lat"
     assert "rlat" in res.dims

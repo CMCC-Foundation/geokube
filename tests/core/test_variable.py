@@ -12,13 +12,27 @@ from geokube.utils.attrs_encoding import CFAttributes
 from tests.fixtures import *
 
 
-def test_1():
+def test_fails_on_wrong_type():
     with pytest.raises(
         ex.HCubeTypeError,
         match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
     ):
         _ = Variable({1, 2, 3, 4})
 
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+    ):
+        _ = Variable([1, 2, 3, 4])
+
+    with pytest.raises(
+        ex.HCubeTypeError,
+        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+    ):
+        _ = Variable("some_data")
+
+
+def test_init_proper_attrs_set():
     d = np.random.random((10, 50))
     v = Variable(
         data=d,
@@ -33,6 +47,16 @@ def test_1():
     assert v.properties == {"prop1": "aaa"}
     assert v.units == Unit("m")
 
+
+def test_init_based_on_other_variable():
+    d = np.random.random((10, 50))
+    v = Variable(
+        data=d,
+        dims=[AxisType.LATITUDE, AxisType.LONGITUDE],
+        units="m",
+        properties={"prop1": "aaa"},
+        encoding={"enc1": "bbb"},
+    )
     v2 = Variable(data=v)
     assert id(v) != id(v2)
     assert np.all(v._data == v2._data)
@@ -58,7 +82,7 @@ def test_1():
     assert v3.units == Unit("m")
 
 
-def test_2():
+def test_init_proper_attr_set():
     d = np.random.random((10, 50, 20))
     v = Variable(
         data=d,
@@ -86,6 +110,8 @@ def test_2():
     assert np.all(xrv.values == d)
     assert set(xrv.dims) == {"lat", "lon", "depth"}
 
+
+def test_init_proper_attr_set_with_encoding_for_axes():
     d = da.random.random((10, 50, 20))
     v = Variable(
         data=d,
@@ -134,7 +160,7 @@ def test_2():
     assert xrv.attrs["units"] == "m"
 
 
-def test_3(era5_netcdf):
+def test_from_xarray_with_id_pattern(era5_netcdf):
     v = Variable.from_xarray(era5_netcdf["tp"], id_pattern="prefix:{units}_{long_name}")
 
     d1 = v.dims[0]
@@ -168,7 +194,7 @@ def test_3(era5_netcdf):
     }
 
 
-def test_4(era5_rotated_netcdf_wso):
+def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf_wso):
     v = Variable.from_xarray(
         era5_rotated_netcdf_wso["W_SO"], mapping={"soil1": {"name": "my_depth"}}
     )

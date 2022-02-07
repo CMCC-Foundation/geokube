@@ -210,7 +210,10 @@ class Variable(xr.Variable):
                 d_axis = da[d].attrs.get("axis", AxisType.parse(d))
                 dims.append(
                     Axis(
-                        name=d_name, axistype=d_axis, encoding={"name": d}, is_dim=True
+                        name=d_name,
+                        axistype=d_axis,
+                        encoding={"name": da[d].encoding.get("name", d)},
+                        is_dim=True,
                     )
                 )
             else:

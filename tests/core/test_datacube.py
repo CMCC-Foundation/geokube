@@ -16,13 +16,15 @@ from tests import RES_PATH, clear_test_res
 from tests.fixtures import *
 
 
-def test_1(era5_netcdf):
+def test_from_xarray_regular_lat_lon(era5_netcdf):
     dc = DataCube.from_xarray(era5_netcdf)
     assert "tp" in dc
     assert "d2m" in dc
     assert dc.properties == era5_netcdf.attrs
     assert dc.encoding == era5_netcdf.encoding
 
+
+def test_from_xarray_regular_lat_lon_with_id_pattern(era5_netcdf):
     dc = DataCube.from_xarray(era5_netcdf, id_pattern="{__ddsapi_name}")
     assert "total_precipitation" in dc
     assert "2_metre_dewpoint_temperature" in dc
@@ -32,18 +34,24 @@ def test_1(era5_netcdf):
     assert dc["2_metre_dewpoint_temperature"].units == Unit("K")
     assert dc["total_precipitation"].units == Unit("m")
 
+
+def test_to_xarray_regular_lat_lon_with_id_pattern_without_encoding(era5_netcdf):
+    dc = DataCube.from_xarray(era5_netcdf, id_pattern="{__ddsapi_name}")
     xr_res = dc.to_xarray(encoding=False)
     assert "2_metre_dewpoint_temperature" in xr_res.data_vars
     assert "total_precipitation" in xr_res.data_vars
     assert "crs" in xr_res.coords
 
+
+def test_to_xarray_regular_lat_lon_with_id_pattern_with_encoding(era5_netcdf):
+    dc = DataCube.from_xarray(era5_netcdf, id_pattern="{__ddsapi_name}")
     xr_res = dc.to_xarray(encoding=True)
     assert "d2m" in xr_res.data_vars
     assert "tp" in xr_res.data_vars
     assert "crs" in xr_res.coords
 
 
-def test_geobbox_1(era5_globe_netcdf):
+def test_geobbox_regular_latlon(era5_globe_netcdf):
     dc = DataCube.from_xarray(era5_globe_netcdf)
     res = dc.geobbox(north=10, south=-10, west=-20, east=20)
     assert np.all(res["tp"]["latitude"].values <= 10)
@@ -67,7 +75,7 @@ def test_geobbox_1(era5_globe_netcdf):
     assert dset.longitude.attrs["units"] == "degrees_east"
 
 
-def test_geobbox_2(era5_rotated_netcdf):
+def test_geobbox_rotated_pole(era5_rotated_netcdf):
     wso = DataCube.from_xarray(era5_rotated_netcdf)
 
     res = wso.geobbox(north=40, south=38, west=16, east=19)

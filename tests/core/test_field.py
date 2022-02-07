@@ -19,7 +19,7 @@ from tests import RES_PATH, clear_test_res
 from tests.fixtures import *
 
 
-def test_1(era5_rotated_netcdf):
+def test_from_xarray_rotated_pole(era5_rotated_netcdf):
     field = Field.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
 
     assert field.name == "air_temperature"
@@ -33,6 +33,9 @@ def test_1(era5_rotated_netcdf):
         grid_north_pole_latitude=47, grid_north_pole_longitude=-168
     )
 
+
+def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
+    field = Field.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
     xr_res = field.to_xarray(encoding=False)
     assert "air_temperature" in xr_res.data_vars
     assert "height" in xr_res.coords
@@ -58,6 +61,9 @@ def test_1(era5_rotated_netcdf):
         == era5_rotated_netcdf["TMIN_2M"].attrs["cell_methods"]
     )
 
+
+def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
+    field = Field.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
     xr_res = field.to_xarray(encoding=True)
     assert "TMIN_2M" in xr_res.data_vars
     assert "height_2m" in xr_res.coords
@@ -83,7 +89,7 @@ def test_1(era5_rotated_netcdf):
     )
 
 
-def test_2(era5_rotated_netcdf):
+def test_from_xarray_rotated_pole_with_mapping_and_id_pattern(era5_rotated_netcdf):
     field = Field.from_xarray(
         era5_rotated_netcdf,
         ncvar="TMIN_2M",
@@ -120,7 +126,7 @@ def test_2(era5_rotated_netcdf):
     assert "time" in xr_res.coords
 
 
-def test_3(nemo_ocean_16):
+def test_from_xarray_curvilinear_grid(nemo_ocean_16):
     field = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     assert field.name == "vt"
     assert field.ncvar == "vt"
@@ -142,7 +148,7 @@ def test_3(nemo_ocean_16):
     assert "crs" in xr_res.coords
 
 
-def test_4(era5_netcdf):
+def test_from_xarray_regular_latlon(era5_netcdf):
     field = Field.from_xarray(era5_netcdf, ncvar="tp")
     assert field._id_pattern is None
     assert field._mapping is None
@@ -150,6 +156,8 @@ def test_4(era5_netcdf):
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
 
+
+def test_from_xarray_regular_latlon_with_id_pattern(era5_netcdf):
     field = Field.from_xarray(era5_netcdf, ncvar="tp", id_pattern="{__ddsapi_name}")
     assert field._id_pattern == "{__ddsapi_name}"
     assert field._mapping is None
@@ -157,6 +165,8 @@ def test_4(era5_netcdf):
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
 
+
+def test_from_xarray_regular_latlon_with_complex_id_pattern(era5_netcdf):
     field = Field.from_xarray(
         era5_netcdf, ncvar="tp", id_pattern="{units}__{long_name}"
     )
@@ -164,6 +174,8 @@ def test_4(era5_netcdf):
     assert field.ncvar == "tp"
     assert field.units == Unit("m")
 
+
+def test_from_xarray_regular_latlon_with_mapping(era5_netcdf):
     field = Field.from_xarray(
         era5_netcdf, ncvar="tp", mapping={"tp": {"name": "tot_prep"}}
     )
@@ -174,7 +186,7 @@ def test_4(era5_netcdf):
     assert field.units == Unit("m")
 
 
-def test_geobbox_1(era5_globe_netcdf):
+def test_geobbox_regular_latlon(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
     with pytest.raises(
         ex.HCubeNotImplementedError, match=r"Selecting by geobbox containing*"
@@ -202,7 +214,7 @@ def test_geobbox_1(era5_globe_netcdf):
     assert dset.longitude.attrs["units"] == "degrees_east"
 
 
-def test_geobbox_2(era5_globe_netcdf):
+def test_geobbox_regular_latlon_2(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
 
     res = tp.geobbox(north=10, south=-10, west=-20, east=20)
@@ -226,7 +238,7 @@ def test_geobbox_2(era5_globe_netcdf):
     assert dset.longitude.attrs["units"] == "degrees_east"
 
 
-def test_geobbox_3(era5_rotated_netcdf):
+def test_geobbox_rotated_pole(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
 
     res = wso.geobbox(north=40, south=38, west=16, east=19)
@@ -258,7 +270,7 @@ def test_geobbox_3(era5_rotated_netcdf):
     assert "crs" in dset.coords
 
 
-def test_geobbox_4(nemo_ocean_16):
+def test_geobbox_curvilinear_grid(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     res = vt.geobbox(north=-19, south=-22, west=-115, east=-110)
     assert res.domain.crs == crs.CurvilinearGrid()
@@ -270,7 +282,7 @@ def test_geobbox_4(nemo_ocean_16):
     assert np.sum(res.longitude.values <= -110) / W > 0.95
 
 
-def test_timecombo_1(era5_netcdf):
+def test_timecombo_single_hour(era5_netcdf):
     tp = Field.from_xarray(era5_netcdf, ncvar="tp")
     res = tp.sel(time={"year": 2020, "day": [1, 6, 10], "hour": 5})
     dset = res.to_xarray(True)
@@ -281,6 +293,9 @@ def test_timecombo_1(era5_netcdf):
     assert np.all(dset.time.dt.month == 6)
     assert np.all(dset.time.dt.year == 2020)
 
+
+def test_timecombo_single_day(era5_netcdf):
+    tp = Field.from_xarray(era5_netcdf, ncvar="tp")
     res = tp.sel(time={"year": 2020, "day": 10, "hour": [22, 5, 4]})
     dset = res.to_xarray(True)
     assert np.all(
@@ -291,7 +306,7 @@ def test_timecombo_1(era5_netcdf):
     assert np.all(dset.time.dt.year == 2020)
 
 
-def test_locations_1(era5_netcdf):
+def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
     res = d2m.locations(latitude=41, longitude=[9, 12])
@@ -309,6 +324,9 @@ def test_locations_1(era5_netcdf):
     )
     assert "latitude" in coords
 
+
+def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
+    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
     res = d2m.locations(latitude=41, longitude=9)
     assert np.all(res.latitude.values == 41)
     assert np.all(res.longitude.values == 9)
@@ -316,7 +334,7 @@ def test_locations_1(era5_netcdf):
     assert res["longitude"].type is CoordinateType.SCALAR
 
 
-def test_locations_2(era5_netcdf):
+def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
     res = d2m.locations(latitude=[41, 42], longitude=[9, 12])
@@ -333,7 +351,7 @@ def test_locations_2(era5_netcdf):
     assert coords is None
 
 
-def test_locations_3(nemo_ocean_16):
+def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
 
     res = vt.locations(latitude=[-20, -21], longitude=[-111, -114])

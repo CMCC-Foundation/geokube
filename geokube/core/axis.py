@@ -16,7 +16,7 @@ coordinate_criteria_regular_expression = {
     "x": r"(x|rlon|grid_lon.*)",
     "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric|pres|isotherm)[a-z_]*[0-9]*",
     "timedelta": r"time_delta",
-    "time": r"time[0-9]*",
+    "time": r"(time[0-9]*|T)",
     "latitude": r"(x?lat[a-z0-9]*|nav_lat)",
     "longitude": r"(x?lon[a-z0-9]*|nav_lon)",
 }

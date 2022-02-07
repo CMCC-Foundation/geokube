@@ -61,5 +61,5 @@ class DomainMixin:
             return self.coords[self._axis_to_name.get(key.type)]
         raise ex.HCubeTypeError(
             f"Indexing coordinates for Domain is supported only for object of types [string, Axis]. Provided type: {type(key)}",
-            logger=self._LOG,
+            logger=DomainMixin._LOG,
         )

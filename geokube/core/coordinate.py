@@ -272,7 +272,9 @@ class Coordinate(Variable, Axis):
             )
 
         da = ds[ncvar]
+
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
+        ncvar = da.encoding.get("name", ncvar)
         var.encoding.update(name=ncvar)
         axis_name = Variable._get_name(da, mapping, id_pattern)
         axistype = AxisType.parse(da.attrs.get("axis", ncvar))
@@ -283,7 +285,7 @@ class Coordinate(Variable, Axis):
             encoding={"name": ncvar},
         )
 
-        bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds", None))
+        bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds"))
         if bnds_ncvar:
             bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
             bounds = {
