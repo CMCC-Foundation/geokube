@@ -4,19 +4,16 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
-from geokube.core.cfobject import CFObjectAbstract
-from geokube.core.bounds import Bounds, Bounds1D, BoundsND
-from geokube.utils import util_methods
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
-
+from ..core.bounds import Bounds, Bounds1D, BoundsND
+from ..utils import exceptions as ex
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
-from .variable import Variable
 from .unit import Unit
+from .variable import Variable
 
 
 class CoordinateType(Enum):

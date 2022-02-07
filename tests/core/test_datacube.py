@@ -1,19 +1,19 @@
 import cartopy.crs as ccrs
 import numpy as np
-from geokube.core.unit import Unit
+import pytest
 import xarray as xr
+
+import geokube.core.coord_system as crs
 from geokube.backend.netcdf import open_datacube
+from geokube.core.axis import Axis
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate
-from geokube.core.domain import Domain
-from geokube.core.variable import Variable
-import geokube.core.coord_system as crs
-import pytest
-
-from geokube.core.axis import Axis, Axis
 from geokube.core.datacube import DataCube
-from tests.fixtures import *
+from geokube.core.domain import Domain
+from geokube.core.unit import Unit
+from geokube.core.variable import Variable
 from tests import RES_PATH, clear_test_res
+from tests.fixtures import *
 
 
 def test_1(era5_netcdf):

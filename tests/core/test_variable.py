@@ -1,14 +1,14 @@
 import cf_units as cf
 import dask.array as da
 import numpy as np
-from geokube.core.unit import Unit
 import pytest
 import xarray as xr
 
+import geokube.utils.exceptions as ex
 from geokube.core.axis import Axis, AxisType
+from geokube.core.unit import Unit
 from geokube.core.variable import Variable
 from geokube.utils.attrs_encoding import CFAttributes
-import geokube.utils.exceptions as ex
 from tests.fixtures import *
 
 

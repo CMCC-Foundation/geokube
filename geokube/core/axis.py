@@ -6,11 +6,9 @@ from typing import Any, Hashable, List, Mapping, Optional, Union
 
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.utils.hcube_logger import HCubeLogger
-from geokube.core.cfobject import CFObjectAbstract
-
+from ..core.unit import Unit
+from ..utils import exceptions as ex
+from ..utils.hcube_logger import HCubeLogger
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {

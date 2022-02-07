@@ -1,18 +1,17 @@
 import numpy as np
 import pandas as pd
-from geokube.core.bounds import Bounds1D, BoundsND
-from geokube.core.unit import Unit
 import pytest
 
 import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, Axis
-from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.axis import Axis
+from geokube.core.bounds import Bounds1D, BoundsND
+from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.domain import Domain, DomainType
+from geokube.core.unit import Unit
 from geokube.core.variable import Variable
-from tests.fixtures import *
 from tests import compare_dicts
+from tests.fixtures import *
 
 
 def test_1(era5_rotated_netcdf):

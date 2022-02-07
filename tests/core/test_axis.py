@@ -1,8 +1,8 @@
-from geokube.core.unit import Unit
 import pytest
 
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, Axis, AxisType
+from geokube.core.axis import Axis, AxisType
+from geokube.core.unit import Unit
 from tests.fixtures import *
 
 

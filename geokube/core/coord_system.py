@@ -17,7 +17,6 @@ from typing import Optional
 
 import cartopy.crs as ccrs
 import numpy as np
-from geokube.utils import util_methods
 import xarray as xr
 
 

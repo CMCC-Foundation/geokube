@@ -1,7 +1,7 @@
 import logging
-from numbers import Number
-import timeit
 import os
+import timeit
+from numbers import Number
 
 import numpy as np
 

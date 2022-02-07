@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-from types import MethodType
 import warnings
 from collections import defaultdict
 from enum import Enum
@@ -9,6 +8,7 @@ from html import escape
 from itertools import chain
 from numbers import Number
 from string import Template
+from types import MethodType
 from typing import (
     Any,
     Callable,
@@ -22,19 +22,17 @@ from typing import (
 )
 
 import numpy as np
-from geokube.core.axis import Axis
-from geokube.core.enums import RegridMethod
 import pyarrow as pa
 import xarray as xr
 
-from geokube.core.domain import Domain
-from geokube.core.field import Field
-from geokube.utils import util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
-import geokube.utils.exceptions as ex
+from ..core.axis import Axis
+from ..core.domain import Domain
+from ..core.enums import RegridMethod
+from ..core.field import Field
+from ..utils import exceptions as ex
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
 from .domainmixin import DomainMixin
-
 
 IndexerType = Union[slice, List[slice], Number, List[Number]]
 
@@ -119,7 +117,6 @@ class DataCube(DomainMixin):
         east=None,
         top=None,
         bottom=None,
-        roll_if_needed=True,
     ):
         return DataCube(
             fields=[
@@ -130,7 +127,6 @@ class DataCube(DomainMixin):
                     west=west,
                     top=top,
                     bottom=bottom,
-                    roll_if_needed=roll_if_needed,
                 )
                 for k in self._fields.keys()
             ],

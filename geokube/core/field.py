@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import functools as ft
-from itertools import chain
 import os
 import warnings
 from html import escape
@@ -7,36 +8,28 @@ from itertools import chain
 from numbers import Number
 from typing import Any, Callable, Hashable, List, Mapping, Optional, Tuple, Union
 
-import numpy as np
-
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
 import dask.array as da
 import numpy as np
-from geokube.core.coordinate import CoordinateType
 import pyarrow as pa
 import xarray as xr
 import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
-import geokube
-
-import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.core.axis import Axis, AxisType
-from geokube.core.cell_methods import CellMethod
-from geokube.core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
-from geokube.core.axis import Axis
-from geokube.core.domain import Domain
-from geokube.core.coordinate import Coordinate
-from geokube.core.enums import MethodType, RegridMethod
-from geokube.core.variable import Variable
-from geokube.utils import formatting, formatting_html, util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
-from geokube.utils.indexer_dict import IndexerDict
-
+from ..core.axis import Axis, AxisType
+from ..core.cell_methods import CellMethod
+from ..core.coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
+from ..core.coordinate import CoordinateType
+from ..core.domain import Domain
+from ..core.enums import MethodType, RegridMethod
+from ..core.unit import Unit
+from ..core.variable import Variable
+from ..utils import exceptions as ex
+from ..utils import formatting, formatting_html, util_methods
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
 from .domainmixin import DomainMixin
 
 _CARTOPY_FEATURES = {
@@ -74,9 +67,6 @@ class Field(Variable, DomainMixin):
         domain: Optional[Union[Mapping[Hashable, Any], Domain]] = None,
         cell_methods: Optional[CellMethod] = None,
         ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
-        # for internal purposes
-        _id_pattern: Optional[str] = None,
-        _mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ) -> None:
 
         super().__init__(
@@ -85,8 +75,6 @@ class Field(Variable, DomainMixin):
         self._ancillary = None
         self._name = name
         self._domain = domain if isinstance(domain, Domain) else Domain(domain)
-        self._id_pattern = _id_pattern
-        self._mapping = _mapping
 
         self._cell_methods = cell_methods
         if ancillary is not None:
@@ -158,19 +146,18 @@ class Field(Variable, DomainMixin):
         east=None,
         top=None,
         bottom=None,
-        roll_if_needed=True,
     ):
         if (top is not None) or (bottom is not None):
             raise ex.HCubeNotImplementedError(
                 "Selecting by geobbox containing vertical is currently not supported!",
-                logger=self._LOG,
+                logger=Field._LOG,
             )
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
             raise ex.HCubeKeyError(
                 "At least on of the following must be defined: [north, south, west, east, top, bottom]!",
-                logger=self._LOG,
+                logger=Field._LOG,
             )
         return self._geobbox_idx(
             south=south,
@@ -179,12 +166,9 @@ class Field(Variable, DomainMixin):
             east=east,
             top=top,
             bottom=bottom,
-            roll_if_needed=roll_if_needed,
         )
 
-    def _geobbox_cartopy(
-        self, south, north, west, east, top, bottom, roll_if_needed=True
-    ):
+    def _geobbox_cartopy(self, south, north, west, east, top, bottom):
         # TODO: add vertical also
         domain = self._domain
 
@@ -199,7 +183,7 @@ class Field(Variable, DomainMixin):
                 if util_methods.is_nondecreasing(domain.longitude.data)
                 else np.s_[east:west],
             }
-            return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
+            return self.sel(indexers=idx, roll_if_needed=True)
 
         # Specifying the corner points of the bounding box in the rectangular
         # coordinate system (`cartopy.crs.PlateCarree()`).
@@ -213,18 +197,13 @@ class Field(Variable, DomainMixin):
         pts = domain.crs.as_cartopy_crs().transform_points(
             src_crs=plate, x=lons, y=lats
         )
-        x, y = pts[:, 0], pts[:, 1]
-
         # Spatial subseting.
         idx = {
-            domain[AxisType.LATITUDE].dims[1].ncvar: np.s_[x.min() : x.max()],
-            domain[AxisType.LATITUDE].dims[0].ncvar: np.s_[y.min() : y.max()],
+            ax.ncvar: np.s_[v.min() : v.max() + 1]
+            for ax, v in zip(domain[AxisType.LATITUDE].dims, pts.transpose())
         }
-        ds = (
-            self._check_and_roll_longitude(self.to_xarray(), idx)
-            if roll_if_needed
-            else self.to_xarray()
-        )
+
+        ds = self.to_xarray()
         return Field.from_xarray(
             ds=ds.sel(indexers=idx),
             ncvar=self.ncvar,
@@ -233,9 +212,7 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-    def _geobbox_idx(
-        self, south, north, west, east, top=None, bottom=None, roll_if_needed=True
-    ):
+    def _geobbox_idx(self, south, north, west, east, top=None, bottom=None):
         # TODO: add vertical also
         domain = self._domain
         lat = domain.latitude.values
@@ -252,7 +229,7 @@ class Field(Variable, DomainMixin):
                 if util_methods.is_nondecreasing(domain.longitude.values)
                 else np.s_[east:west],
             }
-            return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
+            return self.sel(indexers=idx, roll_if_needed=True)
 
         # Specifying the mask(s) and extracting the indices that correspond to
         # the inside the bounding box.
@@ -260,19 +237,16 @@ class Field(Variable, DomainMixin):
             lat_mask = (lat <= float(south)) & (lat >= float(north))
         if np.sum(lon_mask := (lon >= float(west)) & (lon <= float(east))) == 0:
             lon_mask = (lon <= float(west)) & (lon <= float(east))
-        y, x = np.nonzero(lat_mask & lon_mask)
-
-        # TODO: Changing convention doesn't work since above lines are executed for original data, rather than the rolled one!
-        # Spatial subseting.
+        x = np.nonzero(lat_mask & lon_mask)
+        # lat(x), lon(x); lat(x,y), lon(x,y); lat(x,y,z), lon(x,y,z), etc.
         idx = {
-            domain[AxisType.LATITUDE].dims[1].ncvar: np.s_[x.min() : x.max() + 1],
-            domain[AxisType.LATITUDE].dims[0].ncvar: np.s_[y.min() : y.max() + 1],
+            ax.ncvar: np.s_[v.min() : v.max() + 1]
+            for ax, v in zip(domain[AxisType.LATITUDE].dims, x)
         }
-        ds = (
-            self._check_and_roll_longitude(self.to_xarray(), idx)
-            if roll_if_needed
-            else self.to_xarray()
-        )
+
+        # Dependent coordinates cannot be rolled (no changing convention)
+        # TODO: We may warn a user if there is wrong convention for dependent coordinate
+        ds = self.to_xarray()
         return Field.from_xarray(
             ds=ds.isel(indexers=idx),
             ncvar=self.ncvar,
@@ -384,13 +358,10 @@ class Field(Variable, DomainMixin):
 
             # Spatial subseting.
             idx = {
-                # The same order of dimensions for LATITUDE and LONGITUDE
-                domain[AxisType.LATITUDE]
-                .dims[1]
-                .ncvar: xr.DataArray(data=idx[:, 1], dims="points"),
-                domain[AxisType.LATITUDE]
-                .dims[0]
-                .ncvar: xr.DataArray(data=idx[:, 0], dims="points"),
+                ax.ncvar: xr.DataArray(data=v, dims="points")
+                for ax, v in zip(
+                    domain[AxisType.LATITUDE].dims[::-1], idx.transpose()[::-1]
+                )
             }
 
         return Field.from_xarray(
@@ -410,13 +381,16 @@ class Field(Variable, DomainMixin):
         roll_if_needed: bool = True,
         method: str = None,
         tolerance: Number = None,
-        drop: bool = False,
+        drop: bool = False,  # TODO: check if should be always True or False in out case
         **indexers_kwargs: Any,
     ) -> "Field":
         indexers = xr.core.utils.either_dict_or_kwargs(indexers, indexers_kwargs, "sel")
+        # TODO: indexers from this place should be always of type -> Mapping[Axis, Any]
+        #   ^ it can be done in Domain
         indexers = indexers.copy()
         ds = self.to_xarray()
 
+        # TODO: if Axis("time") in indexers and util_methods.is_time_combo(indexers["time"]):
         if "time" in indexers and util_methods.is_time_combo(indexers["time"]):
             # time is always independent coordinate
             # updating with standard names of axis/axis types
@@ -435,6 +409,7 @@ class Field(Variable, DomainMixin):
         ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
         lost_dims = ds_dims - set(ds.dims)
         Field._update_coordinates(ds[self.ncvar], lost_dims)
+        # TODO: check if single loc lat/lon is parsed to SCALAR CoordinteType
         return Field.from_xarray(
             ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
         )
@@ -473,6 +448,7 @@ class Field(Variable, DomainMixin):
                 {lng_name: (((ds[lng_name] + 180) % 360) - 180)}
             ).roll(**{lng_name: roll_value}, roll_coords=True)
             res[lng_name].attrs.update(ds[lng_name].attrs)
+            # TODO: verify of there are some attrs that need to be updated (e.g. min/max value)
             return res
         if dset_neg_conv and sel_pos_conv:
             # from [-180,-180] to [0,360]
@@ -975,9 +951,9 @@ class Field(Variable, DomainMixin):
             encoding=var.encoding,
             domain=domain,
             cell_methods=cell_methods,
-            _id_pattern=id_pattern,
-            _mapping=mapping,
         )
+        field._id_pattern = id_pattern
+        field._mapping = mapping
         return field
 
     @staticmethod

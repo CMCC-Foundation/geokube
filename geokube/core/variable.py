@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from html import escape
-from string import Formatter, Template
-from numbers import Number
-from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 import warnings
+from html import escape
+from numbers import Number
+from string import Formatter, Template
+from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 import dask.array as da
 import numpy as np
-from geokube.core.axis import Axis, AxisType
-from geokube.core.cfobject import CFObjectAbstract
 import xarray as xr
 from xarray.core.options import OPTIONS
 
-import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.utils import formatting, formatting_html, util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
+from ..core.axis import Axis, AxisType
+from ..core.unit import Unit
+from ..utils import exceptions as ex
+from ..utils import formatting, formatting_html, util_methods
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
 
 
 class Variable(xr.Variable):

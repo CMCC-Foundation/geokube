@@ -1,4 +1,4 @@
-from geokube.core.variable import Variable
+from ..core.variable import Variable
 
 
 class Bounds(Variable):

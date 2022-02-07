@@ -1,23 +1,22 @@
 import numpy as np
-import xarray as xr
-from geokube.backend.netcdf import open_datacube, open_dataset
-from geokube.core.coord_system import RegularLatLon
-from geokube.core.coordinate import Coordinate
-from geokube.core.datacube import DataCube
-from geokube.core.axis import Axis, AxisType
-from geokube.core.domain import Domain
-from geokube.core.variable import Variable
 import pytest
+import xarray as xr
 
+import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.core.axis import Axis, Axis
+from geokube.backend.netcdf import open_datacube, open_dataset
+from geokube.core.axis import Axis, AxisType
+from geokube.core.coord_system import RegularLatLon
+from geokube.core.coordinate import Coordinate, CoordinateType
+from geokube.core.datacube import DataCube
+from geokube.core.domain import Domain
 from geokube.core.enums import LongitudeConvention, MethodType
 from geokube.core.field import Field
+from geokube.core.unit import Unit
+from geokube.core.variable import Variable
 from geokube.utils import util_methods
-from tests.fixtures import *
 from tests import RES_PATH, clear_test_res
-import geokube.core.coord_system as crs
+from tests.fixtures import *
 
 
 def test_1(era5_rotated_netcdf):
@@ -296,6 +295,8 @@ def test_locations_1(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
     res = d2m.locations(latitude=41, longitude=[9, 12])
+    assert res["latitude"].type is CoordinateType.SCALAR
+    assert res["longitude"].type is CoordinateType.INDEPENDENT
     assert np.all(res.latitude.values == 41)
     assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
 
@@ -307,6 +308,12 @@ def test_locations_1(era5_netcdf):
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
     assert "latitude" in coords
+
+    res = d2m.locations(latitude=41, longitude=9)
+    assert np.all(res.latitude.values == 41)
+    assert np.all(res.longitude.values == 9)
+    assert res["latitude"].type is CoordinateType.SCALAR
+    assert res["longitude"].type is CoordinateType.SCALAR
 
 
 def test_locations_2(era5_netcdf):

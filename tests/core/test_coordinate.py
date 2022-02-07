@@ -1,15 +1,16 @@
 from numbers import Number
-import numpy as np
+
 import dask.array as da
+import numpy as np
 import pytest
 
 import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.core.axis import Axis, Axis, AxisType
+from geokube.core.axis import Axis, AxisType
 from geokube.core.coordinate import Coordinate, CoordinateType
+from geokube.core.unit import Unit
 from geokube.core.variable import Variable
-from tests.fixtures import *
 from tests import compare_dicts
+from tests.fixtures import *
 
 
 def test_process_bounds_1():

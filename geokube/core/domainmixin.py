@@ -1,9 +1,9 @@
 from typing import Union
 
-import geokube.utils.exceptions as ex
+from ..utils import exceptions as ex
 from .axis import Axis, AxisType
-from .enums import LatitudeConvention, LongitudeConvention
 from .coordinate import Coordinate, CoordinateType
+from .enums import LatitudeConvention, LongitudeConvention
 
 
 class DomainMixin:

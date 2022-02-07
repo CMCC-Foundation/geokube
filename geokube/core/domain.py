@@ -10,21 +10,16 @@ from typing import Any, Hashable, List, Mapping, Optional, Tuple, Union
 import numpy as np
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, AxisType
-from geokube.core.coord_system import (
-    CoordSystem,
-    CurvilinearGrid,
-    RegularLatLon,
-    parse_crs,
-)
-from geokube.utils import util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
+from ..core.axis import AxisType
+from ..core.coord_system import CoordSystem, CurvilinearGrid, RegularLatLon, parse_crs
+from ..utils import exceptions as ex
+from ..utils import util_methods
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
 from .coordinate import Coordinate, CoordinateType
+from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
-from .domainmixin import DomainMixin
 
 
 class DomainType(Enum):

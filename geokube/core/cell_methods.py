@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from typing import Iterable, Union
+
 import numpy as np
-from geokube.core.enums import MethodType
+
+from ..core.enums import MethodType
 
 
 class CellMethod:

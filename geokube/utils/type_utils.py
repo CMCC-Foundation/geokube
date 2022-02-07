@@ -3,9 +3,9 @@ from enum import Enum
 from numbers import Number
 from typing import Any, Hashable, Mapping, Optional, Union
 
+import dask.array as da
 import numpy as np
 import xarray as xr
-import dask.array as da
 
 import geokube.core.axis
 
