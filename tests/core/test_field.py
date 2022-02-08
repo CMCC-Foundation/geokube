@@ -448,3 +448,25 @@ def test_rotated_pole_sel_time_with_diff_ncvar(era5_rotated_netcdf):
     dset = res.to_xarray(encoding=True)
     assert "time" not in dset.coords
     assert "tm" in dset.coords
+
+
+def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
+    nemo_ocean_16["vt"].attrs["standard_name"] = "vt_std_name"
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    assert vt.name == "vt_std_name"
+    assert vt.ncvar == "vt"
+    res = vt.sel(depth=1.2, method="nearest")
+    assert res.name == "vt_std_name"
+    assert res.ncvar == "vt"
+
+    dset = res.to_xarray(encoding=True)
+    assert "vt" in dset.data_vars
+    assert "vt_std_name" not in dset.data_vars
+    assert "nav_lat" in dset.coords
+    assert "latitude" not in dset.coords
+
+    dset = res.to_xarray(encoding=False)
+    assert "vt" not in dset.data_vars
+    assert "vt_std_name" in dset.data_vars
+    assert "nav_lat" not in dset.coords
+    assert "latitude" in dset.coords
