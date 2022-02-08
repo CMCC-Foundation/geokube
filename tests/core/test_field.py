@@ -398,6 +398,7 @@ def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
     nemo_ocean_16.depthv.attrs["standard_name"] = "vertical"
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     res = vt.sel(depth=[1.2, 29], method="nearest")
+    assert len(res.vertical) == 2
     assert np.all(
         (res["vertical"].values == nemo_ocean_16.depthv.values[1])
         | (res["vertical"].values == nemo_ocean_16.depthv.values[-2])
@@ -413,6 +414,8 @@ def test_nemo_sel_time_empty_result(nemo_ocean_16):
 def test_rotated_pole_sel_rlat_rlon_with_axis(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
     res = wso.sel(y=slice(-1.7, -0.9), x=slice(4, 4.9))
+    assert len(res[Axis("x")]) > 0
+    assert len(res[Axis("y")]) > 0
     assert np.all(res[Axis("y")].values >= -1.7)
     assert np.all(res[Axis("y")].values <= -0.9)
     assert np.all(res[Axis("x")].values >= 4.0)
@@ -421,11 +424,18 @@ def test_rotated_pole_sel_rlat_rlon_with_axis(era5_rotated_netcdf):
 
 def test_rotated_pole_sel_rlat_rlon_with_std_name(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
-    res = wso.sel(grid_longitude=slice(-1.7, -0.9), grid_latitude=slice(4, 4.9))
-    assert np.all(res[Axis("rlon")].values >= -1.7)
-    assert np.all(res[Axis("rlon")].values <= -0.9)
-    assert np.all(res[Axis("rlat")].values >= 4.0)
-    assert np.all(res[Axis("rlat")].values <= 4.9)
+    res = wso.sel(grid_latitude=slice(-1.7, -0.9), grid_longitude=slice(4, 4.9))
+    assert len(res[Axis("rlat")]) > 0
+    assert len(res[Axis("rlon")]) > 0
+    assert np.all(res[Axis("rlat")].values >= -1.7)
+    assert np.all(res[Axis("rlat")].values <= -0.9)
+    assert np.all(res[Axis("rlon")].values >= 4.0)
+    assert np.all(res[Axis("rlon")].values <= 4.9)
+
+    assert np.all(res[Axis("y")].values >= -1.7)
+    assert np.all(res[Axis("y")].values <= -0.9)
+    assert np.all(res[Axis("x")].values >= 4.0)
+    assert np.all(res[Axis("x")].values <= 4.9)
 
 
 def test_rotated_pole_sel_lat_with_std_name_fails(era5_rotated_netcdf):
@@ -438,6 +448,7 @@ def test_rotated_pole_sel_time_with_diff_ncvar(era5_rotated_netcdf):
     era5_rotated_netcdf = era5_rotated_netcdf.rename({"time": "tm"})
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
     res = wso.sel(time=slice("2007-05-02T00:00:00", "2007-05-02T11:00:00"))
+    assert len(res.time) > 0
     assert np.all(res[Axis("time")].values <= np.datetime64("2007-05-02T11:00:00"))
     assert np.all(res[Axis("time")].values >= np.datetime64("2007-05-02T00:00:00"))
     assert np.all(res.time.values <= np.datetime64("2007-05-02T11:00:00"))
