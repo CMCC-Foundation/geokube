@@ -172,50 +172,6 @@ class Field(Variable, DomainMixin):
             bottom=bottom,
         )
 
-    def _geobbox_cartopy(self, south, north, west, east, top, bottom):
-        # TODO: add vertical also
-        domain = self._domain
-
-        ind_lat = domain.is_latitude_independent
-        ind_lon = domain.is_longitude_independent
-        if ind_lat and ind_lon:
-            idx = {
-                domain.latitude.name: np.s_[south:north]
-                if util_methods.is_nondecreasing(domain.latitude.data)
-                else np.s_[north:south],
-                domain.longitude.name: np.s_[west:east]
-                if util_methods.is_nondecreasing(domain.longitude.data)
-                else np.s_[east:west],
-            }
-            return self.sel(indexers=idx, roll_if_needed=True)
-
-        # Specifying the corner points of the bounding box in the rectangular
-        # coordinate system (`cartopy.crs.PlateCarree()`).
-        lats = np.array([south, south, north, north], dtype=np.float32)
-        lons = np.array([west, east, west, east], dtype=np.float32)
-
-        # Transforming the corner points of the bounding box from the
-        # rectangular coordinate system (`cartopy.crs.PlateCarree`) to the
-        # coordinate system of the field.
-        plate = ccrs.PlateCarree()
-        pts = domain.crs.as_cartopy_crs().transform_points(
-            src_crs=plate, x=lons, y=lats
-        )
-        # Spatial subseting.
-        idx = {
-            ax.ncvar: np.s_[v.min() : v.max() + 1]
-            for ax, v in zip(domain[AxisType.LATITUDE].dims, pts.transpose())
-        }
-
-        ds = self.to_xarray(encoding=False)
-        return Field.from_xarray(
-            ds=ds.sel(indexers=idx),
-            ncvar=self.ncvar,
-            copy=False,
-            id_pattern=self._id_pattern,
-            mapping=self._mapping,
-        )
-
     def _geobbox_idx(self, south, north, west, east, top=None, bottom=None):
         # TODO: add vertical also
         domain = self._domain
@@ -271,7 +227,7 @@ class Field(Variable, DomainMixin):
         if vertical is not None:
             raise ex.HCubeNotImplementedError(
                 "Selecting by location with vertical is currently not supported!",
-                logger=self._LOG,
+                logger=Field._LOG,
             )
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
@@ -375,7 +331,7 @@ class Field(Variable, DomainMixin):
         )
 
     # consider only independent coordinates
-    # we should use metpy approach (user can also specify - units)
+    # TODO: we should use metpy approach (user can also specify - units)
     @log_func_debug
     def sel(
         self,
@@ -387,7 +343,8 @@ class Field(Variable, DomainMixin):
         **indexers_kwargs: Any,
     ) -> "Field":
         indexers = xr.core.utils.either_dict_or_kwargs(indexers, indexers_kwargs, "sel")
-        indexers = Domain.str_to_axis_indexers(indexers)
+        # TODO:
+        indexers = self.domain.map_indexers(indexers)
         # TODO: indexers from this place should be always of type -> Mapping[Axis, Any]
         #   ^ it can be done in Domain
         indexers = indexers.copy()
@@ -403,7 +360,7 @@ class Field(Variable, DomainMixin):
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
 
-        indexers = {self.domain[k].ncvar: v for k, v in indexers.items()}
+        indexers = {self.domain[k].name: v for k, v in indexers.items()}
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
@@ -420,26 +377,26 @@ class Field(Variable, DomainMixin):
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
         if "longitude" not in indexers or not isinstance(indexers["longitude"], slice):
             return ds
-        if self.domain["longitude"].type is not CoordinateType.INDEPENDENT:
+        if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
             raise ex.HCubeNotImplementedError(
                 "Rolling longitude is currently supported only for independent coordinate!",
-                logger=self._LOG,
+                logger=Field._LOG,
             )
         first_el, last_el = (
-            self.domain["longitude"].min(),
-            self.domain["longitude"].max(),
+            self.domain[Axis("longitude")].min(),
+            self.domain[Axis("longitude")].max(),
         )
 
-        start = indexers["longitude"].start
-        stop = indexers["longitude"].stop
+        start = indexers[Axis("longitude")].start
+        stop = indexers[Axis("longitude")].stop
 
         sel_neg_conv = (start < 0) | (stop < 0)
         sel_pos_conv = (start > 180) | (stop > 180)
 
         dset_neg_conv = first_el < 0
         dset_pos_conv = first_el >= 0
-        lng_name = self.domain["longitude"].name
+        lng_name = self.domain[Axis("longitude")].name
 
         if dset_pos_conv and sel_neg_conv:
             # from [0,360] to [-180,180]
@@ -571,15 +528,15 @@ class Field(Variable, DomainMixin):
             target_domain = target.domain
         else:
             raise ex.HCubeTypeError(
-                "'target' must be an instance of Domain or Field", logger=self._LOG
+                "'target' must be an instance of Domain or Field", logger=Field._LOG
             )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
 
         if reuse_weights and (weights_path is None or not os.path.exists(weights_path)):
-            self._LOG.warn("`weights_path` is None or file does not exist!")
-            self._LOG.info("`reuse_weights` turned off")
+            Field._LOG.warn("`weights_path` is None or file does not exist!")
+            Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
 
         # Input domain
@@ -676,12 +633,12 @@ class Field(Variable, DomainMixin):
         else:
             raise ex.HCubeTypeError(
                 f"Operator can be only one of: `str`, `MethodType`, `callable`. Provided `{type(operator)}`",
-                logger=self._LOG,
+                logger=Field._LOG,
             )
         if func is None:
             raise ex.HCubeValueError(
                 f"Provided operator `{operator}` was not found! Check available operators or provide it the one yourself by pasing callable object!",
-                logger=self._LOG,
+                logger=Field._LOG,
             )
 
         # ################## Temporary solution for time bounds adjustmnent ######################
@@ -701,7 +658,7 @@ class Field(Variable, DomainMixin):
             for i, v in enumerate(da.groups.values()):
                 new_bounds[i] = [tb.values[v].min(), tb.values[v].max()]
             if tb is None:
-                self._LOG.warn("Time bounds not defined for the cell methods!")
+                Field._LOG.warn("Time bounds not defined for the cell methods!")
                 warnings.warn("Time bounds not defined for the cell methods!")
         else:
             da = ds.resample(indexer={time: frequency}, **resample_kwargs)
@@ -741,10 +698,10 @@ class Field(Variable, DomainMixin):
         if features:
             features = [_CARTOPY_FEATURES[feature] for feature in features]
             if gridlines is None:
-                self._LOG.info("`gridline` turned on")
+                Field._LOG.info("`gridline` turned on")
                 gridlines = True
         if gridline_labels is None:
-            self._LOG.info("`gridline_labels` turned off")
+            Field._LOG.info("`gridline_labels` turned off")
             gridline_labels = False
         has_cartopy_items = bool(features or gridlines)
 

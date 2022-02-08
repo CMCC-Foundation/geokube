@@ -56,10 +56,20 @@ class DomainMixin:
         if isinstance(key, str):
             return self.coords[key]
         elif isinstance(key, AxisType):
+            if key not in self._axis_to_name:
+                raise ex.HCubeKeyError(
+                    f"Axis of type `{key}` does not exist in the domain!",
+                    logger=self._LOG,
+                )
             return self.coords[self._axis_to_name.get(key)]
         elif isinstance(key, Axis):
+            if key.type not in self._axis_to_name:
+                raise ex.HCubeKeyError(
+                    f"Axis of type `{key}` does not exist in the domain!",
+                    logger=self._LOG,
+                )
             return self.coords[self._axis_to_name.get(key.type)]
         raise ex.HCubeTypeError(
-            f"Indexing coordinates for Domain is supported only for object of types [string, Axis]. Provided type: {type(key)}",
-            logger=DomainMixin._LOG,
+            f"Indexing coordinates for Domain is supported only for object of types [str, geokube.Axis]. Provided type: {type(key)}",
+            logger=self._LOG,
         )

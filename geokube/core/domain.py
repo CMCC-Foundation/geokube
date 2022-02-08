@@ -130,6 +130,9 @@ class Domain(DomainMixin):
     def nbytes(self) -> int:
         return sum(coord.nbytes for coord in self._coords)
 
+    def map_indexers(self, indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
+        return {Axis(n): v for n, v in indexers.items()}
+
     @log_func_debug
     def _process_time_combo(self, indexer: Mapping[Hashable, Any]):
         if "time" in indexer:
@@ -321,7 +324,3 @@ class Domain(DomainMixin):
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
         return xr.Dataset(coords=grid).coords
-
-    @staticmethod
-    def str_to_axis_indexers(indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
-        return {Axis(n): v for n, v in indexers.items()}

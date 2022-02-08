@@ -240,8 +240,16 @@ def test_geobbox_regular_latlon_2(era5_globe_netcdf):
 
 def test_geobbox_rotated_pole(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+    assert wso.latitude.name == "latitude"
+    assert wso.latitude.ncvar == "lat"
+    assert wso.longitude.name == "longitude"
+    assert wso.longitude.ncvar == "lon"
 
     res = wso.geobbox(north=40, south=38, west=16, east=19)
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
     assert res.domain.crs == crs.RotatedGeogCS(
         grid_north_pole_latitude=47, grid_north_pole_longitude=-168
     )
@@ -272,7 +280,16 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
 
 def test_geobbox_curvilinear_grid(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    assert vt.latitude.name == "latitude"
+    assert vt.longitude.name == "longitude"
+    assert vt.latitude.ncvar == "nav_lat"
+    assert vt.longitude.ncvar == "nav_lon"
+
     res = vt.geobbox(north=-19, south=-22, west=-115, east=-110)
+    assert vt.latitude.name == "latitude"
+    assert vt.longitude.name == "longitude"
+    assert vt.latitude.ncvar == "nav_lat"
+    assert vt.longitude.ncvar == "nav_lon"
     assert res.domain.crs == crs.CurvilinearGrid()
 
     W = np.prod(res.latitude.shape)
@@ -363,3 +380,71 @@ def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
     assert np.all((dset.nav_lon.values + 111 < 0.2) | (dset.nav_lon.values + 114 < 0.2))
     assert dset.vt.attrs["units"] == "degree_C m/s"
     assert "coordinates" not in dset.vt.attrs
+
+
+def test_sel_fail_on_missing_x_y(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    with pytest.raises(ex.HCubeKeyError, match=r"Axis of type*"):
+        _ = vt.sel(depth=[1.2, 29], x=slice(60, 100), y=slice(130, 170))
+
+
+def test_nemo_sel_vertical_fail_on_missing_value_if_method_undefined(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    with pytest.raises(KeyError):
+        _ = vt.sel(depth=[1.2, 29])
+
+
+def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
+    nemo_ocean_16.depthv.attrs["standard_name"] = "vertical"
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    res = vt.sel(depth=[1.2, 29], method="nearest")
+    assert np.all(
+        (res["vertical"].values == nemo_ocean_16.depthv.values[1])
+        | (res["vertical"].values == nemo_ocean_16.depthv.values[-2])
+    )
+
+
+def test_nemo_sel_time_empty_result(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+    res = vt.sel(time={"hour": 13}, method="nearest")
+    assert res["time"].shape == (0,)
+
+
+def test_rotated_pole_sel_rlat_rlon_with_axis(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+    res = wso.sel(y=slice(-1.7, -0.9), x=slice(4, 4.9))
+    assert np.all(res[Axis("y")].values >= -1.7)
+    assert np.all(res[Axis("y")].values <= -0.9)
+    assert np.all(res[Axis("x")].values >= 4.0)
+    assert np.all(res[Axis("x")].values <= 4.9)
+
+
+def test_rotated_pole_sel_rlat_rlon_with_std_name(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+    res = wso.sel(grid_longitude=slice(-1.7, -0.9), grid_latitude=slice(4, 4.9))
+    assert np.all(res[Axis("rlon")].values >= -1.7)
+    assert np.all(res[Axis("rlon")].values <= -0.9)
+    assert np.all(res[Axis("rlat")].values >= 4.0)
+    assert np.all(res[Axis("rlat")].values <= 4.9)
+
+
+def test_rotated_pole_sel_lat_with_std_name_fails(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+    with pytest.raises(KeyError):
+        _ = wso.sel(latitude=slice(39, 41))
+
+
+def test_rotated_pole_sel_time_with_diff_ncvar(era5_rotated_netcdf):
+    era5_rotated_netcdf = era5_rotated_netcdf.rename({"time": "tm"})
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+    res = wso.sel(time=slice("2007-05-02T00:00:00", "2007-05-02T11:00:00"))
+    assert np.all(res[Axis("time")].values <= np.datetime64("2007-05-02T11:00:00"))
+    assert np.all(res[Axis("time")].values >= np.datetime64("2007-05-02T00:00:00"))
+    assert np.all(res.time.values <= np.datetime64("2007-05-02T11:00:00"))
+    assert np.all(res.time.values >= np.datetime64("2007-05-02T00:00:00"))
+    assert np.all(res["time"].values <= np.datetime64("2007-05-02T11:00:00"))
+    assert np.all(res["time"].values >= np.datetime64("2007-05-02T00:00:00"))
+
+    dset = res.to_xarray(encoding=True)
+    assert "time" not in dset.coords
+    assert "tm" in dset.coords

@@ -163,7 +163,9 @@ def find_slice_dict_and_change_to_slice(dict_val: Mapping[str, Any]):
 
 
 def is_time_combo(vals: dict) -> bool:
-    return "year" in vals or "month" in vals or "day" in vals or "hour" in vals
+    return isinstance(vals, dict) and (
+        "year" in vals or "month" in vals or "day" in vals or "hour" in vals
+    )
 
 
 def is_nondecreasing(values):
