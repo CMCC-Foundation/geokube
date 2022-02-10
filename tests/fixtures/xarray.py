@@ -3,6 +3,13 @@ import xarray as xr
 
 
 @pytest.fixture
+def era5_point_domain():
+    yield xr.open_mfdataset(
+        "tests//resources//point_domain*.nc", chunks="auto", decode_coords="all"
+    )
+
+
+@pytest.fixture
 def era5_netcdf():
     yield xr.open_mfdataset(
         "tests//resources//era5-single*.nc", chunks="auto", decode_coords="all"
