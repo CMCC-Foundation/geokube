@@ -25,7 +25,7 @@ from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .cell_methods import CellMethod
 from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
-from .coordinate import CoordinateType
+from .coordinate import Coordinate, CoordinateType
 from .domain import Domain
 from .enums import MethodType, RegridMethod
 from .unit import Unit
@@ -42,6 +42,8 @@ _CARTOPY_FEATURES = {
     "states": cartf.STATES,
 }
 
+
+# pylint: disable=missing-class-docstring
 
 class Field(Variable, DomainMixin):
 
@@ -232,6 +234,79 @@ class Field(Variable, DomainMixin):
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
         )
+
+    def interpolate(
+        self,
+        domain: Domain,
+        method: str = 'nearest'
+    ) -> Field:
+        dst_dim_axis_types = {
+            coord.axis_type
+            for coord in domain.coords.values()
+            if coord.is_dimension
+        }
+        if dst_dim_axis_types != {AxisType.LATITUDE, AxisType.LONGITUDE}:
+            raise NotImplementedError(
+                "'domain' can have only latitude and longitude at the moment"
+            )
+
+        lat = domain.latitude.values
+        lon = domain.longitude.values
+        if (
+            self.domain.is_latitude_independent
+            and self.domain.is_longitude_independent
+        ):
+            interp_coords = {
+                self.domain.latitude.name: lat,
+                self.domain.longitude.name: lon
+            }
+        else:
+            if isinstance(domain.crs, RegularLatLon):
+                lat_lon_mgrid = np.meshgrid(lat, lon, indexing='ij')
+                lat_lon_prod = np.stack(lat_lon_mgrid, axis=-1).reshape(-1, 2)
+                lat = lat_lon_prod[:, 0]
+                lon = lat_lon_prod[:, 1]
+                dim_x = self.domain.x.name
+                dim_y = self.domain.y.name
+            else:
+                dim_x = dim_y = 'points'
+
+            pts = self.domain.crs.as_cartopy_crs().transform_points(
+                src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
+            )
+            interp_coords = {
+                self.domain.x.name: xr.DataArray(data=pts[:, 0], dims=dim_x),
+                self.domain.y.name: xr.DataArray(data=pts[:, 1], dims=dim_y)
+            }
+
+        dset = self.to_xarray(encoding=False)
+        dset = dset.interp(coords=interp_coords, method=method)
+
+        return dset
+
+        return Field.from_xarray(
+            ds=dset,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping
+        )
+
+    def _locations_interp(self, latitude, longitude, method='nearest'):
+        coords = {
+            'latitude': Coordinate(
+                data=np.array(latitude, dtype=np.float64, ndmin=1),
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            'longitude': Coordinate(
+                data=np.array(longitude, dtype=np.float64, ndmin=1),
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        }
+        domain = Domain(coords=coords, crs=RegularLatLon())
+        return self.interpolate(domain=domain, method=method)
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
         domain = self._domain
