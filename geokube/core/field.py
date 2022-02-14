@@ -231,15 +231,29 @@ class Field(Variable, DomainMixin):
                 "Selecting by location with vertical is currently not supported!",
                 logger=Field._LOG,
             )
-        return self._locations_idx(
-            latitude=latitude, longitude=longitude, vertical=vertical
-        )
+
+        # TODO: points -> lat(points), lon(points)
+        coords = {
+            'latitude': Coordinate(
+                data=np.array(latitude, dtype=np.float64, ndmin=1),
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            'longitude': Coordinate(
+                data=np.array(longitude, dtype=np.float64, ndmin=1),
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        }
+        domain = Domain(coords=coords, crs=RegularLatLon())
+        return self.interpolate(domain=domain, method='nearest')
 
     def interpolate(
         self,
         domain: Domain,
         method: str = 'nearest'
     ) -> Field:
+        # TODO: Add vertical support.
         dst_dim_axis_types = {
             coord.axis_type
             for coord in domain.coords.values()
@@ -253,12 +267,12 @@ class Field(Variable, DomainMixin):
         lat = domain.latitude.values
         lon = domain.longitude.values
         if (
-            self.domain.is_latitude_independent
-            and self.domain.is_longitude_independent
+            self.is_latitude_independent
+            and self.is_longitude_independent
         ):
             interp_coords = {
-                self.domain.latitude.name: lat,
-                self.domain.longitude.name: lon
+                self.latitude.name: lat,
+                self.longitude.name: lon
             }
         else:
             if isinstance(domain.crs, RegularLatLon):
@@ -266,8 +280,8 @@ class Field(Variable, DomainMixin):
                 lat_lon_prod = np.stack(lat_lon_mgrid, axis=-1).reshape(-1, 2)
                 lat = lat_lon_prod[:, 0]
                 lon = lat_lon_prod[:, 1]
-                dim_x = self.domain.x.name
-                dim_y = self.domain.y.name
+                dim_x = self.x.name
+                dim_y = self.y.name
             else:
                 dim_x = dim_y = 'points'
 
@@ -275,8 +289,8 @@ class Field(Variable, DomainMixin):
                 src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
             )
             interp_coords = {
-                self.domain.x.name: xr.DataArray(data=pts[:, 0], dims=dim_x),
-                self.domain.y.name: xr.DataArray(data=pts[:, 1], dims=dim_y)
+                self.x.name: xr.DataArray(data=pts[:, 0], dims=dim_x),
+                self.y.name: xr.DataArray(data=pts[:, 1], dims=dim_y)
             }
 
         dset = self.to_xarray(encoding=False)
@@ -291,22 +305,6 @@ class Field(Variable, DomainMixin):
             id_pattern=self._id_pattern,
             mapping=self._mapping
         )
-
-    def _locations_interp(self, latitude, longitude, method='nearest'):
-        coords = {
-            'latitude': Coordinate(
-                data=np.array(latitude, dtype=np.float64, ndmin=1),
-                axis=Axis(name='latitude', is_dim=True),
-                dims=('latitude',)
-            ),
-            'longitude': Coordinate(
-                data=np.array(longitude, dtype=np.float64, ndmin=1),
-                axis=Axis(name='longitude', is_dim=True),
-                dims=('longitude',)
-            )
-        }
-        domain = Domain(coords=coords, crs=RegularLatLon())
-        return self.interpolate(domain=domain, method=method)
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
         domain = self._domain
