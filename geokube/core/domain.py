@@ -24,6 +24,7 @@ from .variable import Variable
 
 class DomainType(Enum):
     GRIDDED = "gridded"
+    POINTS = "points"
     TIMESERIES = "timeseries"
 
 
