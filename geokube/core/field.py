@@ -26,7 +26,7 @@ from .axis import Axis, AxisType
 from .cell_methods import CellMethod
 from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
-from .domain import Domain
+from .domain import Domain, DomainType
 from .enums import MethodType, RegridMethod
 from .unit import Unit
 from .variable import Variable
@@ -245,7 +245,9 @@ class Field(Variable, DomainMixin):
                 dims=('longitude',)
             )
         }
-        domain = Domain(coords=coords, crs=RegularLatLon())
+        domain = Domain(
+            coords=coords, crs=RegularLatLon(), domaintype=DomainType.POINTS
+        )
         return self.interpolate(domain=domain, method='nearest')
 
     def interpolate(
@@ -254,36 +256,32 @@ class Field(Variable, DomainMixin):
         method: str = 'nearest'
     ) -> Field:
         # TODO: Add vertical support.
-        dst_dim_axis_types = {
-            coord.axis_type
-            for coord in domain.coords.values()
-            if coord.is_dimension
-        }
-        if dst_dim_axis_types != {AxisType.LATITUDE, AxisType.LONGITUDE}:
+        if (
+            {c.axis_type for c in domain.coords.values() if c.is_dimension}
+            != {AxisType.LATITUDE, AxisType.LONGITUDE}
+        ):
             raise NotImplementedError(
                 "'domain' can have only latitude and longitude at the moment"
             )
 
-        lat = domain.latitude.values
-        lon = domain.longitude.values
-        if (
-            self.is_latitude_independent
-            and self.is_longitude_independent
-        ):
+        lat, lon = domain.latitude.values, domain.longitude.values
+        if self.is_latitude_independent and self.is_longitude_independent:
+            if domain.type is DomainType.POINTS:
+                dim_lat = dim_lon = 'points'
+            else:
+                dim_lat, dim_lon = self.latitude.name, self.longitude.name
             interp_coords = {
-                self.latitude.name: lat,
-                self.longitude.name: lon
+                self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
+                self.longitude.name: xr.DataArray(data=lon, dims=dim_lon)
             }
         else:
-            if isinstance(domain.crs, RegularLatLon):
-                lat_lon_mgrid = np.meshgrid(lat, lon, indexing='ij')
-                lat_lon_prod = np.stack(lat_lon_mgrid, axis=-1).reshape(-1, 2)
-                lat = lat_lon_prod[:, 0]
-                lon = lat_lon_prod[:, 1]
-                dim_x = self.x.name
-                dim_y = self.y.name
-            else:
+            if domain.type is DomainType.POINTS:
                 dim_x = dim_y = 'points'
+            else:
+                lat_lon_mgrid = np.meshgrid(lat, lon, indexing='ij')
+                lat_lon_cprod = np.stack(lat_lon_mgrid, axis=-1).reshape(-1, 2)
+                lat, lon = lat_lon_cprod[:, 0], lat_lon_cprod[:, 1]
+                dim_x, dim_y = self.x.name, self.y.name
 
             pts = self.domain.crs.as_cartopy_crs().transform_points(
                 src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
