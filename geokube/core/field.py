@@ -232,22 +232,27 @@ class Field(Variable, DomainMixin):
                 logger=Field._LOG,
             )
 
-        # TODO: points -> lat(points), lon(points)
-        coords = {
-            'latitude': Coordinate(
-                data=np.array(latitude, dtype=np.float64, ndmin=1),
-                axis=Axis(name='latitude', is_dim=True),
-                dims=('latitude',)
-            ),
-            'longitude': Coordinate(
-                data=np.array(longitude, dtype=np.float64, ndmin=1),
-                axis=Axis(name='longitude', is_dim=True),
-                dims=('longitude',)
-            )
-        }
         domain = Domain(
-            coords=coords, crs=RegularLatLon(), domaintype=DomainType.POINTS
+            coords={
+                'latitude': Coordinate(
+                    data=np.array(latitude, dtype=np.float64, ndmin=1),
+                    axis=Axis(name='latitude', is_dim=True),
+                    dims=('latitude',)
+                ),
+                'longitude': Coordinate(
+                    data=np.array(longitude, dtype=np.float64, ndmin=1),
+                    axis=Axis(name='longitude', is_dim=True),
+                    dims=('longitude',)
+                )
+            },
+            crs=RegularLatLon(),
+            domaintype=DomainType.POINTS
         )
+        domain.latitude.attrs.update(self.latitude.attrs)
+        domain.latitude.encoding.update(self.latitude.encoding)
+        domain.longitude.attrs.update(self.longitude.attrs)
+        domain.longitude.encoding.update(self.longitude.encoding)
+
         return self.interpolate(domain=domain, method='nearest')
 
     def interpolate(
@@ -264,6 +269,7 @@ class Field(Variable, DomainMixin):
                 "'domain' can have only latitude and longitude at the moment"
             )
 
+        dset = self.to_xarray(encoding=False)
         lat, lon = domain.latitude.values, domain.longitude.values
         if self.is_latitude_independent and self.is_longitude_independent:
             if domain.type is DomainType.POINTS:
@@ -274,30 +280,45 @@ class Field(Variable, DomainMixin):
                 self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
                 self.longitude.name: xr.DataArray(data=lon, dims=dim_lon)
             }
+            dset_interp = dset.interp(coords=interp_coords, method=method)
         else:
             if domain.type is DomainType.POINTS:
-                dim_x = dim_y = 'points'
+                pts = self.domain.crs.as_cartopy_crs().transform_points(
+                    src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
+                )
+                x, y = pts[..., 0], pts[..., 1]
+                interp_coords = {
+                    self.x.name: xr.DataArray(data=x, dims='points'),
+                    self.y.name: xr.DataArray(data=y, dims='points')
+                }
             else:
-                lat_lon_mgrid = np.meshgrid(lat, lon, indexing='ij')
-                lat_lon_cprod = np.stack(lat_lon_mgrid, axis=-1).reshape(-1, 2)
-                lat, lon = lat_lon_cprod[:, 0], lat_lon_cprod[:, 1]
-                dim_x, dim_y = self.x.name, self.y.name
+                lon_2d, lat_2d = np.meshgrid(lon, lat)
+                pts = self.domain.crs.as_cartopy_crs().transform_points(
+                    src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
+                )
+                x, y = pts[..., 0], pts[..., 1]
+                dims = (domain.latitude.name, domain.longitude.name)
+                grid = xr.Dataset(
+                    data_vars={self.x.name: (dims, x), self.y.name: (dims, y)},
+                    coords=domain.to_xarray(encoding=False)
+                )
+                dset = dset.drop(
+                    labels=(self.latitude.name, self.longitude.name)
+                )
+                interp_coords = {
+                    self.x.name: grid[self.x.name],
+                    self.y.name: grid[self.y.name]
+                }
+            dset_interp = dset.interp(coords=interp_coords, method=method)
+            dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
-            pts = self.domain.crs.as_cartopy_crs().transform_points(
-                src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
-            )
-            interp_coords = {
-                self.x.name: xr.DataArray(data=pts[:, 0], dims=dim_x),
-                self.y.name: xr.DataArray(data=pts[:, 1], dims=dim_y)
-            }
-
-        dset = self.to_xarray(encoding=False)
-        dset = dset.interp(coords=interp_coords, method=method)
-
-        return dset
+        # dset_interp[self.name].encoding.update(dset[self.name].encoding)
+        dset_interp[self.name].encoding['coordinates'] = (
+            f'{domain.latitude.name} {domain.longitude.name}'
+        )
 
         return Field.from_xarray(
-            ds=dset,
+            ds=dset_interp,
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
