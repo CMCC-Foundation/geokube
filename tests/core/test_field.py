@@ -482,16 +482,3 @@ def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
     assert "vt_std_name" in dset.data_vars
     assert "nav_lat" not in dset.coords
     assert "latitude" in dset.coords
-
-def test_init_with_str_simple_regular_data():
-    D = np.random.rand(10, 15, 20)
-    LAT = np.linspace(10, 20, 15)
-    LON = np.linspace(30, 50, 20)
-    T = pd.date_range("2001-01-01", periods=10, freq="H")
-    f = Field(data=D, dims=("time", "lat", "lon"), coords={"lat": LAT, "time": T, "lon": LON})
-
-    assert np.all(f.values == D)
-    assert f.domain.crs == RegularLatLon()
-    assert Axis("lat") in f.domain
-    assert Axis("lon") in f.domain
-    assert Axis("time") in f.domain

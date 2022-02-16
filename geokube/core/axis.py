@@ -131,12 +131,14 @@ class Axis:
         return hash((self._name, self._type, self._encoding, self._is_dim))
 
     def __eq__(self, other):
-        return (
-            (self.name == other.name)
-            and (self.type == other.type)
-            and (self._is_dim == other.is_dim)
-            and (self._encoding == other._encoding)
-        )
+        if isinstance(other, Axis):
+            return (
+                (self.name == other.name)
+                and (self.type == other.type)
+                and (self._is_dim == other.is_dim)
+                and (self._encoding == other._encoding)
+            )
+        return False
 
     def __ne__(self, other):
         return not (self == other)

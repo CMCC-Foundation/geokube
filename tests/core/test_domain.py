@@ -4,7 +4,7 @@ import pytest
 
 import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis
+from geokube.core.axis import Axis, AxisType
 from geokube.core.bounds import Bounds1D, BoundsND
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.domain import Domain, DomainType
@@ -121,3 +121,143 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
         "semi_major_axis": 6371229.0,
         "grid_mapping_name": "latitude_longitude",
     }
+
+
+def test_regular_lat_lon_domain_from_coords_dict():
+    coords = {
+        "lat": np.arange(1, 10),
+        "lon": np.arange(6, 50),
+        "height_2m": np.arange(4, 14),
+        "time": pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+    }
+    dims = ("time", "lat", "lon", "height_2m")
+    domain = Domain._make_domain_from_coords_dict_dims_and_crs(coords, dims)
+    assert domain.crs == crs.RegularLatLon()
+    assert Axis("time") in domain
+    assert AxisType.TIME in domain
+    assert domain[AxisType.TIME].is_dim
+    assert Axis("lat") in domain
+    assert AxisType.LATITUDE in domain
+    assert domain[Axis("latitude")].is_dim
+    assert Axis("lon") in domain
+    assert AxisType.LONGITUDE in domain
+    assert domain["lon"].is_dim
+    assert Axis("vertical") in domain
+    assert AxisType.VERTICAL in domain
+    assert domain[Axis("height_2m")].is_dim
+
+    coords = {
+        AxisType.LONGITUDE: np.arange(1, 10),
+        AxisType.LATITUDE: np.arange(6, 50),
+        "height_2m": np.arange(4, 14),
+        "time": pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+    }
+    dims = (AxisType.TIME, Axis("lat"), "lon", "height_2m")
+    domain = Domain._make_domain_from_coords_dict_dims_and_crs(coords, dims)
+    assert domain.crs == crs.RegularLatLon()
+    assert Axis("time") in domain
+    assert AxisType.TIME in domain
+    assert Axis("lat") in domain
+    assert AxisType.LATITUDE in domain
+    assert Axis("lon") in domain
+    assert AxisType.LONGITUDE in domain
+    assert Axis("vertical") in domain
+    assert AxisType.VERTICAL in domain
+
+
+def test_curvilinear_lat_lon_domain_from_coords_dict():
+    dims = ("time", "x", "y")
+    coords = {
+        "lat": ((Axis("x"), Axis("y")), np.array([[0, 1], [1, 2]])),
+        "lon": ((Axis("x"), Axis("y")), np.array([[0, 1], [1, 2]])),
+        "time": pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+    }
+    domain = Domain._make_domain_from_coords_dict_dims_and_crs(
+        coords, dims, crs=crs.CurvilinearGrid()
+    )
+    assert domain.crs == crs.CurvilinearGrid()
+    assert Axis("lat") in domain
+    assert AxisType.LATITUDE in domain
+    assert not domain[AxisType.LATITUDE].is_dim
+    assert Axis("lon") in domain
+    assert AxisType.LONGITUDE in domain
+    assert not domain[AxisType.LONGITUDE].is_dim
+    assert Axis("x") not in domain
+    assert AxisType.X not in domain
+    assert Axis("y") not in domain
+    assert AxisType.Y not in domain
+
+    dims = (Axis("time"), AxisType.X, AxisType.Y)
+    coords = {
+        "lat": ((AxisType.X, AxisType.Y), np.array([[0, 1], [1, 2]])),
+        "lon": (("x", "y"), np.array([[0, 1], [1, 2]])),
+        "time": pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+    }
+    domain = Domain._make_domain_from_coords_dict_dims_and_crs(
+        coords, dims, crs=crs.CurvilinearGrid()
+    )
+    assert domain.crs == crs.CurvilinearGrid()
+    assert Axis("lat") in domain
+    assert AxisType.LATITUDE in domain
+    assert not domain["lat"].is_dim
+    assert Axis("lon") in domain
+    assert AxisType.LONGITUDE in domain
+    assert not domain["lon"].is_dim
+    assert Axis("x") not in domain
+    assert AxisType.X not in domain
+    assert Axis("y") not in domain
+    assert AxisType.Y not in domain
+
+
+def test_rotated_pole_lat_lon_domain_from_coords_dict():
+    dims = ("time", AxisType.X, AxisType.Y)
+    coords = {
+        "lat": ((Axis("rlat"), Axis("rlon")), np.array([[0, 1], [1, 2]])),
+        "lon": ((Axis("rlat"), Axis("rlon")), np.array([[0, 1], [1, 2]])),
+        "rlat": np.array([6, 7]),
+        "rlon": np.array([9, 8]),
+        "time": pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+    }
+    domain = Domain._make_domain_from_coords_dict_dims_and_crs(
+        coords, dims, crs=crs.RotatedGeogCS(12345, 5678)
+    )
+    assert isinstance(domain.crs, crs.RotatedGeogCS)
+    assert Axis("lat") in domain
+    assert AxisType.LATITUDE in domain
+    assert not domain[AxisType.LATITUDE].is_dim
+    assert Axis("lon") in domain
+    assert AxisType.LONGITUDE in domain
+    assert not domain[AxisType.LONGITUDE].is_dim
+    assert Axis("rlat") in domain
+    assert AxisType.X in domain
+    assert domain[AxisType.X].is_dim
+    assert Axis("y") in domain
+    assert AxisType.Y in domain
+    assert domain[AxisType.Y].is_dim
+
+
+def test_regular_lat_lon_domain_with_bounds_and_properties_from_dict():
+    time_bounds = np.stack(
+        (
+            pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+            pd.date_range("02-01-2001", "11-01-2001", freq="1D"),
+        )
+    ).T
+    coords = {
+        "lat": np.arange(1, 10),
+        "lon": np.arange(6, 50),
+        "height_2m": np.arange(4, 14),
+        "time": (
+            ("time",),
+            pd.date_range("01-01-2001", "10-01-2001", freq="1D"),
+            time_bounds,
+            None,
+            {"some_prop": "prop_val"},
+        ),
+    }
+    dims = ("time", "lat", "lon", "height_2m")
+    domain = Domain._make_domain_from_coords_dict_dims_and_crs(coords, dims)
+    assert "time" in domain
+    assert domain[AxisType.TIME].has_bounds
+    assert "some_prop" in domain[Axis("Time")].properties
+    assert domain[Axis("Time")].properties["some_prop"] == "prop_val"
