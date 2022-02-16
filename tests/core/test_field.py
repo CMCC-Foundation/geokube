@@ -20,9 +20,6 @@ from tests.fixtures import *
 
 
 def test_from_xarray_with_point_domain(era5_point_domain):
-    import pdb
-
-    pdb.set_trace()
     field = Field.from_xarray(era5_point_domain, ncvar="W_SO")
     assert "points" in field.domain["longitude"].dim_names
     assert "points" in field.domain["latitude"].dim_names
@@ -39,7 +36,6 @@ def test_from_xarray_with_point_domain(era5_point_domain):
     assert "points" in dset["grid_longitude"].dims
     assert "points" in dset["latitude"].dims
     assert "points" in dset["longitude"].dims
-
 
 def test_from_xarray_rotated_pole(era5_rotated_netcdf):
     field = Field.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
