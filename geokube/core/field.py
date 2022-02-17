@@ -316,6 +316,9 @@ class Field(Variable, DomainMixin):
         dset_interp[self.name].encoding['coordinates'] = (
             f'{domain.latitude.name} {domain.longitude.name}'
         )
+        # TODO: Fill value should depend on the data type.
+        # TODO: Add xarray fillna into Field.to_xarray.
+        dset_interp[self.name].encoding['_FillValue'] = -9.0e-20
 
         return Field.from_xarray(
             ds=dset_interp,
@@ -513,72 +516,46 @@ class Field(Variable, DomainMixin):
         return ds
 
     def to_regular(self):
-        domain = self.domain
-
         # Infering latitude and longitude steps from the x and y coordinates.
-        if isinstance(domain.crs, RotatedGeogCS):
-            lat_step = domain.y.values.ptp() / (domain.y.values.size - 1)
-            lon_step = domain.x.values.ptp() / (domain.x.values.size - 1)
+        if isinstance(self.domain.crs, RotatedGeogCS):
+            lat_step = self.y.values.ptp() / (self.y.values.size - 1)
+            lon_step = self.x.values.ptp() / (self.x.values.size - 1)
         else:
             raise NotImplementedError(
-                "'domain' has the coordinate reference system of the type "
-                f"{type(domain.crs).__name__} that is not currently supported"
+                f"'{type(self.domain.crs).__name__}' is not supported as a "
+                "type of coordinate reference system"
             )
 
         # Building regular latitude-longitude coordinates.
-        south = domain.latitude.values.min()
-        north = domain.latitude.values.max()
-        west = domain.longitude.values.min()
-        east = domain.longitude.values.max()
+        south = self.latitude.values.min()
+        north = self.latitude.values.max()
+        west = self.longitude.values.min()
+        east = self.longitude.values.max()
         lat = np.arange(south, north + lat_step / 2, lat_step)
         lon = np.arange(west, east + lon_step / 2, lon_step)
-        lon_2d, lat_2d = np.meshgrid(lon, lat)
-        # shape = (lat.size, lon.size)
-        # lat_2d = np.broadcast_to(lat.reshape(-1, 1), shape=shape)
-        # lon_2d = np.broadcast_to(lon.reshape(1, -1), shape=shape)
 
-        # Transforming grid into regular.
-        pts = domain.crs.as_cartopy_crs().transform_points(
-            src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
-        )
-        x, y = pts[:, :, 0], pts[:, :, 1]
-
-        # Building the grid (using xarray)
-        dims = [domain.latitude.nc_name, domain.longitude.nc_name]
-        grid = xr.Dataset(
-            data_vars={domain.x.nc_name: (dims, x), domain.y.nc_name: (dims, y)},
-            coords={domain.latitude.nc_name: lat, domain.longitude.nc_name: lon},
-        )
-
-        grid[domain.latitude.nc_name].attrs = domain.latitude.variable.properties
-        grid[domain.longitude.nc_name].attrs = domain.longitude.variable.properties
-        grid[domain.latitude.nc_name].encoding = domain.latitude.variable.encoding
-        grid[domain.longitude.nc_name].encoding = domain.longitude.variable.encoding
-
-        # Interpolating the data.
-        dset = self.to_xarray(encoding=False)
-        dset = dset.drop(labels=[domain.latitude.nc_name, domain.longitude.nc_name])
-        regrid_dset = dset.interp(
+        domain = Domain(
             coords={
-                domain.x.nc_name: grid[domain.x.nc_name],
-                domain.y.nc_name: grid[domain.y.nc_name],
+                'latitude': Coordinate(
+                    data=np.array(lat, dtype=np.float64, ndmin=1),
+                    axis=Axis(name='latitude', is_dim=True),
+                    dims=('latitude',)
+                ),
+                'longitude': Coordinate(
+                    data=np.array(lon, dtype=np.float64, ndmin=1),
+                    axis=Axis(name='longitude', is_dim=True),
+                    dims=('longitude',)
+                )
             },
-            method="nearest",
+            crs=RegularLatLon(),
+            domaintype=DomainType.GRIDDED
         )
-        regrid_dset = regrid_dset.drop(labels=[domain.x.nc_name, domain.y.nc_name])
-        fillValue = -9.0e-20
-        regrid_dset.fillna(fillValue)
-        regrid_dset[self.nc_name].encoding["_FillValue"] = fillValue
-        field = Field.from_xarray(
-            ds=regrid_dset,
-            ncvar_name=self.nc_name,
-            copy=False,
-            id_pattern=self._id_pattern,
-            mapping=self._mapping,
-        )
-        field.domain._crs = RegularLatLon()
+        domain.latitude.attrs.update(self.latitude.attrs)
+        domain.latitude.encoding.update(self.latitude.encoding)
+        domain.longitude.attrs.update(self.longitude.attrs)
+        domain.longitude.encoding.update(self.longitude.encoding)
 
-        return field
+        return self.interpolate(domain=domain, method='nearest')
 
     # TO CHECK
     @log_func_debug
