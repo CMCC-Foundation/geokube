@@ -51,7 +51,14 @@ _CARTOPY_FEATURES = {
 
 class Field(Variable, DomainMixin):
 
-    __slots__ = ("_name", "_domain", "_cell_methods", "_ancillary_data")
+    __slots__ = (
+        "_name",
+        "_domain",
+        "_cell_methods",
+        "_ancillary_data",
+        "_id_pattern",
+        "_mapping",
+    )
 
     _LOG = HCubeLogger(name="Field")
 
@@ -66,6 +73,9 @@ class Field(Variable, DomainMixin):
         domain: Optional[Union[Mapping[Hashable, Any], Domain]] = None,
         cell_methods: Optional[CellMethod] = None,
         ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
+        # for internal purposes
+        _id_pattern: Optional[str] = None,
+        _mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ) -> None:
 
         super().__init__(
@@ -74,6 +84,8 @@ class Field(Variable, DomainMixin):
         self._ancillary = None
         self._name = name
         self._domain = domain if isinstance(domain, Domain) else Domain(domain)
+        self._id_pattern = _id_pattern
+        self._mapping = _mapping
 
         self._cell_methods = cell_methods
         if ancillary is not None:
@@ -929,6 +941,7 @@ class Field(Variable, DomainMixin):
             encoding=var.encoding,
             domain=domain,
             cell_methods=cell_methods,
+            _id_pattern=id_pattern,
+            _mapping=mapping,
         )
-        print(field)
         return field
