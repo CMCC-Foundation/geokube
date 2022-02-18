@@ -6,11 +6,9 @@ from typing import Any, Hashable, List, Mapping, Optional, Union
 
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.utils.hcube_logger import HCubeLogger
-from geokube.core.cfobject import CFObjectAbstract
-
+from .unit import Unit
+from ..utils import exceptions as ex
+from ..utils.hcube_logger import HCubeLogger
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {
@@ -18,7 +16,7 @@ coordinate_criteria_regular_expression = {
     "x": r"(x|rlon|grid_lon.*)",
     "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric|pres|isotherm)[a-z_]*[0-9]*",
     "timedelta": r"time_delta",
-    "time": r"time[0-9]*",
+    "time": r"(time[0-9]*|T)",
     "latitude": r"(x?lat[a-z0-9]*|nav_lat)",
     "longitude": r"(x?lon[a-z0-9]*|nav_lon)",
 }
@@ -129,8 +127,16 @@ class Axis:
     def is_dim(self):
         return self._is_dim
 
+    def __hash__(self):
+        return hash((self._name, self._type, self._encoding, self._is_dim))
+
     def __eq__(self, other):
-        return (self.name == other.name) and (self.type == other.type)
+        return (
+            (self.name == other.name)
+            and (self.type == other.type)
+            and (self._is_dim == other.is_dim)
+            and (self._encoding == other._encoding)
+        )
 
     def __ne__(self, other):
         return not (self == other)

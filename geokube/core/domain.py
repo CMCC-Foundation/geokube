@@ -10,21 +10,16 @@ from typing import Any, Hashable, List, Mapping, Optional, Tuple, Union
 import numpy as np
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, AxisType
-from geokube.core.coord_system import (
-    CoordSystem,
-    CurvilinearGrid,
-    RegularLatLon,
-    parse_crs,
-)
-from geokube.utils import util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
+from ..utils import exceptions as ex
+from ..utils import util_methods
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis, AxisType
+from .coord_system import CoordSystem, CurvilinearGrid, RegularLatLon, parse_crs
 from .coordinate import Coordinate, CoordinateType
+from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
-from .domainmixin import DomainMixin
 
 
 class DomainType(Enum):
@@ -112,7 +107,7 @@ class Domain(DomainMixin):
         if not coord_keys_eq:
             return False
         for ck in self._coords.keys():
-            if self._coords[ck].axis_type is Axis.TIME:
+            if self._coords[ck].axis_type is AxisType.TIME:
                 if not np.all(self._coords[ck].values == other._coords[ck].values):
                     return False
             else:
@@ -135,6 +130,9 @@ class Domain(DomainMixin):
     def nbytes(self) -> int:
         return sum(coord.nbytes for coord in self._coords)
 
+    def map_indexers(self, indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
+        return {Axis(n): v for n, v in indexers.items()}
+
     @log_func_debug
     def _process_time_combo(self, indexer: Mapping[Hashable, Any]):
         if "time" in indexer:
@@ -150,11 +148,11 @@ class Domain(DomainMixin):
                 return XX
             return True
 
-        if (time_coord := self[Axis.TIME]) is None:
+        if (time_coord := self[AxisType.TIME]) is None:
             raise ex.HCubeNoSuchAxisError(
                 f"Time axis was not found for that dataset!", logger=self._LOG
             )
-        time_coord = time_coord.to_xarray_dataarray()
+        time_coord = time_coord.to_xarray()
         time_coord_dt = time_coord.dt
 
         year_mask = _reduce_boolean_selection(time_coord_dt, "year", indexer)
@@ -209,12 +207,12 @@ class Domain(DomainMixin):
         # Making sure that longitude and latitude values are not outside their
         # ranges
         range_b = ()
-        if coord.axis.atype == Axis.LONGITUDE:
+        if coord.atype == AxisType.LONGITUDE:
             if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
                 range_b = (0.0, 360.0)
             else:
                 range_b = (-180.0, 180.0)
-        elif coord.axis.atype == Axis.LATITUDE:
+        elif coord.atype == AxisType.LATITUDE:
             range_b = (-90.0, 90.0)
 
         if range_b:
@@ -271,7 +269,6 @@ class Domain(DomainMixin):
 
         da = ds[ncvar]
         coords = []
-
         for dim in da.dims:
             if dim in da.coords:
                 coords.append(

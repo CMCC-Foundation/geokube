@@ -4,19 +4,16 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
-from geokube.core.cfobject import CFObjectAbstract
-from geokube.core.bounds import Bounds, Bounds1D, BoundsND
-from geokube.utils import util_methods
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
-
+from ..utils import exceptions as ex
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
+from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
-from .variable import Variable
 from .unit import Unit
+from .variable import Variable
 
 
 class CoordinateType(Enum):
@@ -275,7 +272,9 @@ class Coordinate(Variable, Axis):
             )
 
         da = ds[ncvar]
+
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
+        ncvar = da.encoding.get("name", ncvar)
         var.encoding.update(name=ncvar)
         axis_name = Variable._get_name(da, mapping, id_pattern)
         axistype = AxisType.parse(da.attrs.get("axis", ncvar))
@@ -286,7 +285,7 @@ class Coordinate(Variable, Axis):
             encoding={"name": ncvar},
         )
 
-        bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds", None))
+        bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds"))
         if bnds_ncvar:
             bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
             bounds = {

@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from html import escape
-from string import Formatter, Template
-from numbers import Number
-from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 import warnings
+from html import escape
+from numbers import Number
+from string import Formatter, Template
+from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
 
 import dask.array as da
 import numpy as np
-from geokube.core.axis import Axis, AxisType
-from geokube.core.cfobject import CFObjectAbstract
 import xarray as xr
 from xarray.core.options import OPTIONS
 
-import geokube.utils.exceptions as ex
-from geokube.core.unit import Unit
-from geokube.utils import formatting, formatting_html, util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
+from ..utils import exceptions as ex
+from ..utils import formatting, formatting_html, util_methods
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis, AxisType
+from .unit import Unit
 
 
 class Variable(xr.Variable):
@@ -211,7 +210,10 @@ class Variable(xr.Variable):
                 d_axis = da[d].attrs.get("axis", AxisType.parse(d))
                 dims.append(
                     Axis(
-                        name=d_name, axistype=d_axis, encoding={"name": d}, is_dim=True
+                        name=d_name,
+                        axistype=d_axis,
+                        encoding={"name": da[d].encoding.get("name", d)},
+                        is_dim=True,
                     )
                 )
             else:

@@ -1,15 +1,25 @@
-from geokube.core.unit import Unit
 import pytest
 
 import geokube.utils.exceptions as ex
-from geokube.core.axis import Axis, Axis, AxisType
+from geokube.core.axis import Axis, AxisType
+from geokube.core.unit import Unit
 from tests.fixtures import *
 
 
-def test_axis_type():
+def test_init_proper_attributes_set():
     assert AxisType.LATITUDE.default_unit == Unit("degrees_north")
     assert AxisType.TIME.axis_type_name == "time"
     assert AxisType("aaa") is AxisType.GENERIC
+    assert AxisType.GENERIC.default_unit == Unit("unknown")
+
+    a1 = Axis(name="LAT", axistype="latitude")
+
+    assert a1.name == "LAT"
+    assert a1.type is AxisType.LATITUDE
+    assert a1.encoding is None
+
+
+def test_parsing():
     assert AxisType.parse("latitude") is AxisType.LATITUDE
     assert AxisType.parse("lat") is AxisType.LATITUDE
     assert AxisType.parse("rlat") is AxisType.Y
@@ -18,16 +28,9 @@ def test_axis_type():
     assert AxisType.parse("time").default_unit == Unit(
         "hours since 1970-01-01", calendar="gregorian"
     )
-    assert AxisType.GENERIC.default_unit == Unit("unknown")
 
 
-def test_axis_2():
-    a1 = Axis(name="LAT", axistype="latitude")
-
-    assert a1.name == "LAT"
-    assert a1.type is AxisType.LATITUDE
-    assert a1.encoding is None
-
+def test_init_fails():
     with pytest.raises(
         ex.HCubeTypeError,
         match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
@@ -46,6 +49,9 @@ def test_axis_2():
     ):
         _ = Axis("lon", axistype=["lon"])
 
+
+def test_init_from_other_axis():
+    a1 = Axis(name="LAT", axistype="latitude")
     a3 = Axis(a1)
     assert id(a3) != id(a1)
     assert a3.name == a1.name
@@ -73,3 +79,31 @@ def test_axis_2():
     assert a6.name == "time"
     assert a6.type is AxisType.TIME
     assert a6.is_dim
+
+
+def test_axis_hash():
+    a1 = Axis(AxisType.LONGITUDE)
+    a2 = Axis(AxisType.LONGITUDE)
+    assert a1 == a2
+    assert hash(a1) == hash(a2)
+
+    a1 = Axis("longitude")
+    a2 = Axis(name="longitude", axistype=AxisType.LONGITUDE)
+    assert a1 == a2
+    assert hash(a1) == hash(a2)
+
+    a1 = Axis("longitude", is_dim=True)
+    a2 = Axis(AxisType.LONGITUDE, is_dim=False)
+    assert a1 != a2
+    assert hash(a1) != hash(a2)
+
+    a1 = Axis("lat", AxisType.LONGITUDE)
+    a2 = Axis(AxisType.LONGITUDE)
+    assert a1 != a2
+    assert hash(a1) != hash(a2)
+
+    d = {Axis("lat"): [1, 2, 3], Axis("depth"): [-1, -2, -3]}
+    assert Axis("lat") in d
+    assert Axis("depth") in d
+    assert d[Axis("lat")] == [1, 2, 3]
+    assert d[Axis("depth")] == [-1, -2, -3]
