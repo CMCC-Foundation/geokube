@@ -26,7 +26,7 @@ from .axis import Axis, AxisType
 from .cell_methods import CellMethod
 from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
-from .domain import Domain
+from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
 from .unit import Unit
 from .variable import Variable
@@ -231,82 +231,85 @@ class Field(Variable, DomainMixin):
                 "Selecting by location with vertical is currently not supported!",
                 logger=Field._LOG,
             )
-        return self._locations_idx(
-            latitude=latitude, longitude=longitude, vertical=vertical
-        )
+        
+        return self.interpolate(domain=GeodeticPoints(latitude=latitude, longitude=longitude, vertical=vertical), 
+                                method='nearest')
 
     def interpolate(
         self,
         domain: Domain,
         method: str = 'nearest'
     ) -> Field:
-        dst_dim_axis_types = {
-            coord.axis_type
-            for coord in domain.coords.values()
-            if coord.is_dimension
-        }
-        if dst_dim_axis_types != {AxisType.LATITUDE, AxisType.LONGITUDE}:
-            raise NotImplementedError(
-                "'domain' can have only latitude and longitude at the moment"
-            )
-
-        lat = domain.latitude.values
-        lon = domain.longitude.values
-        if (
-            self.domain.is_latitude_independent
-            and self.domain.is_longitude_independent
-        ):
-            interp_coords = {
-                self.domain.latitude.name: lat,
-                self.domain.longitude.name: lon
-            }
-        else:
-            if isinstance(domain.crs, RegularLatLon):
-                lat_lon_mgrid = np.meshgrid(lat, lon, indexing='ij')
-                lat_lon_prod = np.stack(lat_lon_mgrid, axis=-1).reshape(-1, 2)
-                lat = lat_lon_prod[:, 0]
-                lon = lat_lon_prod[:, 1]
-                dim_x = self.domain.x.name
-                dim_y = self.domain.y.name
-            else:
-                dim_x = dim_y = 'points'
-
-            pts = self.domain.crs.as_cartopy_crs().transform_points(
-                src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
-            )
-            interp_coords = {
-                self.domain.x.name: xr.DataArray(data=pts[:, 0], dims=dim_x),
-                self.domain.y.name: xr.DataArray(data=pts[:, 1], dims=dim_y)
-            }
+        # TODO: Add vertical support.
+        # if (
+        #     {c.axis_type for c in domain.coords.values() if c.is_dimension}
+        #     != {AxisType.LATITUDE, AxisType.LONGITUDE}
+        # ):
+        #     raise NotImplementedError(
+        #         "'domain' can have only latitude and longitude at the moment"
+        #     )
 
         dset = self.to_xarray(encoding=False)
-        dset = dset.interp(coords=interp_coords, method=method)
+        lat, lon = domain.latitude.values, domain.longitude.values
+        if self.is_latitude_independent and self.is_longitude_independent:
+            if domain.type is DomainType.POINTS:
+                dim_lat = dim_lon = 'points'
+            else:
+                dim_lat, dim_lon = self.latitude.name, self.longitude.name
+            interp_coords = {
+                 self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
+                 self.longitude.name: xr.DataArray(data=lon, dims=dim_lon)
+            }
+            dset_interp = dset.interp(coords=interp_coords, method=method)
+        else:
+            if domain.type is DomainType.POINTS:
+                pts = self.domain.crs.as_cartopy_crs().transform_points(
+                    src_crs=domain.crs.as_cartopy_crs(), x=lon, y=lat
+                )
+                x, y = pts[..., 0], pts[..., 1]
+                interp_coords = {
+                    self.x.name: xr.DataArray(data=x, dims='points'),
+                    self.y.name: xr.DataArray(data=y, dims='points')
+                }
+            else:
+                lon_2d, lat_2d = np.meshgrid(lon, lat)
+                pts = self.domain.crs.as_cartopy_crs().transform_points(
+                    src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
+                )
+                x, y = pts[..., 0], pts[..., 1]
+                dims = (domain.latitude.name, domain.longitude.name)
+                grid = xr.Dataset(
+                    data_vars={self.x.name: (dims, x), self.y.name: (dims, y)},
+                    coords=domain.to_xarray(encoding=False)
+                )
+                dset = dset.drop(
+                    labels=(self.latitude.name, self.longitude.name)
+                )
+                interp_coords = {
+                    self.x.name: grid[self.x.name],
+                    self.y.name: grid[self.y.name]
+                }
+            dset_interp = dset.interp(coords=interp_coords, method=method)
+            dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
-        return dset
+        # dset_interp[self.name].encoding.update(dset[self.name].encoding)
+        dset_interp[self.name].encoding['coordinates'] = (
+            f'{domain.latitude.name} {domain.longitude.name}'
+        )
+        # TODO: Fill value should depend on the data type.
+        # TODO: Add xarray fillna into Field.to_xarray.
+        dset_interp[self.name].encoding['_FillValue'] = -9.0e-20
 
-        return Field.from_xarray(
-            ds=dset,
+        field = Field.from_xarray(
+            ds=dset_interp,
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
             mapping=self._mapping
         )
 
-    def _locations_interp(self, latitude, longitude, method='nearest'):
-        coords = {
-            'latitude': Coordinate(
-                data=np.array(latitude, dtype=np.float64, ndmin=1),
-                axis=Axis(name='latitude', is_dim=True),
-                dims=('latitude',)
-            ),
-            'longitude': Coordinate(
-                data=np.array(longitude, dtype=np.float64, ndmin=1),
-                axis=Axis(name='longitude', is_dim=True),
-                dims=('longitude',)
-            )
-        }
-        domain = Domain(coords=coords, crs=RegularLatLon())
-        return self.interpolate(domain=domain, method=method)
+        field.domain.type = DomainType.POINTS
+        return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
         domain = self._domain
@@ -496,72 +499,25 @@ class Field(Variable, DomainMixin):
         return ds
 
     def to_regular(self):
-        domain = self.domain
-
         # Infering latitude and longitude steps from the x and y coordinates.
-        if isinstance(domain.crs, RotatedGeogCS):
-            lat_step = domain.y.values.ptp() / (domain.y.values.size - 1)
-            lon_step = domain.x.values.ptp() / (domain.x.values.size - 1)
+        if isinstance(self.domain.crs, RotatedGeogCS):
+            lat_step = self.y.values.ptp() / (self.y.values.size - 1)
+            lon_step = self.x.values.ptp() / (self.x.values.size - 1)
         else:
             raise NotImplementedError(
-                "'domain' has the coordinate reference system of the type "
-                f"{type(domain.crs).__name__} that is not currently supported"
+                f"'{type(self.domain.crs).__name__}' is not supported as a "
+                "type of coordinate reference system"
             )
 
         # Building regular latitude-longitude coordinates.
-        south = domain.latitude.values.min()
-        north = domain.latitude.values.max()
-        west = domain.longitude.values.min()
-        east = domain.longitude.values.max()
+        south = self.latitude.values.min()
+        north = self.latitude.values.max()
+        west = self.longitude.values.min()
+        east = self.longitude.values.max()
         lat = np.arange(south, north + lat_step / 2, lat_step)
         lon = np.arange(west, east + lon_step / 2, lon_step)
-        lon_2d, lat_2d = np.meshgrid(lon, lat)
-        # shape = (lat.size, lon.size)
-        # lat_2d = np.broadcast_to(lat.reshape(-1, 1), shape=shape)
-        # lon_2d = np.broadcast_to(lon.reshape(1, -1), shape=shape)
 
-        # Transforming grid into regular.
-        pts = domain.crs.as_cartopy_crs().transform_points(
-            src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
-        )
-        x, y = pts[:, :, 0], pts[:, :, 1]
-
-        # Building the grid (using xarray)
-        dims = [domain.latitude.nc_name, domain.longitude.nc_name]
-        grid = xr.Dataset(
-            data_vars={domain.x.nc_name: (dims, x), domain.y.nc_name: (dims, y)},
-            coords={domain.latitude.nc_name: lat, domain.longitude.nc_name: lon},
-        )
-
-        grid[domain.latitude.nc_name].attrs = domain.latitude.variable.properties
-        grid[domain.longitude.nc_name].attrs = domain.longitude.variable.properties
-        grid[domain.latitude.nc_name].encoding = domain.latitude.variable.encoding
-        grid[domain.longitude.nc_name].encoding = domain.longitude.variable.encoding
-
-        # Interpolating the data.
-        dset = self.to_xarray(encoding=False)
-        dset = dset.drop(labels=[domain.latitude.nc_name, domain.longitude.nc_name])
-        regrid_dset = dset.interp(
-            coords={
-                domain.x.nc_name: grid[domain.x.nc_name],
-                domain.y.nc_name: grid[domain.y.nc_name],
-            },
-            method="nearest",
-        )
-        regrid_dset = regrid_dset.drop(labels=[domain.x.nc_name, domain.y.nc_name])
-        fillValue = -9.0e-20
-        regrid_dset.fillna(fillValue)
-        regrid_dset[self.nc_name].encoding["_FillValue"] = fillValue
-        field = Field.from_xarray(
-            ds=regrid_dset,
-            ncvar_name=self.nc_name,
-            copy=False,
-            id_pattern=self._id_pattern,
-            mapping=self._mapping,
-        )
-        field.domain._crs = RegularLatLon()
-
-        return field
+        return self.interpolate(domain=GeodeticGrid(latitude=lat, longitude=lon), method='nearest')
 
     # TO CHECK
     @log_func_debug
