@@ -21,6 +21,24 @@ from tests import RES_PATH, clear_test_res
 from tests.fixtures import *
 
 
+def test_from_xarray_with_point_domain(era5_point_domain):
+    field = Field.from_xarray(era5_point_domain, ncvar="W_SO")
+    assert "points" in field.domain["longitude"].dim_names
+    assert "points" in field.domain["latitude"].dim_names
+    assert "points" in field.domain[Axis("x")].dim_names
+    assert "points" in field.domain[AxisType.Y].dim_names
+
+    dset = field.to_xarray(encoding=False)
+    assert "latitude" in dset.coords
+    assert "lat" not in dset.coords
+    assert "longitude" in dset.coords
+    assert "lon" not in dset.coords
+    assert "points" in dset.dims
+    assert "points" in dset["grid_latitude"].dims
+    assert "points" in dset["grid_longitude"].dims
+    assert "points" in dset["latitude"].dims
+    assert "points" in dset["longitude"].dims
+
 def test_from_xarray_rotated_pole(era5_rotated_netcdf):
     field = Field.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
 
