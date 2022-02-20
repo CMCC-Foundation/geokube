@@ -15,7 +15,7 @@ from ..utils import util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
-from .coord_system import CoordSystem, CurvilinearGrid, RegularLatLon, parse_crs
+from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, parse_crs
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
@@ -70,13 +70,18 @@ class Domain(DomainMixin):
             return coord
         elif isinstance(coord, tuple):
             # tupl -> (data, dims, axis)
-            return Coordinate(data=coord[0], dims=coord[1], axis=coord[2])
+            l = dict(enumerate(coord))
+            return Coordinate(data=coord[0], dims=l.get(1, name), axis=l.get(2, name))
         else:
             return Coordinate(data=coord, axis=name)
 
     @property
     def type(self):
         return self._type
+
+    @type.setter
+    def type(self, value):
+        self._type = value
 
     @property
     def coords(self):
@@ -189,7 +194,7 @@ class Domain(DomainMixin):
             raise ex.HCubeValueError(
                 "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
             )
-        if not isinstance(crs, RegularLatLon):
+        if not isinstance(crs, GeogCS):
             raise ex.HCubeNotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
                 "calculating cell corners",
@@ -246,7 +251,7 @@ class Domain(DomainMixin):
         # TODO: implement more logic
         if "nav_lat" in da.coords or "nav_lon" in da.coords:
             return CurvilinearGrid()
-        return RegularLatLon()
+        return GeogCS(6371229)
 
     @classmethod
     @log_func_debug
@@ -325,3 +330,45 @@ class Domain(DomainMixin):
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
         return xr.Dataset(coords=grid).coords
+
+
+class GeodeticPoints(Domain):
+
+    def __init__(self, 
+                latitude, 
+                longitude,
+                vertical=None):
+        latitude = np.array(latitude, dtype=np.float64, ndmin=1)
+        longitude = np.array(longitude, dtype=np.float64, ndmin=1)
+        if vertical != None:
+            vertical = np.array(vertical, dtype=np.float64, ndmin=1)
+            super().__init__(coords = {'latitude': (latitude, 'points', 'latitude'),
+                                     'longitude': (longitude, 'points', 'longitude'),
+                                     'vertical': (vertical, 'points', 'vertical') 
+                                     }, crs=GeogCS(6371229), domaintype=DomainType.POINTS)
+        else:
+            super().__init__(coords = {'latitude': (latitude, 'points', 'latitude'),
+                                     'longitude': (longitude, 'points', 'longitude')
+                                     }, crs=GeogCS(6371229), domaintype=DomainType.POINTS)
+
+class GeodeticGrid(Domain):
+
+    def __init__(self, 
+                latitude, 
+                longitude,
+                vertical=None):
+
+        latitude = np.array(latitude, dtype=np.float64, ndmin=1)
+        longitude = np.array(longitude, dtype=np.float64, ndmin=1)
+        if vertical != None:
+            vertical = np.array(vertical, dtype=np.float64, ndmin=1)
+            super().__init__(coords = {'latitude': latitude, 'longitude': longitude, 'vertical': vertical }, 
+                           crs=GeogCS(6371229))        
+        else:
+            # TODO: TO BE FIXED
+            super().__init__(coords = {'latitude': (latitude, 'latitude', 'latitude'), 
+                                       'longitude': (longitude, 'longitude', 'longitude') }, 
+                           crs=GeogCS(6371229))
+
+
+

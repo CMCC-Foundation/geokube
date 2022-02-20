@@ -68,6 +68,10 @@ class DataCube(DomainMixin):
         return self._encoding
 
     @property
+    def domain(self):
+        return self._domain
+        
+    @property
     def fields(self):
         return self._fields
 

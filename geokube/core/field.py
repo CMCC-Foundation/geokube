@@ -26,7 +26,7 @@ from .axis import Axis, AxisType
 from .cell_methods import CellMethod
 from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
-from .domain import Domain, DomainType
+from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
 from .unit import Unit
 from .variable import Variable
@@ -231,29 +231,9 @@ class Field(Variable, DomainMixin):
                 "Selecting by location with vertical is currently not supported!",
                 logger=Field._LOG,
             )
-
-        domain = Domain(
-            coords={
-                'latitude': Coordinate(
-                    data=np.array(latitude, dtype=np.float64, ndmin=1),
-                    axis=Axis(name='latitude', is_dim=True),
-                    dims=('latitude',)
-                ),
-                'longitude': Coordinate(
-                    data=np.array(longitude, dtype=np.float64, ndmin=1),
-                    axis=Axis(name='longitude', is_dim=True),
-                    dims=('longitude',)
-                )
-            },
-            crs=RegularLatLon(),
-            domaintype=DomainType.POINTS
-        )
-        domain.latitude.attrs.update(self.latitude.attrs)
-        domain.latitude.encoding.update(self.latitude.encoding)
-        domain.longitude.attrs.update(self.longitude.attrs)
-        domain.longitude.encoding.update(self.longitude.encoding)
-
-        return self.interpolate(domain=domain, method='nearest')
+        
+        return self.interpolate(domain=GeodeticPoints(latitude=latitude, longitude=longitude, vertical=vertical), 
+                                method='nearest')
 
     def interpolate(
         self,
@@ -261,13 +241,13 @@ class Field(Variable, DomainMixin):
         method: str = 'nearest'
     ) -> Field:
         # TODO: Add vertical support.
-        if (
-            {c.axis_type for c in domain.coords.values() if c.is_dimension}
-            != {AxisType.LATITUDE, AxisType.LONGITUDE}
-        ):
-            raise NotImplementedError(
-                "'domain' can have only latitude and longitude at the moment"
-            )
+        # if (
+        #     {c.axis_type for c in domain.coords.values() if c.is_dimension}
+        #     != {AxisType.LATITUDE, AxisType.LONGITUDE}
+        # ):
+        #     raise NotImplementedError(
+        #         "'domain' can have only latitude and longitude at the moment"
+        #     )
 
         dset = self.to_xarray(encoding=False)
         lat, lon = domain.latitude.values, domain.longitude.values
@@ -277,8 +257,8 @@ class Field(Variable, DomainMixin):
             else:
                 dim_lat, dim_lon = self.latitude.name, self.longitude.name
             interp_coords = {
-                self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
-                self.longitude.name: xr.DataArray(data=lon, dims=dim_lon)
+                 self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
+                 self.longitude.name: xr.DataArray(data=lon, dims=dim_lon)
             }
             dset_interp = dset.interp(coords=interp_coords, method=method)
         else:
@@ -320,13 +300,16 @@ class Field(Variable, DomainMixin):
         # TODO: Add xarray fillna into Field.to_xarray.
         dset_interp[self.name].encoding['_FillValue'] = -9.0e-20
 
-        return Field.from_xarray(
+        field = Field.from_xarray(
             ds=dset_interp,
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
             mapping=self._mapping
         )
+
+        field.domain.type = DomainType.POINTS
+        return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
         domain = self._domain
@@ -534,28 +517,7 @@ class Field(Variable, DomainMixin):
         lat = np.arange(south, north + lat_step / 2, lat_step)
         lon = np.arange(west, east + lon_step / 2, lon_step)
 
-        domain = Domain(
-            coords={
-                'latitude': Coordinate(
-                    data=np.array(lat, dtype=np.float64, ndmin=1),
-                    axis=Axis(name='latitude', is_dim=True),
-                    dims=('latitude',)
-                ),
-                'longitude': Coordinate(
-                    data=np.array(lon, dtype=np.float64, ndmin=1),
-                    axis=Axis(name='longitude', is_dim=True),
-                    dims=('longitude',)
-                )
-            },
-            crs=RegularLatLon(),
-            domaintype=DomainType.GRIDDED
-        )
-        domain.latitude.attrs.update(self.latitude.attrs)
-        domain.latitude.encoding.update(self.latitude.encoding)
-        domain.longitude.attrs.update(self.longitude.attrs)
-        domain.longitude.encoding.update(self.longitude.encoding)
-
-        return self.interpolate(domain=domain, method='nearest')
+        return self.interpolate(domain=GeodeticGrid(latitude=lat, longitude=lon), method='nearest')
 
     # TO CHECK
     @log_func_debug
