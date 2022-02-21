@@ -5,7 +5,7 @@ import xarray as xr
 
 import geokube.core.coord_system as crs
 from geokube.backend.netcdf import open_datacube
-from geokube.core.axis import Axis
+from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate
 from geokube.core.datacube import DataCube
@@ -138,3 +138,29 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert "longitude" in dset
     assert dset.longitude.attrs["units"] == "degrees_east"
     assert "crs" in dset.coords
+
+
+def test_getitem_with_coords_and_fiels(era5_rotated_netcdf):
+    dc = DataCube.from_xarray(era5_rotated_netcdf)
+    assert "W_SO" in dc
+    assert "TMIN_2M" in dc
+    assert Axis("latitude") in dc
+    assert "lat" in dc
+    assert AxisType.TIME in dc
+    assert "air_temperature" in dc
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in dc
+    wso = dc["W_SO"]
+    assert wso.name == "lwe_thickness_of_moisture_content_of_soil_layer"
+    assert wso.ncvar == "W_SO"
+    tmin = dc["TMIN_2M"]
+    assert tmin.name == "air_temperature"
+    assert tmin.ncvar == "TMIN_2M"
+
+
+def test_locations_rotated_pole(era5_rotated_netcdf):
+    dc = DataCube.from_xarray(era5_rotated_netcdf)
+    res = dc.locations(latitude=[39, 41], longitude=[17, 17])
+    assert "points" in res.to_xarray().dims
+    assert len(res.domain[AxisType.LATITUDE]) == 2
+    assert len(res.domain[AxisType.LONGITUDE]) == 2
+    assert res.domain.crs == RegularLatLon()

@@ -43,7 +43,7 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 #
 class DataCube(DomainMixin):
 
-    __slots__ = ("_fields", "_domain", "_properties", "_encoding")
+    __slots__ = ("_fields", "_domain", "_properties", "_encoding", "_ncvar_to_name")
 
     _LOG = HCubeLogger(name="DataCube")
 
@@ -55,6 +55,7 @@ class DataCube(DomainMixin):
     ) -> None:
         # TO DO save only fields variables and coordinates names to build the field domain
         self._fields = {f.name: f for f in fields}
+        self._ncvar_to_name = {f.ncvar: f.name for f in fields}
         self._domain = Domain.merge([f.domain for f in fields])
         self._properties = properties if properties is not None else {}
         self._encoding = encoding if encoding is not None else {}
@@ -70,7 +71,7 @@ class DataCube(DomainMixin):
     @property
     def domain(self):
         return self._domain
-        
+
     @property
     def fields(self):
         return self._fields
@@ -83,11 +84,21 @@ class DataCube(DomainMixin):
         return len(self._fields)
 
     def __contains__(self, key: str) -> bool:
-        return key in self._fields
+        return (
+            (key in self._fields)
+            or (key in self._ncvar_to_name)
+            or (key in self._domain)
+        )
 
     def __getitem__(self, key: Union[Iterable[str], str]):
         if isinstance(key, str):
-            return self._fields[key]
+            if (
+                item := self._fields.get(
+                    key, self._fields.get(self._ncvar_to_name.get(key))
+                )
+            ) is None:
+                item = self._domain[key]
+            return item
         elif isinstance(key, Iterable):
             return DataCube(fields=[self._fields[k] for k in key], **self.properties)
         else:
