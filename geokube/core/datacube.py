@@ -95,7 +95,7 @@ class DataCube(DomainMixin):
             (key in self._fields) or key in self._ncvar_to_name
         ):
             return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
-        elif isinstance(key, Iterable):
+        elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(fields=[self._fields[k] for k in key], **self.properties)
         else:
             item = self.domain[key]

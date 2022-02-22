@@ -162,6 +162,10 @@ def test_getitem_with_coords_and_fiels(era5_rotated_netcdf):
     time = dc.time
     assert time.ncvar == "time"
     assert time.axis_type is AxisType.TIME
+    assert dc["latitude"] is not None
+    assert dc.latitude is not None
+    assert dc[AxisType.LATITUDE] is not None
+    assert dc[Axis("lat")] is not None
 
 
 def test_locations_rotated_pole(era5_rotated_netcdf):
