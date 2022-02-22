@@ -15,7 +15,7 @@ from ..utils import util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
-from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, parse_crs
+from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, RegularLatLon, parse_crs
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
@@ -194,7 +194,7 @@ class Domain(DomainMixin):
             raise ex.HCubeValueError(
                 "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
             )
-        if not isinstance(crs, GeogCS):
+        if not isinstance(crs, (GeogCS, RegularLatLon)):
             raise ex.HCubeNotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
                 "calculating cell corners",
@@ -249,9 +249,13 @@ class Domain(DomainMixin):
     @classmethod
     def guess_crs(cls, da: Union[xr.Dataset, xr.DataArray]):
         # TODO: implement more logic
-        if "nav_lat" in da.coords or "nav_lon" in da.coords:
-            return CurvilinearGrid()
-        return GeogCS(6371229)
+        if isinstance(da, (xr.Dataset, xr.DataArray)):
+            if "nav_lat" in da.coords or "nav_lon" in da.coords:
+                return CurvilinearGrid()
+        if isinstance(da, dict):
+            if "nav_lat" in da or "nav_lon" in da:
+                return CurvilinearGrid()
+        return RegularLatLon()
 
     @classmethod
     @log_func_debug
@@ -333,42 +337,52 @@ class Domain(DomainMixin):
 
 
 class GeodeticPoints(Domain):
-
-    def __init__(self, 
-                latitude, 
-                longitude,
-                vertical=None):
+    def __init__(self, latitude, longitude, vertical=None):
         latitude = np.array(latitude, dtype=np.float64, ndmin=1)
         longitude = np.array(longitude, dtype=np.float64, ndmin=1)
         if vertical != None:
             vertical = np.array(vertical, dtype=np.float64, ndmin=1)
-            super().__init__(coords = {'latitude': (latitude, 'points', 'latitude'),
-                                     'longitude': (longitude, 'points', 'longitude'),
-                                     'vertical': (vertical, 'points', 'vertical') 
-                                     }, crs=GeogCS(6371229), domaintype=DomainType.POINTS)
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "points", "latitude"),
+                    "longitude": (longitude, "points", "longitude"),
+                    "vertical": (vertical, "points", "vertical"),
+                },
+                crs=RegularLatLon(),
+                domaintype=DomainType.POINTS,
+            )
         else:
-            super().__init__(coords = {'latitude': (latitude, 'points', 'latitude'),
-                                     'longitude': (longitude, 'points', 'longitude')
-                                     }, crs=GeogCS(6371229), domaintype=DomainType.POINTS)
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "points", "latitude"),
+                    "longitude": (longitude, "points", "longitude"),
+                },
+                crs=RegularLatLon(),
+                domaintype=DomainType.POINTS,
+            )
+
 
 class GeodeticGrid(Domain):
-
-    def __init__(self, 
-                latitude, 
-                longitude,
-                vertical=None):
+    def __init__(self, latitude, longitude, vertical=None):
 
         latitude = np.array(latitude, dtype=np.float64, ndmin=1)
         longitude = np.array(longitude, dtype=np.float64, ndmin=1)
         if vertical != None:
             vertical = np.array(vertical, dtype=np.float64, ndmin=1)
-            super().__init__(coords = {'latitude': latitude, 'longitude': longitude, 'vertical': vertical }, 
-                           crs=GeogCS(6371229))        
+            super().__init__(
+                coords={
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "vertical": vertical,
+                },
+                crs=RegularLatLon(),
+            )
         else:
             # TODO: TO BE FIXED
-            super().__init__(coords = {'latitude': (latitude, 'latitude', 'latitude'), 
-                                       'longitude': (longitude, 'longitude', 'longitude') }, 
-                           crs=GeogCS(6371229))
-
-
-
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "latitude", "latitude"),
+                    "longitude": (longitude, "longitude", "longitude"),
+                },
+                crs=RegularLatLon(),
+            )
