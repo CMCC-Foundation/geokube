@@ -1,72 +1,73 @@
+from __future__ import annotations
+
 import re
 from enum import Enum
-from typing import List, Optional
+from typing import Any, Hashable, List, Mapping, Optional, Union
 
-import cf_units as cf
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-from geokube.utils.hcube_logger import HCubeLogger
+from .unit import Unit
+from ..utils import exceptions as ex
+from ..utils.hcube_logger import HCubeLogger
 
-# Taken from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
+# from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {
     "y": r"(y|rlat|grid_lat.*)",
     "x": r"(x|rlon|grid_lon.*)",
     "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric|pres|isotherm)[a-z_]*[0-9]*",
     "timedelta": r"time_delta",
-    "time": r"time[0-9]*",
+    "time": r"(time[0-9]*|T)",
     "latitude": r"(x?lat[a-z0-9]*|nav_lat)",
     "longitude": r"(x?lon[a-z0-9]*|nav_lon)",
 }
 
 
 class AxisType(Enum):
-    TIME = ("time", cf.Unit("hours since 1970-01-01", calendar="gregorian"))
-    TIMEDELTA = ("timedelta", cf.Unit("hour"))
-    LATITUDE = ("latitude", cf.Unit("degrees_north"))
-    LONGITUDE = ("longitude", cf.Unit("degrees_east"))
-    VERTICAL = ("vertical", cf.Unit("m"))
-    X = ("x", cf.Unit("m"))
-    Y = ("y", cf.Unit("m"))
-    Z = ("z", cf.Unit("m"))
-    RADIAL_AXIMUTH = ("radialAzimuth", cf.Unit("m"))
-    RADIAL_ELEVATION = ("radialElevation", cf.Unit("m"))
-    RADIAL_DISTANCE = ("radialDistance", cf.Unit("m"))
-    GENERIC = ("generic", cf.Unit("unknown"))
+    TIME = ("time", Unit("hours since 1970-01-01", calendar="gregorian"))
+    TIMEDELTA = ("timedelta", Unit("hour"))
+    LATITUDE = ("latitude", Unit("degrees_north"))
+    LONGITUDE = ("longitude", Unit("degrees_east"))
+    VERTICAL = ("vertical", Unit("m"))
+    X = ("x", Unit("m"))
+    Y = ("y", Unit("m"))
+    Z = ("z", Unit("m"))
+    RADIAL_AXIMUTH = ("aximuth", Unit("m"))
+    RADIAL_ELEVATION = ("elevation", Unit("m"))
+    RADIAL_DISTANCE = ("distance", Unit("m"))
+    GENERIC = ("generic", Unit("Unknown"))
 
     @property
-    def name(self) -> str:
-        return self.value[0]
-
-    @property
-    def default_units(self) -> cf.Unit:
+    def default_unit(self) -> Unit:
         return self.value[1]
 
-    @classmethod
-    def get_available_names(cls) -> List[str]:
-        return [a.value[0] for a in cls]
+    @property
+    def axis_type_name(self) -> str:
+        return self.value[0]
 
     @classmethod
-    def _missing_(cls, key) -> "AxisType":
-        return cls.GENERIC
+    def values(cls) -> List[str]:
+        return [a.value[1] for a in cls]
 
     @classmethod
-    def parse_type(cls, name) -> "AxisType":
+    def parse(cls, name) -> "AxisType":
         if name is None:
-            return cls.generic()
+            return cls.GENERIC
         if isinstance(name, AxisType):
             return name
         try:
-            return cls[name.upper() if isinstance(name, str) else name]
+            res = cls[name.upper() if isinstance(name, str) else name]
+            if res is AxisType.Z:
+                return AxisType.VERTICAL
+            return res
         except KeyError:
             for ax, regexp in coordinate_criteria_regular_expression.items():
                 if re.match(regexp, name.lower(), re.IGNORECASE):
                     return cls[ax.upper()]
-        return cls.generic()
+        return cls.GENERIC
 
     @classmethod
-    def generic(cls) -> "AxisType":
-        return AxisType.GENERIC
+    def _missing_(cls, key) -> "AxisType":
+        return cls.GENERIC
 
 
 class Axis:
@@ -75,39 +76,73 @@ class Axis:
 
     def __init__(
         self,
-        atype: AxisType,
-        name: Optional[str] = None,
+        name: Union[str, Axis],
+        axistype: Optional[Union[AxisType, str]] = None,
+        encoding: Optional[Mapping[Hashable, str]] = None,
+        is_dim: Optional[bool] = False,
     ):
-        self._type = AxisType.parse_type(atype)
-        self._name = name if name is not None else self._type.name
+        if isinstance(name, Axis):
+            self._name = name._name
+            self._type = name._type
+            self._encoding = name._encoding
+            self._is_dim = name._is_dim
+        else:
+            self._is_dim = is_dim
+            self._name = name
+            self._encoding = encoding
+            if axistype is None:
+                self._type = AxisType.parse(name)
+            else:
+                if isinstance(axistype, str):
+                    self._type = AxisType.parse(axistype)
+                elif isinstance(axistype, AxisType):
+                    self._type = axistype
+                else:
+                    raise ex.HCubeTypeError(
+                        f"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided {type(axistype)}",
+                        logger=Axis._LOG,
+                    )
 
     @property
     def name(self) -> str:
         return self._name
 
     @property
-    def atype(self) -> AxisType:
+    def type(self) -> AxisType:
         return self._type
 
     @property
-    def default_units(self) -> cf.Unit:
-        return self._type.default_units
+    def default_unit(self) -> Unit:
+        return self._type.default_unit
+
+    @property
+    def ncvar(self):
+        return self._encoding.get("name", self.name) if self._encoding else self.name
+
+    @property
+    def encoding(self):
+        return self._encoding
+
+    @property
+    def is_dim(self):
+        return self._is_dim
+
+    def __hash__(self):
+        return hash((self._name, self._type, self._encoding, self._is_dim))
 
     def __eq__(self, other):
-        return (self.name == other.name) and (self._type == other._type)
+        return (
+            (self.name == other.name)
+            and (self.type == other.type)
+            and (self._is_dim == other.is_dim)
+            and (self._encoding == other._encoding)
+        )
 
     def __ne__(self, other):
         return not (self == other)
 
-    @classmethod
-    def from_xarray_dataarray(cls, da: xr.DataArray) -> "Axis":
-        if not isinstance(da, xr.DataArray):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.DataArray` but provided `{type(da)}`",
-                logger=cls._LOG,
-            )
+    def __repr__(self) -> str:
+        return f"<Axis(name={self.name}, type:{self.type}, encoding={self._encoding}>"
 
-        _type = AxisType.parse_type(da.attrs.get("standard_name"))
-        if _type is AxisType.GENERIC:
-            _type = AxisType.parse_type(da.name)
-        return Axis(atype=_type, name=da.name)
+    def __str__(self) -> str:
+        return f"{self.name}: {self.type}"

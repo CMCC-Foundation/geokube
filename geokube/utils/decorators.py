@@ -1,7 +1,7 @@
 import warnings
 from functools import wraps
 
-import geokube.utils.exceptions as ex
+from ..utils import exceptions as ex
 
 
 def nonclose_assert(f):

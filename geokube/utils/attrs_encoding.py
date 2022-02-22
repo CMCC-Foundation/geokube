@@ -4,7 +4,9 @@ from typing import List, Mapping, Tuple
 
 class CFAttributes(Enum):
 
-    NETCDF_NAME = "netcdf_name"
+    # encoding for names and dims
+    NETCDF_NAME = "name"
+    NETCDF_DIMS = "dims"
 
     # Description of data:
     UNITS = "units"
@@ -44,7 +46,7 @@ class CFAttributes(Enum):
         return [a.value for a in cls]
 
     @classmethod
-    def split_attrs(
+    def split_to_props_encoding(
         cls, attrs: Mapping[str, str]
     ) -> Tuple[Mapping[str, str], Mapping[str, str]]:
         properties = attrs.copy()
@@ -62,8 +64,9 @@ ENCODING_PROP = (
     "complevel",
     "fletcher32",
     "contiguous",
-    CFAttributes.UNITS.value,
+    CFAttributes.COORDINATES.value,
     CFAttributes.CALENDAR.value,
+    CFAttributes.GRID_MAPPING.value,
     CFAttributes.MISSING_VALUE.value,
     CFAttributes.FILL_VALUE.value,
     CFAttributes.SCALE_FACTOR.value,
@@ -71,13 +74,22 @@ ENCODING_PROP = (
 )
 
 
-def split_to_attrs_and_encoding(
+def is_time_unit(unit):
+    return "since" in unit if isinstance(unit, str) else False
+
+
+def in_encoding(key, unit=None):
+    return is_time_unit(unit) or key in ENCODING_PROP
+
+
+def split_to_xr_attrs_and_encoding(
     mapping: Mapping[str, str]
 ) -> Tuple[Mapping[str, str], Mapping[str, str]]:
     attrs, encoding = {}, {}
-    for k, v in mapping.items():
-        if k in ENCODING_PROP:
-            encoding[k] = v
-        else:
-            attrs[k] = v
+    if mapping is not None:
+        for k, v in mapping.items():
+            if in_encoding(k, v):
+                encoding[k] = v
+            else:
+                attrs[k] = v
     return (attrs, encoding)

@@ -1,20 +1,19 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from numbers import Number
-from typing import List, Optional, Tuple, Union, Any
+from typing import Any, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
-from geokube.core.axis import AxisType
 
-import geokube.utils.exceptions as ex
-from geokube.core.datacube import DataCube
-from geokube.utils.hcube_logger import HCubeLogger
-import os
-from functools import partial
-import tempfile
+from ..utils import exceptions as ex
+from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis
+from .datacube import DataCube
 
 
 class Dataset:
@@ -116,7 +115,7 @@ class Dataset:
 
     def sel(
         self,
-        indexers: Mapping[Union[AxisType, str], Any] = None,
+        indexers: Mapping[Union[Axis, str], Any] = None,
         method: str = None,
         tolerance: Number = None,
         drop: bool = False,

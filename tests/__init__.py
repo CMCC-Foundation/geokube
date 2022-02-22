@@ -1,5 +1,42 @@
 import logging
+import os
 import timeit
+from numbers import Number
+
+import numpy as np
+
+RES_PATH = os.path.join("tests", "resources", "__res.nc")
+
+
+def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
+    exclude_d1 = list(np.array(exclude_d1, ndmin=1)) if exclude_d1 is not None else []
+    exclude_d2 = list(np.array(exclude_d2, ndmin=1)) if exclude_d2 is not None else []
+    for ek in set(d1.keys()):
+        if ek in exclude_d1:
+            continue
+        assert ek in d2, f"{ek} not present in d2"
+        if d1[ek] is None:
+            assert d2[ek] is None
+        if isinstance(d1[ek], Number) and np.isnan(d1[ek]):
+            assert np.isnan(d2[ek])
+        else:
+            assert ek in d2
+            assert d1[ek] == d2[ek]
+    for ek in set(d2.keys()) - set(d1.keys()) - set(exclude_d2):
+        assert ek in d1, f"{ek} not present in d1"
+        if d2[ek] is None:
+            assert d1[ek] is None
+        if isinstance(d2[ek], Number) and np.isnan(d2[ek]):
+            assert np.isnan(d1[ek])
+        else:
+            assert d1[ek] == d2[ek]
+
+
+def clear_test_res():
+    try:
+        os.remove(RES_PATH)
+    except:
+        pass
 
 
 class TimeCounter:

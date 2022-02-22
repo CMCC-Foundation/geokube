@@ -1,5 +1,5 @@
 # -- Exceptions ---------------------------------------------------------------
-from geokube.utils.hcube_logger import HCubeLogger
+from ..utils.hcube_logger import HCubeLogger
 
 
 class NonUniqueKey(KeyError):
