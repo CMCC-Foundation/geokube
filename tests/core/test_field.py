@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 import xarray as xr
+import pandas as pd
+import cf_units as cf
 
 import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
@@ -505,3 +507,38 @@ def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
     assert "vt_std_name" in dset.data_vars
     assert "nav_lat" not in dset.coords
     assert "latitude" in dset.coords
+
+
+def test_field_create_with_dict_coords():
+    dims = ("time", Axis("lat"), AxisType.LONGITUDE)
+    coords = {
+        "time": pd.date_range("06-06-2019", "19-12-2019", periods=50),
+        AxisType.LATITUDE: np.linspace(15, 100, 40),
+        Axis("lon"): np.linspace(5, 10, 30),
+    }
+    f = Field(
+        name="ww",
+        data=np.random.random((50, 40, 30)),
+        dims=dims,
+        coords=coords,
+        units="m",
+        encoding={"name": "w_ncvar"},
+    )
+    assert f.name == "ww"
+    assert f.ncvar == "w_ncvar"
+    assert f.dim_names == ("time", "lat", "longitude")
+    assert f.domain.crs == RegularLatLon()
+    assert np.all(
+        f[Axis("time")].values
+        == np.array(pd.date_range("06-06-2019", "19-12-2019", periods=50))
+    )
+    assert np.all(
+        f[AxisType.TIME].values
+        == np.array(pd.date_range("06-06-2019", "19-12-2019", periods=50))
+    )
+    assert np.all(f[AxisType.LATITUDE].values == np.linspace(15, 100, 40))
+    assert np.all(f[Axis("lat")].values == np.linspace(15, 100, 40))
+    assert np.all(f[Axis("lon")].values == np.linspace(5, 10, 30))
+    assert np.all(f[Axis("longitude")].values == np.linspace(5, 10, 30))
+    assert np.all(f[AxisType.LONGITUDE].values == np.linspace(5, 10, 30))
+    assert f.units._unit == cf.Unit("m")

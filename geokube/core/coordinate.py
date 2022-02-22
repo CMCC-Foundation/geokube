@@ -4,6 +4,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from ..utils import exceptions as ex
@@ -107,6 +108,8 @@ class Coordinate(Variable, Axis):
             if len(bounds) > 0:
                 _bounds = {}
             for k, v in bounds.items():
+                if isinstance(v, pd.core.indexes.datetimes.DatetimeIndex):
+                    v = np.array(v)
                 if isinstance(v, Bounds):
                     bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
                     _bounds[k] = v

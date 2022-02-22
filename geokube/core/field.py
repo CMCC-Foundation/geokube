@@ -61,13 +61,22 @@ class Field(Variable, DomainMixin):
 
     def __init__(
         self,
+        data: Union[Number, np.ndarray, da.Array, xr.Variable, Variable],
         name: str,
-        data: Union[Number, np.ndarray, da.Array, xr.Variable] = None,
-        dims: Optional[Tuple[Axis]] = None,
+        dims: Optional[Union[Tuple[Axis], Tuple[AxisType], Tuple[str]]] = None,
+        coords: Optional[
+            Union[
+                Domain,
+                Mapping[str, Union[Number, np.ndarray, da.Array]],
+                Mapping[
+                    str, Tuple[Tuple[str, ...], Union[Number, np.ndarray, da.Array]]
+                ],
+            ]
+        ] = None,
+        crs: Optional[CoordSystem] = None,
         units: Optional[Union[Unit, str]] = None,
         properties: Optional[Mapping[Hashable, str]] = None,
         encoding: Optional[Mapping[Hashable, str]] = None,
-        domain: Optional[Union[Mapping[Hashable, Any], Domain]] = None,
         cell_methods: Optional[CellMethod] = None,
         ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
     ) -> None:
@@ -77,7 +86,13 @@ class Field(Variable, DomainMixin):
         )
         self._ancillary = None
         self._name = name
-        self._domain = domain if isinstance(domain, Domain) else Domain(domain)
+        self._domain = (
+            coords
+            if isinstance(coords, Domain)
+            else Domain._make_domain_from_coords_dict_dims_and_crs(
+                coords=coords, dims=dims, crs=crs
+            )
+        )
 
         self._cell_methods = cell_methods
         if ancillary is not None:
@@ -945,8 +960,8 @@ class Field(Variable, DomainMixin):
             units=var.units,
             properties=var.properties,
             encoding=var.encoding,
-            domain=domain,
             cell_methods=cell_methods,
+            coords=domain,
         )
         field._id_pattern = id_pattern
         field._mapping = mapping
