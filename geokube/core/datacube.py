@@ -91,21 +91,20 @@ class DataCube(DomainMixin):
         )
 
     def __getitem__(self, key: Union[Iterable[str], str]):
-        if isinstance(key, str):
-            if (
-                item := self._fields.get(
-                    key, self._fields.get(self._ncvar_to_name.get(key))
-                )
-            ) is None:
-                item = self._domain[key]
-            return item
+        if isinstance(key, str) and (
+            (key in self._fields) or key in self._ncvar_to_name
+        ):
+            return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
         elif isinstance(key, Iterable):
             return DataCube(fields=[self._fields[k] for k in key], **self.properties)
         else:
-            raise ex.HCubeTypeError(
-                f"`{type(key)}` is not a supported index for geokube.DataCube",
-                logger=self._LOG,
-            )
+            item = self.domain[key]
+            if item is None:
+                raise ex.HCubeKeyError(
+                    f"Key `{key}` of type `{type(key)}` is not found in the DataCube",
+                    logger=DataCube._LOG,
+                )
+            return item
 
     def __next__(self):
         for f in self._fields:

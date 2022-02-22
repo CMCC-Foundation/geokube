@@ -155,6 +155,13 @@ def test_getitem_with_coords_and_fiels(era5_rotated_netcdf):
     tmin = dc["TMIN_2M"]
     assert tmin.name == "air_temperature"
     assert tmin.ncvar == "TMIN_2M"
+    lat = dc.latitude
+    assert lat.name == "latitude"
+    assert lat.ncvar == "lat"
+    assert lat.axis_type is AxisType.LATITUDE
+    time = dc.time
+    assert time.ncvar == "time"
+    assert time.axis_type is AxisType.TIME
 
 
 def test_locations_rotated_pole(era5_rotated_netcdf):
