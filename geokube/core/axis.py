@@ -54,6 +54,8 @@ class AxisType(Enum):
             return cls.GENERIC
         if isinstance(name, AxisType):
             return name
+        if isinstance(name, Axis):
+            return name.type
         try:
             res = cls[name.upper() if isinstance(name, str) else name]
             if res is AxisType.Z:

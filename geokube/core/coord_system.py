@@ -58,7 +58,8 @@ class CoordSystem(metaclass=ABCMeta):
     grid_mapping_name = None
 
     def __eq__(self, other):
-        return self.__class__ == other.__class__ and self.__dict__ == other.__dict__
+        # Only dicts are compared as some classes are specified wrappers e.g. RegularLatLon
+        return self.__dict__ == other.__dict__
 
     def __ne__(self, other):
         # Must supply __ne__, Python does not defer to __eq__ for

@@ -45,6 +45,7 @@ _CARTOPY_FEATURES = {
 
 # pylint: disable=missing-class-docstring
 
+
 class Field(Variable, DomainMixin):
 
     __slots__ = (
@@ -246,15 +247,15 @@ class Field(Variable, DomainMixin):
                 "Selecting by location with vertical is currently not supported!",
                 logger=Field._LOG,
             )
-        
-        return self.interpolate(domain=GeodeticPoints(latitude=latitude, longitude=longitude, vertical=vertical), 
-                                method='nearest')
 
-    def interpolate(
-        self,
-        domain: Domain,
-        method: str = 'nearest'
-    ) -> Field:
+        return self.interpolate(
+            domain=GeodeticPoints(
+                latitude=latitude, longitude=longitude, vertical=vertical
+            ),
+            method="nearest",
+        )
+
+    def interpolate(self, domain: Domain, method: str = "nearest") -> Field:
         # TODO: Add vertical support.
         # if (
         #     {c.axis_type for c in domain.coords.values() if c.is_dimension}
@@ -268,12 +269,12 @@ class Field(Variable, DomainMixin):
         lat, lon = domain.latitude.values, domain.longitude.values
         if self.is_latitude_independent and self.is_longitude_independent:
             if domain.type is DomainType.POINTS:
-                dim_lat = dim_lon = 'points'
+                dim_lat = dim_lon = "points"
             else:
                 dim_lat, dim_lon = self.latitude.name, self.longitude.name
             interp_coords = {
-                 self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
-                 self.longitude.name: xr.DataArray(data=lon, dims=dim_lon)
+                self.latitude.name: xr.DataArray(data=lat, dims=dim_lat),
+                self.longitude.name: xr.DataArray(data=lon, dims=dim_lon),
             }
             dset_interp = dset.interp(coords=interp_coords, method=method)
         else:
@@ -283,8 +284,8 @@ class Field(Variable, DomainMixin):
                 )
                 x, y = pts[..., 0], pts[..., 1]
                 interp_coords = {
-                    self.x.name: xr.DataArray(data=x, dims='points'),
-                    self.y.name: xr.DataArray(data=y, dims='points')
+                    self.x.name: xr.DataArray(data=x, dims="points"),
+                    self.y.name: xr.DataArray(data=y, dims="points"),
                 }
             else:
                 lon_2d, lat_2d = np.meshgrid(lon, lat)
@@ -295,32 +296,30 @@ class Field(Variable, DomainMixin):
                 dims = (domain.latitude.name, domain.longitude.name)
                 grid = xr.Dataset(
                     data_vars={self.x.name: (dims, x), self.y.name: (dims, y)},
-                    coords=domain.to_xarray(encoding=False)
+                    coords=domain.to_xarray(encoding=False),
                 )
-                dset = dset.drop(
-                    labels=(self.latitude.name, self.longitude.name)
-                )
+                dset = dset.drop(labels=(self.latitude.name, self.longitude.name))
                 interp_coords = {
                     self.x.name: grid[self.x.name],
-                    self.y.name: grid[self.y.name]
+                    self.y.name: grid[self.y.name],
                 }
             dset_interp = dset.interp(coords=interp_coords, method=method)
             dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
         # dset_interp[self.name].encoding.update(dset[self.name].encoding)
-        dset_interp[self.name].encoding['coordinates'] = (
-            f'{domain.latitude.name} {domain.longitude.name}'
-        )
+        dset_interp[self.name].encoding[
+            "coordinates"
+        ] = f"{domain.latitude.name} {domain.longitude.name}"
         # TODO: Fill value should depend on the data type.
         # TODO: Add xarray fillna into Field.to_xarray.
-        dset_interp[self.name].encoding['_FillValue'] = -9.0e-20
+        dset_interp[self.name].encoding["_FillValue"] = -9.0e-20
 
         field = Field.from_xarray(
             ds=dset_interp,
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
-            mapping=self._mapping
+            mapping=self._mapping,
         )
 
         field.domain.type = DomainType.POINTS
@@ -532,7 +531,9 @@ class Field(Variable, DomainMixin):
         lat = np.arange(south, north + lat_step / 2, lat_step)
         lon = np.arange(west, east + lon_step / 2, lon_step)
 
-        return self.interpolate(domain=GeodeticGrid(latitude=lat, longitude=lon), method='nearest')
+        return self.interpolate(
+            domain=GeodeticGrid(latitude=lat, longitude=lon), method="nearest"
+        )
 
     # TO CHECK
     @log_func_debug
