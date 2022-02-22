@@ -168,7 +168,58 @@ class Field(Variable, DomainMixin):
             top=top,
             bottom=bottom,
         )
-      
+
+    def _geobbox_cartopy(
+        self, south, north, west, east, top, bottom, roll_if_needed=True
+    ):
+        # TODO: add vertical also
+        domain = self._domain
+
+        ind_lat = domain.is_latitude_independent
+        ind_lon = domain.is_longitude_independent
+        if ind_lat and ind_lon:
+            idx = {
+                domain.latitude.name: np.s_[south:north]
+                if util_methods.is_nondecreasing(domain.latitude.data)
+                else np.s_[north:south],
+                domain.longitude.name: np.s_[west:east]
+                if util_methods.is_nondecreasing(domain.longitude.data)
+                else np.s_[east:west],
+            }
+            return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
+
+        # Specifying the corner points of the bounding box in the rectangular
+        # coordinate system (`cartopy.crs.PlateCarree()`).
+        lats = np.array([south, south, north, north], dtype=np.float32)
+        lons = np.array([west, east, west, east], dtype=np.float32)
+
+        # Transforming the corner points of the bounding box from the
+        # rectangular coordinate system (`cartopy.crs.PlateCarree`) to the
+        # coordinate system of the field.
+        plate = ccrs.PlateCarree()
+        pts = domain.crs.as_cartopy_crs().transform_points(
+            src_crs=plate, x=lons, y=lats
+        )
+        x, y = pts[:, 0], pts[:, 1]
+
+        # Spatial subseting.
+        idx = {
+            domain[AxisType.LATITUDE].dims[1].ncvar: np.s_[x.min() : x.max()],
+            domain[AxisType.LATITUDE].dims[0].ncvar: np.s_[y.min() : y.max()],
+        }
+        ds = (
+            self._check_and_roll_longitude(self.to_xarray(), idx)
+            if roll_if_needed
+            else self.to_xarray()
+        )
+        return Field.from_xarray(
+            ds=ds.sel(indexers=idx),
+            ncvar=self.ncvar,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
+        )
+    
     def _geobbox_idx(
         self,
         south,
@@ -204,7 +255,7 @@ class Field(Variable, DomainMixin):
             vert_incr = util_methods.is_nondecreasing(vert.data)
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
             vert_idx = {vert.name: vert_slice}
-            field = self.sel(indexers=vert_idx, roll_if_needed=roll_if_needed)
+            field = self.sel(indexers=vert_idx, roll_if_needed=True)
 
         # Case of latitude and longitude being independent.
         if lat_indep and lon_indep:
@@ -233,15 +284,17 @@ class Field(Variable, DomainMixin):
             x_slice = np.s_[x.min():x.max() + 1]
             y_slice = np.s_[y.min():y.max() + 1]
             # TODO: Check dims[1] and dims[0]
-            idx = {lat.dims[1].axis.name: x_slice, lat.dims[0].axis.name: y_slice}
+            idx = {lat.dims[1].name: x_slice, lat.dims[0].name: y_slice}
             dset = (
-                field._check_and_roll_longitude(field.to_xarray(), idx)
-                if roll_if_needed else
-                field.to_xarray()
+                field._check_and_roll_longitude(field.to_xarray(encoding=False), idx)
             )
-            dset = dset.sel()
-            return Field.from_xarray_dataset(
-                ds=dset.isel(indexers=idx), field_name=self.name, deep_copy=False
+
+            return Field.from_xarray(
+                ds=dset.isel(indexers=idx),
+                ncvar=self.name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping
             )
 
     def locations(
@@ -353,7 +406,7 @@ class Field(Variable, DomainMixin):
             # system (`cartopy.crs.PlateCarree`) to the coordinate system of
             # the field.
             plate = ccrs.PlateCarree()
-            pts = domain.crs.transform_points(src_crs=plate, x=lons, y=lats)
+            pts = domain.crs.as_cartopy_crs().transform_points(src_crs=plate, x=lons, y=lats)
             idx = {
                 domain.x.name: xr.DataArray(data=pts[:, 0], dims="points"),
                 domain.y.name: xr.DataArray(data=pts[:, 1], dims="points"),
@@ -397,18 +450,20 @@ class Field(Variable, DomainMixin):
         # Vertical
         # NOTE: In this implementation, vertical is always considered an
         # independent coordinate.
-        if (vert_coord := domain.vertical) is None:
-            if vertical is not None:
-                raise ValueError(
-                    "'vertical' must be None because there is no vertical "
-                    "coordinate"
-                )
-        else:
-            if vertical is None:
-                raise ValueError(
-                    "'vertical' cannot be None because there is a vertical "
-                    "coordinate"
-                )
+        # if (vert_coord := domain.vertical) is None:
+        #    if vertical is not None:
+        #        raise ValueError(
+        #            "'vertical' must be None because there is no vertical "
+        #            "coordinate"
+        #        )
+        # else:
+        #    if vertical is None:
+        #        raise ValueError(
+        #            "'vertical' cannot be None because there is a vertical "
+        #            "coordinate"
+        #        )
+        if vertical is not None:    
+            vert_coord = domain.vertical
             verts = np.array(vertical, dtype=np.float32).reshape(-1)
             if verts.size != n:
                 raise ValueError(
@@ -431,10 +486,10 @@ class Field(Variable, DomainMixin):
             # Adjusting the shape of the latitude and longitude coordinates.
             # TODO: Check if these are NumPy arrays.
             # TODO: Check axes and shapes manipulation again.
-            lat_data = domain.latitude.variable.data
+            lat_data = domain.latitude.values
             lat_dims = (np.s_[:],) + (np.newaxis,) * lat_data.ndim
             lat_data = lat_data[np.newaxis, :]
-            lon_data = domain.longitude.variable.data
+            lon_data = domain.longitude.values
             lon_dims = (np.s_[:],) + (np.newaxis,) * lon_data.ndim
             lon_data = lon_data[np.newaxis, :]
 
@@ -464,11 +519,15 @@ class Field(Variable, DomainMixin):
             dims = lat_coord.dims
             lat_idx = xr.DataArray(data=idx_[:, 1], dims='points')
             lon_idx = xr.DataArray(data=idx_[:, 0], dims='points')
-            idx = {dims[1].axis.name: lat_idx, dims[0].axis.name: lon_idx}
-            dset = field.to_xarray().isel(indexers=idx)
+            idx = {dims[1].name: lat_idx, dims[0].name: lon_idx}
+            dset = field.to_xarray(encoding=False).isel(indexers=idx)
 
-            return Field.from_xarray_dataset(
-                ds=dset, field_name=self.name, deep_copy=False
+            return Field.from_xarray(
+                ds=self.to_xarray(encoding=False).sel(indexers=idx, method="nearest"),
+                ncvar=self.name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
             )
 
     # consider only independent coordinates
