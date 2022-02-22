@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-from types import MethodType
 import warnings
 from collections import defaultdict
 from enum import Enum
@@ -9,6 +8,7 @@ from html import escape
 from itertools import chain
 from numbers import Number
 from string import Template
+from types import MethodType
 from typing import (
     Any,
     Callable,
@@ -22,68 +22,105 @@ from typing import (
 )
 
 import numpy as np
-from geokube.core.axis import AxisType
-from geokube.core.enums import RegridMethod
 import pyarrow as pa
 import xarray as xr
 
-from geokube.core.domain import Domain
-from geokube.core.field import Field
-from geokube.utils import util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
-import geokube.utils.exceptions as ex
+from ..utils import exceptions as ex
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis
+from .domain import Domain
+from .enums import RegridMethod
+from .field import Field
+from .domainmixin import DomainMixin
 
 IndexerType = Union[slice, List[slice], Number, List[Number]]
 
+# TODO: Not a priority
+# dc = datacube.set_id_pattern('{standard_name}')
+# dc['air_temperature']
+# dc['latitude']
+#
+class DataCube(DomainMixin):
 
-class DataCube:
-
-    __slots__ = ("_fields", "_properties")
+    __slots__ = ("_fields", "_domain", "_properties", "_encoding", "_ncvar_to_name")
 
     _LOG = HCubeLogger(name="DataCube")
 
-    def __init__(self, fields: List[Field], **properties) -> None:
+    def __init__(
+        self,
+        fields: List[Field],
+        properties: Mapping[Any, Any],
+        encoding: Mapping[Any, Any],
+    ) -> None:
+        # TO DO save only fields variables and coordinates names to build the field domain
         self._fields = {f.name: f for f in fields}
-        self._properties = properties
+        self._ncvar_to_name = {f.ncvar: f.name for f in fields}
+        self._domain = Domain.merge([f.domain for f in fields])
+        self._properties = properties if properties is not None else {}
+        self._encoding = encoding if encoding is not None else {}
 
     @property
     def properties(self):
         return self._properties
 
+    @property
+    def encoding(self):
+        return self._encoding
+
+    @property
+    def domain(self):
+        return self._domain
+
+    @property
+    def fields(self):
+        return self._fields
+
+    @property
+    def nbytes(self) -> int:
+        return sum(field.nbytes for field in self.fields.values())
+
     def __len__(self):
         return len(self._fields)
 
     def __contains__(self, key: str) -> bool:
-        return key in self._fields
+        return (
+            (key in self._fields)
+            or (key in self._ncvar_to_name)
+            or (key in self._domain)
+        )
 
     def __getitem__(self, key: Union[Iterable[str], str]):
-        if isinstance(key, str):
-            return self._fields[key]
-        elif isinstance(key, Iterable):
+        if isinstance(key, str) and (
+            (key in self._fields) or key in self._ncvar_to_name
+        ):
+            return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
+        elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(fields=[self._fields[k] for k in key], **self.properties)
         else:
-            raise ex.HCubeTypeError(
-                f"`{type(key)}` is not a supported index for geokube.DataCube",
-                logger=self._LOG,
-            )
+            item = self.domain[key]
+            if item is None:
+                raise ex.HCubeKeyError(
+                    f"Key `{key}` of type `{type(key)}` is not found in the DataCube",
+                    logger=DataCube._LOG,
+                )
+            return item
 
     def __next__(self):
         for f in self._fields:
             yield f
         raise StopIteration
 
-    def keys(self):
-        return self._fields.keys()
+    def __repr__(self) -> str:
+        return self.to_xarray(encoding=False).__repr__()
 
-    def values(self):
-        return self._fields.values()
+    #        return formatting.array_repr(self.to_xarray())
 
-    def items(self):
-        return self._fields.items()
-
-    def get_nbytes(self) -> int:
-        return sum(field.get_nbytes() for field in self.values())
+    def _repr_html_(self):
+        return self.to_xarray(encoding=False)._repr_html_()
+        # if OPTIONS["display_style"] == "text":
+        #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
+        # return formatting_html.array_repr(self)
 
     @log_func_debug
     def geobbox(
@@ -94,7 +131,6 @@ class DataCube:
         east=None,
         top=None,
         bottom=None,
-        roll_if_needed=True,
     ):
         return DataCube(
             fields=[
@@ -105,11 +141,11 @@ class DataCube:
                     west=west,
                     top=top,
                     bottom=bottom,
-                    roll_if_needed=roll_if_needed,
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -126,13 +162,14 @@ class DataCube:
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
     def sel(
         self,
-        indexers: Mapping[Union[AxisType, str], Any] = None,
+        indexers: Mapping[Union[Axis, str], Any] = None,
         method: str = None,
         tolerance: Number = None,
         drop: bool = False,
@@ -151,7 +188,8 @@ class DataCube:
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -168,7 +206,8 @@ class DataCube:
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -177,7 +216,8 @@ class DataCube:
     ) -> "DataCube":
         return DataCube(
             fields=[self._fields[k].to_regular() for k in self._fields.keys()],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @log_func_debug
@@ -198,7 +238,8 @@ class DataCube:
                 )
                 for k in self._fields.keys()
             ],
-            **self.properties,
+            properties=self.properties,
+            encoding=self.encoding,
         )
 
     @classmethod
@@ -206,30 +247,29 @@ class DataCube:
     def from_xarray(
         cls,
         ds: xr.Dataset,
-        field_id: Optional[str] = None,
+        id_pattern: Optional[str] = None,
         mapping: Optional[Mapping[str, str]] = None,
-        metadata: Optional[dict] = None,
     ) -> "DataCube":
         fields = []
-        metadata = metadata if metadata is not None else {}
         #
         # we assume that data_vars contains only variable + ancillary
         # and coords all coordinates, grid_mapping and so on ...
         # TODO ancillary variables
         #
         for dv in ds.data_vars:
+            print(dv)
             fields.append(
-                Field.from_xarray_dataset(
-                    ds, field_name=dv, field_id=field_id, mapping=mapping
-                )
+                Field.from_xarray(ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping)
             )
-
-        return DataCube(fields=fields, **metadata)
+        return DataCube(fields=fields, properties=ds.attrs, encoding=ds.encoding)
 
     @log_func_debug
-    def to_xarray(self):
-        xarray_fields = [f.to_xarray() for f in self.values()]
-        return xr.merge(xarray_fields)
+    def to_xarray(self, encoding=True):
+        xarray_fields = [f.to_xarray(encoding) for f in self.fields.values()]
+        dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
+        dset.attrs = self.properties
+        dset.encoding = self.encoding
+        return dset
 
     @log_func_debug
     def to_netcdf(self, path):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools as ft
+from numbers import Number
 import warnings
 from collections.abc import Iterable
 from enum import Enum
@@ -8,76 +9,87 @@ from itertools import chain
 from typing import Any, Hashable, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
+import dask.array as da
+import pandas as pd
 import xarray as xr
 
-import geokube.utils.exceptions as ex
-import geokube.utils.xarray_parser as xrp
-from geokube.core.axis import Axis, AxisType
-from geokube.core.coord_system import (
-    CoordSystem,
-    CurvilinearGrid,
-    RegularLatLon,
-    parse_crs,
-)
-from geokube.core.coordinate import Coordinate, CoordinateType
-from geokube.core.dimension import Dimension
-from geokube.core.enums import LatitudeConvention, LongitudeConvention
-from geokube.core.variable import Variable
-from geokube.utils import util_methods
-from geokube.utils.decorators import log_func_debug
-from geokube.utils.hcube_logger import HCubeLogger
-from geokube.utils.indexer_dict import IndexerDict
-from geokube.utils.warnings import DomainWarning
+from ..utils import exceptions as ex
+from ..utils import util_methods
+from ..utils.decorators import log_func_debug
+from ..utils.hcube_logger import HCubeLogger
+from .axis import Axis, AxisType
+from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, RegularLatLon, parse_crs
+from .coordinate import Coordinate, CoordinateType
+from .domainmixin import DomainMixin
+from .enums import LatitudeConvention, LongitudeConvention
+from .variable import Variable
+
+_COORDS_TUPLE_CONTENT = ["dims", "data", "bounds", "units", "properties", "encoding"]
 
 
-# Domain:
-#    lat(x,y)
-#    lon(x,y)
-#    x(x)
-#    y(y)
-#    time(time)
-#
-#  CRS -> HorizontalReferenceSystem (projection, rotated pole, NEMO Curvilenar grid) Gridded data
-#
-#  timeseries
-#  Discrete Geometry
-#  Unstructured Grid
-#
 class DomainType(Enum):
-    GRIDDER = "gridded"
+    GRIDDED = "gridded"
+    POINTS = "points"
     TIMESERIES = "timeseries"
 
 
-class Domain:
+class Domain(DomainMixin):
 
     __slots__ = (
         "_coords",
         "_crs",
         "_type",
-        "_axistype_to_name",
+        "_axis_to_name",
     )
 
     _LOG = HCubeLogger(name="Domain")
 
-    _AUX_DIM_NAME = "_dim"
-
     def __init__(
         self,
-        coordinates: Iterable[Coordinate],
+        coords: Union[
+            Mapping[Hashable, Tuple[np.ndarray, ...]], Iterable[Coordinate], Domain
+        ],
         crs: CoordSystem,
-        domtype: Optional[DomainType] = None,
+        domaintype: Optional[DomainType] = None,
     ) -> None:
-        self._coords = {c.name: c for c in coordinates}
+        if isinstance(coords, dict):
+            self._coords = {}
+            for name, coord in coords.items():
+                self._coords[name] = Domain._as_coordinate(coord, name)
+        if isinstance(coords, list):
+            # TODO: check if it is a coordinate or just data!
+            self._coords = {c.name: c for c in coords}
+        if isinstance(coords, Domain):
+            self._coords = coords._coords
+            self._crs = coords._crs
+            self._type = coords._type
+            self._axis_to_name = coords._axis_to_name
+
         self._crs = crs
-        self._type = domtype
-        self._axistype_to_name = {c.axis.atype: c.name for c in coordinates}
+        self._type = domaintype
+        self._axis_to_name = {c.axis_type: c.name for c in self._coords.values()}
+
+    @classmethod
+    def _as_coordinate(cls, coord, name) -> Coordinate:
+        if isinstance(coord, Coordinate):
+            return coord
+        elif isinstance(coord, tuple):
+            # tupl -> (data, dims, axis)
+            l = dict(enumerate(coord))
+            return Coordinate(data=coord[0], dims=l.get(1, name), axis=l.get(2, name))
+        else:
+            return Coordinate(data=coord, axis=name)
 
     @property
-    def domtype(self):
+    def type(self):
         return self._type
 
+    @type.setter
+    def type(self, value):
+        self._type = value
+
     @property
-    def coordinates(self):
+    def coords(self):
         return self._coords
 
     @property
@@ -85,46 +97,19 @@ class Domain:
         return self._crs
 
     @property
-    def latitude(self):
-        return self[AxisType.LATITUDE]
+    def aux_coords(self) -> List[str]:
+        return [c.name for c in self._coords.values() if not c.is_dim]
 
-    @property
-    def longitude(self):
-        return self[AxisType.LONGITUDE]
+    def __repr__(self) -> str:
+        return self.to_xarray(encoding=False).__repr__()
 
-    @property
-    def vertical(self):
-        return self[AxisType.VERTICAL]
+    #        return formatting.array_repr(self.to_xarray())
 
-    @property
-    def time(self):
-        return self[AxisType.TIME]
-
-    @property
-    def x(self):
-        return self[AxisType.X]
-
-    @property
-    def y(self):
-        return self[AxisType.Y]
-
-    @property
-    def longitude_convention(self) -> LongitudeConvention:
-        if AxisType.LONGITUDE in self._axistype_to_name:
-            return self[AxisType.LONGITUDE].convention
-
-    @property
-    def latitude_convention(self) -> LatitudeConvention:
-        if AxisType.LATITUDE in self._axistype_to_name:
-            return self[AxisType.LATITUDE].convention
-
-    @property
-    def is_latitude_independent(self):
-        return self[AxisType.LATITUDE].ctype is CoordinateType.INDEPENDENT
-
-    @property
-    def is_longitude_independent(self):
-        return self[AxisType.LONGITUDE].ctype is CoordinateType.INDEPENDENT
+    def _repr_html_(self):
+        return self.to_xarray(encoding=False)._repr_html_()
+        # if OPTIONS["display_style"] == "text":
+        #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
+        # return formatting_html.array_repr(self)
 
     def __eq__(self, other):
         if self.crs != other.crs:
@@ -147,156 +132,19 @@ class Domain:
     def __len__(self) -> int:
         return len(self._coords)
 
-    def __getitem__(self, key: str) -> Coordinate:
-        return self.coordinate(key)
-
-    def __setitem__(self, key: AxisType, value: Coordinate):
+    def __setitem__(self, key: str, value: Union[Coordinate, Variable]):
         self._coords[key] = value
 
-    def __contains__(self, key: str):
-        return (key in self._coords) or (
-            AxisType.parse_type(key) in self._axistype_to_name
-        )
-
-    def coordinate(self, axis: Union[str, Axis, AxisType]) -> Optional[Coordinate]:
-        if isinstance(axis, str):
-            # if we pass `latitude` and axis is called `lat`, we return the proper axis with AxisType.LATITUDE
-            # Selection by generic should be explicit: coordinate(AxisType.GENERIC)
-            if axis in self._coords:
-                return self._coords[axis]
-            if (at := AxisType.parse_type(axis)) is AxisType.GENERIC:
-                raise ex.HCubeKeyError(f"`{axis}` not found!", logger=self._LOG)
-            return self._coords.get(axis, self.coordinate(at))
-        if isinstance(axis, Axis):
-            return self._coords.get(axis.name)
-        if isinstance(axis, AxisType):
-            return self._coords.get(self._axistype_to_name.get(axis))
-        raise ex.HCubeTypeError(
-            f"Indexing coordinates for Domain is supported only for object of types [string, Axis, AxisType]. Provided type: {type(axis)}",
-            logger=self._LOG,
-        )
+    def __contains__(self, key: Union[str, Axis, AxisType]) -> bool:
+        if isinstance(key, Axis):
+            return key.type in self._axis_to_name
+        return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
 
     def nbytes(self) -> int:
-        return sum(coord.nbytes() for coord in self._coords)
+        return sum(coord.nbytes for coord in self._coords)
 
-    def to_dict_of_tuple(
-        self,
-    ) -> dict:  # mapping {coord name: (tuple of dimension names, array, attrs)}
-        d = {}
-        for c in self._coords.values():
-            d.update(c.to_dict_of_tuple())
-        return d
-
-    @classmethod
-    def guess_crs(cls, da: Union[xr.Dataset, xr.DataArray]):
-        # TODO: implement more logic
-        if "nav_lat" in da.coords or "nav_lon" in da.coords:
-            return CurvilinearGrid()
-        return RegularLatLon()
-
-    @classmethod
-    def _from_xarray_preprocess(cls, da: xr.DataArray, copy: bool):
-        if copy:
-            da = da.copy()
-        else:
-            da = da
-
-        if "grid_mapping" in da.encoding:
-            crs = parse_crs(da[da.encoding["grid_mapping"]])
-        elif "grid_mapping" in da.attrs:
-            crs = parse_crs(da[da.attrs["grid_mapping"]])
-        else:
-            crs = Domain.guess_crs(da)
-
-        coords = []
-        if "coordinates" in da.encoding:
-            coords = da.encoding["coordinates"].split()
-            cls._LOG.debug("`coordinates` found among encoding details.")
-        elif "coordinates" in da.attrs:
-            coords = da.attrs["coordinates"].split()
-            cls._LOG.debug("`coordinates` found among attrs details.")
-        else:
-            pass
-
-        # TODO: handle single-element latitude and longitude from da if they are note sotred in `coordinate` attribute/encoding
-        return (da, np.unique(list(chain(da.dims, coords))), crs)
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataarray(
-        cls,
-        da: xr.DataArray,
-        copy: bool = False,
-        mapping: Optional[Mapping[str, str]] = None,
-    ) -> "Domain":
-        da, coords_keys, crs = Domain._from_xarray_preprocess(da, copy)
-
-        # create coordinates from dims
-        coords = [
-            Coordinate.from_xarray_dataarray(da[d], mapping=mapping)
-            for d in coords_keys
-        ]
-        return Domain(coordinates=coords, crs=crs)
-
-    @classmethod
-    @log_func_debug
-    def from_xarray_dataset(
-        cls,
-        dset: xr.Dataset,
-        field_name: str,
-        copy: bool = False,
-        errors="raise",
-        mapping: Optional[Mapping[str, str]] = None,
-    ) -> "Domain":
-        da = dset[field_name]
-        da, coords_keys, crs = Domain._from_xarray_preprocess(da, copy)
-
-        # create coordinates from dims and coords
-        coords = util_methods.get_not_nones(
-            *[
-                Coordinate.from_xarray_dataset(
-                    ds=dset, coord_name=d, errors=errors, mapping=mapping
-                )
-                for d in coords_keys
-            ]
-        )
-
-        cell_measures = da.encoding.get("cell_measures", da.attrs.get("cell_measures"))
-        if cell_measures:
-            cls._LOG.info(
-                "`cell_measure` found among encoding or attributes details. Processing..."
-            )
-            # http://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/build/ch07s02.html
-            for (
-                measure_type,
-                measure_var_name,
-            ) in util_methods.parse_cell_measures_string(cell_measures).items():
-                coords.append(
-                    Coordinate.from_xarray_dataset(
-                        ds=dset,
-                        coord_name=measure_var_name,
-                        errors=errors,
-                        mapping=mapping,
-                    )
-                )
-        return Domain(coordinates=coords, crs=crs)
-
-    @log_func_debug
-    def to_xarray_dataset(self) -> xr.Dataset:
-        grid = {}
-        for coord in self._coords.values():
-            grid[coord.axis.name] = (coord.dims_axis_names, coord.values)
-            if (bounds := coord.bounds) is not None:
-                grid[bounds.name] = (bounds.dims_axis_names, bounds.values)
-        return xr.Dataset(coords=grid)
-
-    def _to_xarray_crs(self) -> xr.Dataset:
-        if self.crs is None:
-            return None
-
-        not_none_attrs = self.crs.as_crs_attributes()
-        not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-        return xr.DataArray(1.0, name="crs", attrs=not_none_attrs)
+    def map_indexers(self, indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
+        return {Axis(n): v for n, v in indexers.items()}
 
     @log_func_debug
     def _process_time_combo(self, indexer: Mapping[Hashable, Any]):
@@ -317,7 +165,7 @@ class Domain:
             raise ex.HCubeNoSuchAxisError(
                 f"Time axis was not found for that dataset!", logger=self._LOG
             )
-        time_coord = time_coord.to_xarray_dataarray()
+        time_coord = time_coord.to_xarray()
         time_coord_dt = time_coord.dt
 
         year_mask = _reduce_boolean_selection(time_coord_dt, "year", indexer)
@@ -353,7 +201,7 @@ class Domain:
             raise ex.HCubeValueError(
                 "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
             )
-        if not isinstance(crs, RegularLatLon):
+        if not isinstance(crs, (GeogCS, RegularLatLon)):
             raise ex.HCubeNotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
                 "calculating cell corners",
@@ -372,12 +220,12 @@ class Domain:
         # Making sure that longitude and latitude values are not outside their
         # ranges
         range_b = ()
-        if coord.axis.atype == AxisType.LONGITUDE:
+        if coord.atype == AxisType.LONGITUDE:
             if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
                 range_b = (0.0, 360.0)
             else:
                 range_b = (-180.0, 180.0)
-        elif coord.axis.atype == AxisType.LATITUDE:
+        elif coord.atype == AxisType.LATITUDE:
             range_b = (-90.0, 90.0)
 
         if range_b:
@@ -392,14 +240,8 @@ class Domain:
             name=name,
             data=Domain.convert_bounds_1d_to_2d(val_b),
             units=coord.units,
-            dims=(
-                Dimension(coord.dims[0].name, coord.axis),
-                Dimension("bounds", Axis(AxisType.GENERIC, "bounds")),
-            ),
+            dims=(coord.dims[0].name, "bounds"),
         )
-
-    def as_cf_coordinates_encoding(self):
-        return " ".join(self._coords.keys())
 
     @staticmethod
     def convert_bounds_1d_to_2d(values):
@@ -410,3 +252,208 @@ class Domain:
     def convert_bounds_2d_to_1d(values):
         assert values.ndim == 2
         return np.concatenate((values[:, 0], values[[-1], 1]))
+
+    @classmethod
+    def guess_crs(
+        cls,
+        da: Union[xr.Dataset, xr.DataArray, Mapping[str, Coordinate]],
+    ):
+        # TODO: implement more logic
+        if isinstance(da, (xr.Dataset, xr.DataArray)):
+            if "nav_lat" in da.coords or "nav_lon" in da.coords:
+                return CurvilinearGrid()
+        if isinstance(da, dict):
+            if "nav_lat" in da or "nav_lon" in da:
+                return CurvilinearGrid()
+        return GeogCS(6371229)
+
+    @classmethod
+    @log_func_debug
+    def merge(cls, domains: List[Domain]):
+        # check if the domains are defined on the same crs
+        coords = {}
+        for domain in domains:
+            coords.update(**domain.coords)
+        return Domain(coords=coords, crs=domains[0].crs)
+
+    @classmethod
+    @log_func_debug
+    def from_xarray(
+        cls,
+        ds: xr.Dataset,
+        ncvar: str,
+        id_pattern: str = None,
+        copy: bool = False,
+        mapping: Optional[Mapping[str, str]] = None,
+    ) -> "Domain":
+
+        da = ds[ncvar]
+        coords = []
+        for dim in da.dims:
+            if dim in da.coords:
+                coords.append(
+                    Coordinate.from_xarray(
+                        ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
+                    )
+                )
+
+        xr_coords = ds[ncvar].attrs.get(
+            "coordinates", ds[ncvar].encoding.get("coordinates", None)
+        )
+        if xr_coords is not None:
+            for coord in xr_coords.split(" "):
+                coords.append(
+                    Coordinate.from_xarray(
+                        ds=ds, ncvar=coord, id_pattern=id_pattern, mapping=mapping
+                    )
+                )
+        if "grid_mapping" in da.encoding:
+            crs = parse_crs(da[da.encoding.get("grid_mapping")])
+        elif "grid_mapping" in da.attrs:
+            crs = parse_crs(da[da.attrs.get("grid_mapping")])
+        else:
+            crs = Domain.guess_crs(da)
+
+        return Domain(coords=coords, crs=crs)
+
+    @log_func_debug
+    def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
+        grid = {}
+        for coord in self._coords.values():
+            if encoding:
+                coord_name = coord.ncvar
+            else:
+                coord_name = coord.name
+            grid[coord_name] = coord.to_xarray(encoding)  # to xarray variable
+            if (bounds := coord.bounds) is not None:
+                continue
+                # TODO: bounds support latter
+                if len(bounds) > 1:
+                    raise ex.HCubeNotImplementedError(
+                        f"Multiple bounds are currently not supported!"
+                    )
+                for bnd in bounds.values():
+                    if encoding:
+                        bounds_name = bnd.ncvar
+                    else:
+                        bounds_name = bnd.name
+                    grid[bounds_name] = bnd.to_xarray(encoding)  # to xarray variable
+
+        if self.crs is not None:
+            not_none_attrs = self.crs.as_crs_attributes()
+            not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
+            grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
+        return xr.Dataset(coords=grid).coords
+
+    @classmethod
+    def _make_domain_from_coords_dict_dims_and_crs(cls, coords, dims, crs=None):
+        """Return a domain based on coords dict, dims, and coordinate reference system.
+
+        coords can be in the form {"latitude": lat_value} or in the form where the value
+        is a tuple. That tuple might contain following elements:
+        (dims: tuple[str], data, unit: optional, bounds: optional, properties: optional, encoding: optional)
+
+        """
+        if not isinstance(coords, dict):
+            raise ex.HCubeTypeError(
+                f"Expected type of `coords` is `dict`, but `{type(coords)}` provided!",
+                logger=Domain._LOG,
+            )
+        res_coords = []
+        for k, v in coords.items():
+            if isinstance(v, pd.core.indexes.datetimes.DatetimeIndex):
+                v = np.array(v)
+            if isinstance(v, (Number, np.ndarray, da.Array)):
+                # If coord provided not as tuple, be default it is deemed as `dimension`
+                if isinstance(k, AxisType):
+                    axis = Axis(name=k.axis_type_name, axistype=k, is_dim=True)
+                elif isinstance(k, (Axis, str)):
+                    axis = Axis(k, is_dim=True)
+                res_coords.append(Coordinate(data=v, axis=axis, dims=(axis,)))
+            elif isinstance(v, tuple):
+                dims = data = bounds = units = props = encoding = None
+                if len(v) >= 1:
+                    dims = v[0]
+                if len(v) >= 2:
+                    data = v[1]
+                if len(v) >= 3:
+                    bounds = {k: v[2]}
+                if len(v) >= 4:
+                    units = v[3]
+                if len(v) >= 5:
+                    props = v[4]
+                if len(v) >= 6:
+                    encoding = v[5]
+                res_coords.append(
+                    Coordinate(
+                        data=data,
+                        axis=Axis(k),
+                        dims=dims,
+                        bounds=bounds,
+                        units=units,
+                        properties=props,
+                        encoding=encoding,
+                    )
+                )
+            else:
+                raise ex.HCubeTypeError(
+                    f"Expected types of coord values are following: [Number, numpy.ndarray, dask.array.Array, tuple], but proided type was `{type(v)}`",
+                    logger=Domain._LOG,
+                )
+
+        if crs is None:
+            crs = Domain.guess_crs(coords)
+
+        return Domain(coords=res_coords, crs=crs)
+
+
+class GeodeticPoints(Domain):
+    def __init__(self, latitude, longitude, vertical=None):
+        latitude = np.array(latitude, dtype=np.float64, ndmin=1)
+        longitude = np.array(longitude, dtype=np.float64, ndmin=1)
+        if vertical != None:
+            vertical = np.array(vertical, dtype=np.float64, ndmin=1)
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "points", "latitude"),
+                    "longitude": (longitude, "points", "longitude"),
+                    "vertical": (vertical, "points", "vertical"),
+                },
+                crs=GeogCS(6371229),
+                domaintype=DomainType.POINTS,
+            )
+        else:
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "points", "latitude"),
+                    "longitude": (longitude, "points", "longitude"),
+                },
+                crs=GeogCS(6371229),
+                domaintype=DomainType.POINTS,
+            )
+
+
+class GeodeticGrid(Domain):
+    def __init__(self, latitude, longitude, vertical=None):
+
+        latitude = np.array(latitude, dtype=np.float64, ndmin=1)
+        longitude = np.array(longitude, dtype=np.float64, ndmin=1)
+        if vertical != None:
+            vertical = np.array(vertical, dtype=np.float64, ndmin=1)
+            super().__init__(
+                coords={
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "vertical": vertical,
+                },
+                crs=GeogCS(6371229),
+            )
+        else:
+            # TODO: TO BE FIXED
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "latitude", "latitude"),
+                    "longitude": (longitude, "longitude", "longitude"),
+                },
+                crs=GeogCS(6371229),
+            )

@@ -1,7 +1,7 @@
 name: Unit Tests
 on:
   pull_request:
-    types: [opened, reopened, edited, assigned]
+    types: [opened, reopened, edited, assigned, synchronize]
   workflow_dispatch:
 
 jobs:

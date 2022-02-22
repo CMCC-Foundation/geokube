@@ -7,7 +7,7 @@ import pkg_resources
 from xarray.core.formatting import inline_variable_array_repr, short_data_repr
 from xarray.core.options import _get_boolean_with_default
 
-from geokube.core.axis import AxisType
+from ..core.axis import Axis
 
 STATIC_FILES = ("static/html/icons-svg-inline.html", "static/css/style.css")
 

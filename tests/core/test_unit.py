@@ -1,9 +1,10 @@
-import pytest
-from geokube.core.unit import Unit
 import cf_units as cf
+import pytest
+
+from geokube.core.unit import Unit
 
 
-def test_unit_1():
+def test_unit_proper_attr_setting():
     u = Unit("not_existing")
     assert u.is_unknown
     assert str(u) == "not_existing"
