@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools as ft
+from numbers import Number
 import warnings
 from collections.abc import Iterable
 from enum import Enum
@@ -8,6 +9,8 @@ from itertools import chain
 from typing import Any, Hashable, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
+import dask.array as da
+import pandas as pd
 import xarray as xr
 
 from ..utils import exceptions as ex
@@ -15,11 +18,13 @@ from ..utils import util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
-from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, parse_crs
+from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, RegularLatLon, parse_crs
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
+
+_COORDS_TUPLE_CONTENT = ["dims", "data", "bounds", "units", "properties", "encoding"]
 
 
 class DomainType(Enum):
@@ -130,7 +135,9 @@ class Domain(DomainMixin):
     def __setitem__(self, key: str, value: Union[Coordinate, Variable]):
         self._coords[key] = value
 
-    def __contains__(self, key: str):
+    def __contains__(self, key: Union[str, Axis, AxisType]) -> bool:
+        if isinstance(key, Axis):
+            return key.type in self._axis_to_name
         return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
 
     def nbytes(self) -> int:
@@ -194,7 +201,7 @@ class Domain(DomainMixin):
             raise ex.HCubeValueError(
                 "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
             )
-        if not isinstance(crs, GeogCS):
+        if not isinstance(crs, (GeogCS, RegularLatLon)):
             raise ex.HCubeNotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
                 "calculating cell corners",
@@ -247,10 +254,17 @@ class Domain(DomainMixin):
         return np.concatenate((values[:, 0], values[[-1], 1]))
 
     @classmethod
-    def guess_crs(cls, da: Union[xr.Dataset, xr.DataArray]):
+    def guess_crs(
+        cls,
+        da: Union[xr.Dataset, xr.DataArray, Mapping[str, Coordinate]],
+    ):
         # TODO: implement more logic
-        if "nav_lat" in da.coords or "nav_lon" in da.coords:
-            return CurvilinearGrid()
+        if isinstance(da, (xr.Dataset, xr.DataArray)):
+            if "nav_lat" in da.coords or "nav_lon" in da.coords:
+                return CurvilinearGrid()
+        if isinstance(da, dict):
+            if "nav_lat" in da or "nav_lon" in da:
+                return CurvilinearGrid()
         return GeogCS(6371229)
 
     @classmethod
@@ -330,6 +344,67 @@ class Domain(DomainMixin):
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
         return xr.Dataset(coords=grid).coords
+
+    @classmethod
+    def _make_domain_from_coords_dict_dims_and_crs(cls, coords, dims, crs=None):
+        """Return a domain based on coords dict, dims, and coordinate reference system.
+
+        coords can be in the form {"latitude": lat_value} or in the form where the value
+        is a tuple. That tuple might contain following elements:
+        (dims: tuple[str], data, unit: optional, bounds: optional, properties: optional, encoding: optional)
+
+        """
+        if not isinstance(coords, dict):
+            raise ex.HCubeTypeError(
+                f"Expected type of `coords` is `dict`, but `{type(coords)}` provided!",
+                logger=Domain._LOG,
+            )
+        res_coords = []
+        for k, v in coords.items():
+            if isinstance(v, pd.core.indexes.datetimes.DatetimeIndex):
+                v = np.array(v)
+            if isinstance(v, (Number, np.ndarray, da.Array)):
+                # If coord provided not as tuple, be default it is deemed as `dimension`
+                if isinstance(k, AxisType):
+                    axis = Axis(name=k.axis_type_name, axistype=k, is_dim=True)
+                elif isinstance(k, (Axis, str)):
+                    axis = Axis(k, is_dim=True)
+                res_coords.append(Coordinate(data=v, axis=axis, dims=(axis,)))
+            elif isinstance(v, tuple):
+                dims = data = bounds = units = props = encoding = None
+                if len(v) >= 1:
+                    dims = v[0]
+                if len(v) >= 2:
+                    data = v[1]
+                if len(v) >= 3:
+                    bounds = {k: v[2]}
+                if len(v) >= 4:
+                    units = v[3]
+                if len(v) >= 5:
+                    props = v[4]
+                if len(v) >= 6:
+                    encoding = v[5]
+                res_coords.append(
+                    Coordinate(
+                        data=data,
+                        axis=Axis(k),
+                        dims=dims,
+                        bounds=bounds,
+                        units=units,
+                        properties=props,
+                        encoding=encoding,
+                    )
+                )
+            else:
+                raise ex.HCubeTypeError(
+                    f"Expected types of coord values are following: [Number, numpy.ndarray, dask.array.Array, tuple], but proided type was `{type(v)}`",
+                    logger=Domain._LOG,
+                )
+
+        if crs is None:
+            crs = Domain.guess_crs(coords)
+
+        return Domain(coords=res_coords, crs=crs)
 
 
 class GeodeticPoints(Domain):

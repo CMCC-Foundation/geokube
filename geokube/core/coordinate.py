@@ -4,6 +4,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from ..utils import exceptions as ex
@@ -82,7 +83,13 @@ class Coordinate(Variable, Axis):
                 logger=Coordinate._LOG,
             )
         if self.is_dim:
-            dims_tuple = tuple(np.array(dims, ndmin=1, dtype=str))
+            if isinstance(dims, (list, tuple)):
+                dims_names = [Axis.get_name_for_object(o) for o in dims]
+                dims_tuple = tuple(dims_names)
+            elif isinstance(dims, str):
+                dims_tuple = (Axis.get_name_for_object(dims),)
+            else:
+                dims_tuple = ()
             if dims is None or len(dims_tuple) == 0:
                 dims = (self.name,)
             else:
@@ -128,6 +135,8 @@ class Coordinate(Variable, Axis):
             if len(bounds) > 0:
                 _bounds = {}
             for k, v in bounds.items():
+                if isinstance(v, pd.core.indexes.datetimes.DatetimeIndex):
+                    v = np.array(v)
                 if isinstance(v, Bounds):
                     bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
                     _bounds[k] = v

@@ -43,7 +43,7 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 #
 class DataCube(DomainMixin):
 
-    __slots__ = ("_fields", "_domain", "_properties", "_encoding")
+    __slots__ = ("_fields", "_domain", "_properties", "_encoding", "_ncvar_to_name")
 
     _LOG = HCubeLogger(name="DataCube")
 
@@ -58,7 +58,9 @@ class DataCube(DomainMixin):
             warnings.warn("No fields provided for the DataCube!")
             self._fields = {}
             self._domain = None
+            self._ncvar_to_name = None
         else:
+            self._ncvar_to_name = {f.ncvar: f.name for f in fields}
             self._fields = {f.name: f for f in fields}
             self._domain = Domain.merge([f.domain for f in fields])
         self._properties = properties if properties is not None else {}
@@ -88,22 +90,31 @@ class DataCube(DomainMixin):
         return len(self._fields)
 
     def __contains__(self, key: str) -> bool:
-        return key in self._fields
+        return (
+            (key in self._fields)
+            or (key in self._ncvar_to_name)
+            or (key in self._domain)
+        )
 
     def __getitem__(self, key: Union[Iterable[str], str]):
-        if isinstance(key, str):
-            return self._fields[key]
-        elif isinstance(key, Iterable):
+        if isinstance(key, str) and (
+            (key in self._fields) or key in self._ncvar_to_name
+        ):
+            return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
+        elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(
                 fields=[self._fields[k] for k in key],
                 properties=self.properties,
                 encoding=self.encoding,
             )
         else:
-            raise ex.HCubeTypeError(
-                f"`{type(key)}` is not a supported index for geokube.DataCube",
-                logger=self._LOG,
-            )
+            item = self.domain[key]
+            if item is None:
+                raise ex.HCubeKeyError(
+                    f"Key `{key}` of type `{type(key)}` is not found in the DataCube",
+                    logger=DataCube._LOG,
+                )
+            return item
 
     def __next__(self):
         for f in self._fields:
