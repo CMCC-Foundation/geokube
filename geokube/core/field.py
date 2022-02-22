@@ -353,7 +353,7 @@ class Field(Variable, DomainMixin):
             # system (`cartopy.crs.PlateCarree`) to the coordinate system of
             # the field.
             plate = ccrs.PlateCarree()
-            pts = domain.crs.transform_points(src_crs=plate, x=lons, y=lats)
+            pts = domain.crs.as_cartopy_crs().transform_points(src_crs=plate, x=lons, y=lats)
             idx = {
                 domain.x.name: xr.DataArray(data=pts[:, 0], dims="points"),
                 domain.y.name: xr.DataArray(data=pts[:, 1], dims="points"),
@@ -397,18 +397,20 @@ class Field(Variable, DomainMixin):
         # Vertical
         # NOTE: In this implementation, vertical is always considered an
         # independent coordinate.
-        if (vert_coord := domain.vertical) is None:
-            if vertical is not None:
-                raise ValueError(
-                    "'vertical' must be None because there is no vertical "
-                    "coordinate"
-                )
-        else:
-            if vertical is None:
-                raise ValueError(
-                    "'vertical' cannot be None because there is a vertical "
-                    "coordinate"
-                )
+        # if (vert_coord := domain.vertical) is None:
+        #    if vertical is not None:
+        #        raise ValueError(
+        #            "'vertical' must be None because there is no vertical "
+        #            "coordinate"
+        #        )
+        # else:
+        #    if vertical is None:
+        #        raise ValueError(
+        #            "'vertical' cannot be None because there is a vertical "
+        #            "coordinate"
+        #        )
+        if vertical is not None:    
+            vert_coord = domain.vertical
             verts = np.array(vertical, dtype=np.float32).reshape(-1)
             if verts.size != n:
                 raise ValueError(
@@ -431,10 +433,10 @@ class Field(Variable, DomainMixin):
             # Adjusting the shape of the latitude and longitude coordinates.
             # TODO: Check if these are NumPy arrays.
             # TODO: Check axes and shapes manipulation again.
-            lat_data = domain.latitude.variable.data
+            lat_data = domain.latitude.values
             lat_dims = (np.s_[:],) + (np.newaxis,) * lat_data.ndim
             lat_data = lat_data[np.newaxis, :]
-            lon_data = domain.longitude.variable.data
+            lon_data = domain.longitude.values
             lon_dims = (np.s_[:],) + (np.newaxis,) * lon_data.ndim
             lon_data = lon_data[np.newaxis, :]
 
@@ -464,11 +466,15 @@ class Field(Variable, DomainMixin):
             dims = lat_coord.dims
             lat_idx = xr.DataArray(data=idx_[:, 1], dims='points')
             lon_idx = xr.DataArray(data=idx_[:, 0], dims='points')
-            idx = {dims[1].axis.name: lat_idx, dims[0].axis.name: lon_idx}
-            dset = field.to_xarray().isel(indexers=idx)
+            idx = {dims[1].name: lat_idx, dims[0].name: lon_idx}
+            dset = field.to_xarray(encoding=False).isel(indexers=idx)
 
-            return Field.from_xarray_dataset(
-                ds=dset, field_name=self.name, deep_copy=False
+            return Field.from_xarray(
+                ds=self.to_xarray(encoding=False).sel(indexers=idx, method="nearest"),
+                ncvar=self.name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
             )
 
     # consider only independent coordinates
