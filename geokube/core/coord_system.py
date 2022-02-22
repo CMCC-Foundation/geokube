@@ -58,7 +58,10 @@ class CoordSystem(metaclass=ABCMeta):
     grid_mapping_name = None
 
     def __eq__(self, other):
-        return self.__class__ == other.__class__ and self.__dict__ == other.__dict__
+        return (
+            issubclass(self.__class__, other.__class__)
+            or issubclass(other.__class__, self.__class__)
+        ) and self.__dict__ == other.__dict__
 
     def __ne__(self, other):
         # Must supply __ne__, Python does not defer to __eq__ for

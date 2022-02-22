@@ -256,7 +256,7 @@ class Domain(DomainMixin):
     @classmethod
     @log_func_debug
     def merge(cls, domains: List[Domain]):
-        # check if the domains are defined on the same crs
+        # TODO: check if the domains are defined on the same crs
         coords = {}
         for domain in domains:
             coords.update(**domain.coords)
@@ -333,42 +333,52 @@ class Domain(DomainMixin):
 
 
 class GeodeticPoints(Domain):
-
-    def __init__(self, 
-                latitude, 
-                longitude,
-                vertical=None):
+    def __init__(self, latitude, longitude, vertical=None):
         latitude = np.array(latitude, dtype=np.float64, ndmin=1)
         longitude = np.array(longitude, dtype=np.float64, ndmin=1)
         if vertical != None:
             vertical = np.array(vertical, dtype=np.float64, ndmin=1)
-            super().__init__(coords = {'latitude': (latitude, 'points', 'latitude'),
-                                     'longitude': (longitude, 'points', 'longitude'),
-                                     'vertical': (vertical, 'points', 'vertical') 
-                                     }, crs=GeogCS(6371229), domaintype=DomainType.POINTS)
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "points", "latitude"),
+                    "longitude": (longitude, "points", "longitude"),
+                    "vertical": (vertical, "points", "vertical"),
+                },
+                crs=GeogCS(6371229),
+                domaintype=DomainType.POINTS,
+            )
         else:
-            super().__init__(coords = {'latitude': (latitude, 'points', 'latitude'),
-                                     'longitude': (longitude, 'points', 'longitude')
-                                     }, crs=GeogCS(6371229), domaintype=DomainType.POINTS)
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "points", "latitude"),
+                    "longitude": (longitude, "points", "longitude"),
+                },
+                crs=GeogCS(6371229),
+                domaintype=DomainType.POINTS,
+            )
+
 
 class GeodeticGrid(Domain):
-
-    def __init__(self, 
-                latitude, 
-                longitude,
-                vertical=None):
+    def __init__(self, latitude, longitude, vertical=None):
 
         latitude = np.array(latitude, dtype=np.float64, ndmin=1)
         longitude = np.array(longitude, dtype=np.float64, ndmin=1)
         if vertical != None:
             vertical = np.array(vertical, dtype=np.float64, ndmin=1)
-            super().__init__(coords = {'latitude': latitude, 'longitude': longitude, 'vertical': vertical }, 
-                           crs=GeogCS(6371229))        
+            super().__init__(
+                coords={
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "vertical": vertical,
+                },
+                crs=GeogCS(6371229),
+            )
         else:
             # TODO: TO BE FIXED
-            super().__init__(coords = {'latitude': (latitude, 'latitude', 'latitude'), 
-                                       'longitude': (longitude, 'longitude', 'longitude') }, 
-                           crs=GeogCS(6371229))
-
-
-
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "latitude", "latitude"),
+                    "longitude": (longitude, "longitude", "longitude"),
+                },
+                crs=GeogCS(6371229),
+            )
