@@ -4,6 +4,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 
 import dask.array as da
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from ..utils import exceptions as ex
@@ -69,6 +70,7 @@ class Coordinate(Variable, Axis):
         Axis.__init__(self, name=axis)
         # We need to update as when calling constructor of Variable, encoding will be overwritten
         if encoding is not None:
+            # encoding stored in axis
             self.encoding.update(encoding)
         if (
             not self.is_dim
@@ -80,16 +82,37 @@ class Coordinate(Variable, Axis):
                 "If coordinate is not a dimension, you need to supply `dims` argument!",
                 logger=Coordinate._LOG,
             )
-        if self.is_dim and (dims is None or len(dims) == 0):
-            dims = ()
+        if self.is_dim:
+            if isinstance(dims, (list, tuple)):
+                dims_names = [Axis.get_name_for_object(o) for o in dims]
+                dims_tuple = tuple(dims_names)
+            elif isinstance(dims, str):
+                dims_tuple = (Axis.get_name_for_object(dims),)
+            else:
+                dims_tuple = ()
+            if dims is None or len(dims_tuple) == 0:
+                dims = (self.name,)
+            else:
+                if dims is not None and len(dims_tuple) > 1:
+                    raise ex.HCubeValueError(
+                        f"If the Coordinate is a dimension, it has to depend only on itself, but provided `dims` are: {dims}",
+                        logger=Coordinate._LOG,
+                    )
+                if len(dims_tuple) == 1 and dims_tuple[0] != self.name:
+                    raise ex.HCubeValueError(
+                        f"`dims` parameter for dimension coordinate should have the same name as axis name!",
+                        logger=Coordinate._LOG,
+                    )
         Variable.__init__(
             self,
             data=data,
             dims=dims,
-            units=units,
+            units=units if units is not None else self.default_unit,
             properties=properties,
             encoding=self.encoding,
         )
+        # Coordinates are always stored as NumPy data
+        self._data = np.array(self._data)
         self._bounds = Coordinate._process_bounds(
             bounds,
             name=self.name,
@@ -97,6 +120,13 @@ class Coordinate(Variable, Axis):
             units=self.units,
             axis=(Axis)(self),
         )
+        self._update_properties_and_encoding()
+
+    def _update_properties_and_encoding(self):
+        if "standard_name" not in self.properties:
+            self.properties["standard_name"] = self.axis_type.axis_type_name
+        if "name" not in self.encoding:
+            self.encoding["name"] = self.ncvar
 
     @classmethod
     @log_func_debug
@@ -107,6 +137,8 @@ class Coordinate(Variable, Axis):
             if len(bounds) > 0:
                 _bounds = {}
             for k, v in bounds.items():
+                if isinstance(v, pd.core.indexes.datetimes.DatetimeIndex):
+                    v = np.array(v)
                 if isinstance(v, Bounds):
                     bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
                     _bounds[k] = v
@@ -276,8 +308,10 @@ class Coordinate(Variable, Axis):
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
         ncvar = da.encoding.get("name", ncvar)
         var.encoding.update(name=ncvar)
+
         axis_name = Variable._get_name(da, mapping, id_pattern)
-        axistype = AxisType.parse(da.attrs.get("axis", ncvar))
+        # `axis` attribute cannot be used below, as e.g for EOBS `latitude` has axis `Y`, so wrong AxisType is chosen
+        axistype = AxisType.parse(da.attrs.get("standard_name", ncvar))
         axis = Axis(
             name=axis_name,
             is_dim=ncvar in da.dims,

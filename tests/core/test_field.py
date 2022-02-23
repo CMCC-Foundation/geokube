@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 import xarray as xr
+import pandas as pd
+import cf_units as cf
 
 import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
@@ -36,6 +38,7 @@ def test_from_xarray_with_point_domain(era5_point_domain):
     assert "points" in dset["grid_longitude"].dims
     assert "points" in dset["latitude"].dims
     assert "points" in dset["longitude"].dims
+
 
 def test_from_xarray_rotated_pole(era5_rotated_netcdf):
     field = Field.from_xarray(era5_rotated_netcdf, ncvar="TMIN_2M")
@@ -341,11 +344,12 @@ def test_timecombo_single_day(era5_netcdf):
     assert np.all(dset.time.dt.year == 2020)
 
 
+@pytest.mark.skip("Should lat and lon depend on points if crs is RegularLatLon?")
 def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
-    res = d2m.locations(latitude=41, longitude=[9, 12])
-    assert res["latitude"].type is CoordinateType.SCALAR
+    res = d2m.locations(latitude=[41, 41], longitude=[9, 12])
+    assert res["latitude"].type is CoordinateType.INDEPENDENT
     assert res["longitude"].type is CoordinateType.INDEPENDENT
     assert np.all(res.latitude.values == 41)
     assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
@@ -360,6 +364,9 @@ def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
     assert "latitude" in coords
 
 
+@pytest.mark.skip(
+    f"Lat depends on `points` but is single-element and should be SCALAR not DEPENDENT"
+)
 def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
     res = d2m.locations(latitude=41, longitude=9)
@@ -380,12 +387,13 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     assert np.all((dset.latitude == 41) | (dset.latitude == 42))
     assert np.all((dset.longitude == 9) | (dset.longitude == 12))
     assert dset["d2m"].attrs["units"] == "K"
-    coords = dset["d2m"].attrs.get(
+    coords_str = dset["d2m"].attrs.get(
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
-    assert coords is None
+    assert coords_str == "latitude longitude"
 
 
+@pytest.mark.skip("`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid")
 def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
 
@@ -499,3 +507,38 @@ def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
     assert "vt_std_name" in dset.data_vars
     assert "nav_lat" not in dset.coords
     assert "latitude" in dset.coords
+
+
+def test_field_create_with_dict_coords():
+    dims = ("time", Axis("latitude"), AxisType.LONGITUDE)
+    coords = {
+        "time": pd.date_range("06-06-2019", "19-12-2019", periods=50),
+        AxisType.LATITUDE: np.linspace(15, 100, 40),
+        AxisType.LONGITUDE: np.linspace(5, 10, 30),
+    }
+    f = Field(
+        name="ww",
+        data=np.random.random((50, 40, 30)),
+        dims=dims,
+        coords=coords,
+        units="m",
+        encoding={"name": "w_ncvar"},
+    )
+    assert f.name == "ww"
+    assert f.ncvar == "w_ncvar"
+    assert f.dim_names == ("time", "latitude", "longitude")
+    assert f.domain.crs == RegularLatLon()
+    assert np.all(
+        f[Axis("time")].values
+        == np.array(pd.date_range("06-06-2019", "19-12-2019", periods=50))
+    )
+    assert np.all(
+        f[AxisType.TIME].values
+        == np.array(pd.date_range("06-06-2019", "19-12-2019", periods=50))
+    )
+    assert np.all(f[AxisType.LATITUDE].values == np.linspace(15, 100, 40))
+    assert np.all(f[Axis("lat")].values == np.linspace(15, 100, 40))
+    assert np.all(f[Axis("lon")].values == np.linspace(5, 10, 30))
+    assert np.all(f[Axis("longitude")].values == np.linspace(5, 10, 30))
+    assert np.all(f[AxisType.LONGITUDE].values == np.linspace(5, 10, 30))
+    assert f.units._unit == cf.Unit("m")

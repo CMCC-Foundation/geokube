@@ -2,6 +2,7 @@ from numbers import Number
 
 import dask.array as da
 import numpy as np
+import dask.array as da
 import pytest
 
 import geokube.utils.exceptions as ex
@@ -177,6 +178,9 @@ def test_init_from_dask():
     assert c.is_independent
 
 
+@pytest.mark.skip(
+    "Invalidate as in the current version, if `dims` is None, it is created based on provided `axis`"
+)
 def test_init_from_dask_fail():
     D = da.random.random((100,))
 
@@ -193,12 +197,12 @@ def test_init_from_dask_proper_attrs_setting():
     c = Coordinate(
         data=D,
         axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
-        dims="lon2",
+        dims="lon",
     )
     assert c.name == "lon"
     assert c.ncvar == "new_lon_name"
-    assert c.dim_names == ("lon2",)
-    assert c.dim_ncvars == ("lon2",)
+    assert c.dim_names == ("lon",)
+    assert c.dim_ncvars == ("lon",)
     assert c.type is CoordinateType.INDEPENDENT
     assert c.axis_type is AxisType.LONGITUDE
     assert c.is_independent
@@ -210,7 +214,6 @@ def test_init_from_dask_fail_on_bounds_shape():
         _ = Coordinate(
             data=D,
             axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
-            dims="lon2",
             bounds=np.ones((104, 2)),
         )
 
@@ -220,14 +223,14 @@ def test_init_from_numpy_proper_attrs_setting():
     c = Coordinate(
         data=D,
         axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
-        dims="lon2",
+        dims="lon",
         encoding={"name": "my_lon_name"},
     )
     assert c.name == "lon"
     # if encoding provieded for Axis and Cooridnate, they are merged. Keys in Axis encoding will be overwritten
     assert c.ncvar == "my_lon_name"
-    assert c.dim_names == ("lon2",)
-    assert c.dim_ncvars == ("lon2",)
+    assert c.dim_names == ("lon",)
+    assert c.dim_ncvars == ("lon",)
     assert c.type is CoordinateType.INDEPENDENT
     assert c.axis_type is AxisType.LONGITUDE
     assert c.is_independent
@@ -372,3 +375,134 @@ def test_to_xarray_rotated_pole_without_encoding_2(era5_rotated_netcdf):
     assert set(res.encoding) - {"name"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
+
+
+def test_toxarray_keeping_encoding_encoding_false_no_dims_passed():
+    D = da.random.random((100,))
+    c = Coordinate(data=D, axis=Axis("lat", is_dim=True))
+    coord = c.to_xarray(encoding=False)
+    assert "lat" in coord.coords
+    assert "latitude" not in coord.coords
+    assert coord.name == "lat"
+    assert coord.dims == ("lat",)
+    assert "standard_name" in coord.attrs
+    assert coord.attrs["standard_name"] == "latitude"
+    assert "units" in coord.attrs
+    assert coord.attrs["units"] == "degrees_north"
+    assert "name" in coord.encoding
+    assert coord.encoding["name"] == "lat"
+
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True))
+    coord = c.to_xarray(encoding=False)
+    assert "latitude" in coord.coords
+    assert coord.name == "latitude"
+    assert "lat" not in coord.coords
+    assert coord.dims == ("latitude",)
+    assert "standard_name" in coord.attrs
+    assert coord.attrs["standard_name"] == "latitude"
+    assert "units" in coord.attrs
+    assert coord.attrs["units"] == "degrees_north"
+    assert "name" in coord.encoding
+    assert coord.encoding["name"] == "latitude"
+
+
+def test_toxarray_keeping_encoding_encoding_false():
+    D = da.random.random((100,))
+    c = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("lat"))
+    coord = c.to_xarray(encoding=False)
+    assert "lat" in coord.coords
+    assert coord.name == "lat"
+    assert coord.dims == ("lat",)
+    assert "standard_name" in coord.attrs
+    assert coord.attrs["standard_name"] == "latitude"
+    assert "units" in coord.attrs
+    assert coord.attrs["units"] == "degrees_north"
+    assert "name" in coord.encoding
+    assert coord.encoding["name"] == "lat"
+
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
+    coord = c.to_xarray(encoding=False)
+    assert coord.dims == ("latitude",)
+    assert coord.name == "latitude"
+    assert "standard_name" in coord.attrs
+    assert coord.attrs["standard_name"] == "latitude"
+    assert "units" in coord.attrs
+    assert coord.attrs["units"] == "degrees_north"
+    assert "name" in coord.encoding
+    assert coord.encoding["name"] == "latitude"
+
+
+def test_init_fails_if_is_dim_and_axis_name_differ_from_dims():
+    D = da.random.random((100,))
+    with pytest.raises(
+        ex.HCubeValueError,
+        match=r"If the Coordinate is a dimension, it has to depend only on itself, but provided `dims` are*",
+    ):
+        _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("x", "y"))
+
+    with pytest.raises(
+        ex.HCubeValueError,
+        match=r"`dims` parameter for dimension coordinate should have the same name as axis name*",
+    ):
+        _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("latitude"))
+
+    with pytest.raises(
+        ex.HCubeValueError,
+        match=r"`dims` parameter for dimension coordinate should have the same name as axis name*",
+    ):
+        _ = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("lat"))
+
+
+def test_toxarray_keeping_encoding_encoding_true():
+    D = da.random.random((100,))
+    c = Coordinate(data=D, axis=Axis("lat", is_dim=True))
+    coord = c.to_xarray(encoding=True)
+    assert coord.name == "lat"
+    assert coord.dims == ("lat",)
+    assert "standard_name" in coord.attrs
+    assert coord.attrs["standard_name"] == "latitude"
+    assert "units" in coord.attrs
+    assert coord.attrs["units"] == "degrees_north"
+    assert "name" in coord.encoding
+    assert coord.encoding["name"] == "lat"
+
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
+    coord = c.to_xarray(encoding=True)
+    assert coord.name == "latitude"
+    assert coord.dims == ("latitude",)
+    assert "standard_name" in coord.attrs
+    assert coord.attrs["standard_name"] == "latitude"
+    assert "units" in coord.attrs
+    assert coord.attrs["units"] == "degrees_north"
+    assert "name" in coord.encoding
+    assert coord.encoding["name"] == "latitude"
+
+
+def test_coord_data_always_numpy_array(era5_rotated_netcdf, era5_netcdf):
+    for c in era5_rotated_netcdf.coords.keys():
+        coord = Coordinate.from_xarray(era5_rotated_netcdf, c)
+        assert isinstance(coord._data, np.ndarray)
+
+    for c in era5_netcdf.coords.keys():
+        coord = Coordinate.from_xarray(era5_netcdf, c)
+        assert isinstance(coord._data, np.ndarray)
+
+    D = da.random.random((100,))
+    coord = Coordinate(
+        data=D,
+        axis=Axis("lon2", is_dim=True, encoding={"name": "new_lon_name"}),
+        dims="lon2",
+        encoding={"name": "my_lon_name"},
+    )
+
+    assert isinstance(coord._data, np.ndarray)
+
+    D = np.random.random((100,))
+    coord = Coordinate(
+        data=D,
+        axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
+        dims="lon",
+        encoding={"name": "my_lon_name"},
+    )
+
+    assert isinstance(coord._data, np.ndarray)

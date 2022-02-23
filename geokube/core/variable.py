@@ -9,6 +9,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, 
 import dask.array as da
 import numpy as np
 import xarray as xr
+import pandas as pd
 from xarray.core.options import OPTIONS
 
 from ..utils import exceptions as ex
@@ -30,12 +31,14 @@ class Variable(xr.Variable):
 
     def __init__(
         self,
-        data: Union[np.ndarray, da.Array, xr.Variable, Number],
-        dims: Optional[Union[Sequence[Union["Axis", str]], Union["Axis", str]]] = None,
+        data: Union[np.ndarray, da.Array, xr.Variable, Number, Variable],
+        dims: Optional[Union[Tuple[Axis], Tuple[AxisType], Tuple[str]]] = None,
         units: Optional[Union[Unit, str]] = None,
         properties: Optional[Mapping[Hashable, str]] = None,
         encoding: Optional[Mapping[Hashable, str]] = None,
     ):
+        if isinstance(data, pd.core.indexes.datetimes.DatetimeIndex):
+            data = np.array(data)
         if not (
             isinstance(data, np.ndarray)
             or isinstance(data, da.Array)
@@ -86,6 +89,8 @@ class Variable(xr.Variable):
             return (Axis(dims, is_dim=True),)
         elif isinstance(dims, Axis):
             return (dims,)
+        elif isinstance(dims, AxisType):
+            return (Axis(dims.axis_type_name, axistype=dims, is_dim=True),)
         elif isinstance(dims, Iterable):
             _dims = []
             for d in dims:

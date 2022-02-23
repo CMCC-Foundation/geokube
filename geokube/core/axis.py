@@ -54,6 +54,8 @@ class AxisType(Enum):
             return cls.GENERIC
         if isinstance(name, AxisType):
             return name
+        if isinstance(name, Axis):
+            return name.type
         try:
             res = cls[name.upper() if isinstance(name, str) else name]
             if res is AxisType.Z:
@@ -131,12 +133,14 @@ class Axis:
         return hash((self._name, self._type, self._encoding, self._is_dim))
 
     def __eq__(self, other):
-        return (
-            (self.name == other.name)
-            and (self.type == other.type)
-            and (self._is_dim == other.is_dim)
-            and (self._encoding == other._encoding)
-        )
+        if isinstance(other, Axis):
+            return (
+                (self.name == other.name)
+                and (self.type == other.type)
+                and (self._is_dim == other.is_dim)
+                and (self._encoding == other._encoding)
+            )
+        return False
 
     def __ne__(self, other):
         return not (self == other)
@@ -146,3 +150,17 @@ class Axis:
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
+
+    @classmethod
+    def get_name_for_object(cls, obj: Union[str, Axis, AxisType]) -> str:
+        if isinstance(obj, Axis):
+            return obj.name
+        elif isinstance(obj, str):
+            return obj
+        elif isinstance(obj, AxisType):
+            return obj.axis_type_name
+        else:
+            raise ex.HCubeTypeError(
+                f"`dims` can be a tuple or a list of [geokube.Axis, geokube.AxisType, str], but provided type is `{type(obj)}`",
+                logger=Axis._LOG,
+            )
