@@ -2,6 +2,7 @@ from numbers import Number
 
 import dask.array as da
 import numpy as np
+import dask.array as da
 import pytest
 
 import geokube.utils.exceptions as ex
@@ -475,3 +476,33 @@ def test_toxarray_keeping_encoding_encoding_true():
     assert coord.attrs["units"] == "degrees_north"
     assert "name" in coord.encoding
     assert coord.encoding["name"] == "latitude"
+
+
+def test_coord_data_always_numpy_array(era5_rotated_netcdf, era5_netcdf):
+    for c in era5_rotated_netcdf.coords.keys():
+        coord = Coordinate.from_xarray(era5_rotated_netcdf, c)
+        assert isinstance(coord._data, np.ndarray)
+
+    for c in era5_netcdf.coords.keys():
+        coord = Coordinate.from_xarray(era5_netcdf, c)
+        assert isinstance(coord._data, np.ndarray)
+
+    D = da.random.random((100,))
+    coord = Coordinate(
+        data=D,
+        axis=Axis("lon2", is_dim=True, encoding={"name": "new_lon_name"}),
+        dims="lon2",
+        encoding={"name": "my_lon_name"},
+    )
+
+    assert isinstance(coord._data, np.ndarray)
+
+    D = np.random.random((100,))
+    coord = Coordinate(
+        data=D,
+        axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
+        dims="lon",
+        encoding={"name": "my_lon_name"},
+    )
+
+    assert isinstance(coord._data, np.ndarray)
