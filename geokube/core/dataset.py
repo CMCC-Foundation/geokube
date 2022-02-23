@@ -81,7 +81,6 @@ class Dataset:
         east=None,
         top=None,
         bottom=None,
-        roll_if_needed=True,
     ):
         # this returns a new Dataset where each Datacube is subsetted according to the coordinates
         _copy = self.__data.copy()
@@ -93,7 +92,6 @@ class Dataset:
                 east=east,
                 top=top,
                 bottom=bottom,
-                roll_if_needed=roll_if_needed,
             )
         )
         return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)

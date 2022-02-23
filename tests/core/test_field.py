@@ -510,11 +510,11 @@ def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
 
 
 def test_field_create_with_dict_coords():
-    dims = ("time", Axis("lat"), AxisType.LONGITUDE)
+    dims = ("time", Axis("latitude"), AxisType.LONGITUDE)
     coords = {
         "time": pd.date_range("06-06-2019", "19-12-2019", periods=50),
         AxisType.LATITUDE: np.linspace(15, 100, 40),
-        Axis("lon"): np.linspace(5, 10, 30),
+        AxisType.LONGITUDE: np.linspace(5, 10, 30),
     }
     f = Field(
         name="ww",
@@ -526,7 +526,7 @@ def test_field_create_with_dict_coords():
     )
     assert f.name == "ww"
     assert f.ncvar == "w_ncvar"
-    assert f.dim_names == ("time", "lat", "longitude")
+    assert f.dim_names == ("time", "latitude", "longitude")
     assert f.domain.crs == RegularLatLon()
     assert np.all(
         f[Axis("time")].values

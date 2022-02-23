@@ -89,7 +89,11 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     assert "latitude" in domain
     assert "latitude" in res
     assert "units" in res["latitude"].attrs
-    assert res["latitude"].attrs == era5_globe_netcdf["latitude"].attrs
+    compare_dicts(
+        res["latitude"].attrs,
+        era5_globe_netcdf["latitude"].attrs,
+        exclude_d1="standard_name",
+    )
     compare_dicts(
         res["latitude"].encoding,
         era5_globe_netcdf["latitude"].encoding,
@@ -104,13 +108,21 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
         era5_globe_netcdf["longitude"].encoding,
         exclude_d1="name",
     )
-    assert res["longitude"].attrs == era5_globe_netcdf["longitude"].attrs
+    compare_dicts(
+        res["longitude"].attrs,
+        era5_globe_netcdf["longitude"].attrs,
+        exclude_d1="standard_name",
+    )
     assert res["longitude"].encoding["name"] == "longitude"
     assert "time" in domain
     assert "time" in res
     assert "units" in res["time"].encoding
     assert "calendar" in res["time"].encoding
-    assert res["time"].attrs == era5_globe_netcdf["time"].attrs
+    compare_dicts(
+        res["time"].attrs,
+        era5_globe_netcdf["time"].attrs,
+        exclude_d1="standard_name",
+    )
     compare_dicts(
         res["time"].encoding, era5_globe_netcdf["time"].encoding, exclude_d1="name"
     )

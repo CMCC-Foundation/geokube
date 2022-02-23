@@ -150,3 +150,17 @@ class Axis:
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
+
+    @classmethod
+    def get_name_for_object(cls, obj: Union[str, Axis, AxisType]) -> str:
+        if isinstance(obj, Axis):
+            return obj.name
+        elif isinstance(obj, str):
+            return obj
+        elif isinstance(obj, AxisType):
+            return obj.axis_type_name
+        else:
+            raise ex.HCubeTypeError(
+                f"`dims` can be a tuple or a list of [geokube.Axis, geokube.AxisType, str], but provided type is `{type(obj)}`",
+                logger=Axis._LOG,
+            )

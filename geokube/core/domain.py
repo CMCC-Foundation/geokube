@@ -270,7 +270,7 @@ class Domain(DomainMixin):
     @classmethod
     @log_func_debug
     def merge(cls, domains: List[Domain]):
-        # check if the domains are defined on the same crs
+        # TODO: check if the domains are defined on the same crs
         coords = {}
         for domain in domains:
             coords.update(**domain.coords)
