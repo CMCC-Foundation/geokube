@@ -450,6 +450,10 @@ class GeodeticGrid(Domain):
             )
         else:
             # TODO: TO BE FIXED
-            super().__init__(coords = {'latitude': (latitude, 'latitude', 'latitude'), 
-                                       'longitude': (longitude, 'longitude', 'longitude') }, 
-                           crs=GeogCS(6371229))
+            super().__init__(
+                coords={
+                    "latitude": (latitude, "latitude", "latitude"),
+                    "longitude": (longitude, "longitude", "longitude"),
+                },
+                crs=GeogCS(6371229),
+            )

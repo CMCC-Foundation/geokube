@@ -83,6 +83,7 @@ class Coordinate(Variable, Axis):
             )
         if self.is_dim and (dims is None or len(dims) == 0):
             dims = ()
+
         Variable.__init__(
             self,
             data=data,
@@ -91,6 +92,8 @@ class Coordinate(Variable, Axis):
             properties=properties,
             encoding=self.encoding,
         )
+        # Coordinates are always stored as NumPy data
+        self._data = np.array(self._data)
         self._bounds = Coordinate._process_bounds(
             bounds,
             name=self.name,
