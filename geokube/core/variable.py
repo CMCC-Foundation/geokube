@@ -185,7 +185,7 @@ class Variable(xr.Variable):
                 warnings.warn(
                     f"Requested id_pattern component - `{k}` is not present among provided attributes!"
                 )
-                return da.attrs.get("standard_name", da.name)
+                return da.name
             id_pattern = id_pattern.replace(
                 f"{{{k}}}", f"${{{k}}}"
             )  # "{some_field}" -> "${some_field}"
