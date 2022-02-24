@@ -324,20 +324,19 @@ class Domain(DomainMixin):
                 coord_name = coord.ncvar
             else:
                 coord_name = coord.name
-            grid[coord_name] = coord.to_xarray(encoding)  # to xarray variable
-            if (bounds := coord.bounds) is not None:
-                continue
-                # TODO: bounds support latter
-                if len(bounds) > 1:
+            if coord.has_bounds:
+                xr_coord, xr_bounds_dict = coord._get_xarray_and_bounds(
+                    encoding=encoding
+                )
+                if len(xr_bounds_dict) > 1:
                     raise ex.HCubeNotImplementedError(
-                        f"Multiple bounds are currently not supported!"
+                        "Multiple bounds are currently not supported!",
+                        logger=Domain._LOG,
                     )
-                for bnd in bounds.values():
-                    if encoding:
-                        bounds_name = bnd.ncvar
-                    else:
-                        bounds_name = bnd.name
-                    grid[bounds_name] = bnd.to_xarray(encoding)  # to xarray variable
+                grid.update(xr_bounds_dict)
+            else:
+                xr_coord = coord.to_xarray(encoding=encoding)
+            grid[coord_name] = xr_coord
 
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()

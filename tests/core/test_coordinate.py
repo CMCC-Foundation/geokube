@@ -506,3 +506,44 @@ def test_coord_data_always_numpy_array(era5_rotated_netcdf, era5_netcdf):
     )
 
     assert isinstance(coord._data, np.ndarray)
+
+
+def test_to_xarray_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
+    coord = Coordinate.from_xarray(era5_rotated_netcdf, "time")
+    da, bounds = coord._get_xarray_and_bounds(encoding=False)
+    assert "time_bnds" in bounds
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_bnds"
+
+    coord = Coordinate.from_xarray(nemo_ocean_16, "time_counter")
+    da, bounds = coord._get_xarray_and_bounds(encoding=False)
+    assert "time_counter_bounds" in bounds
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_counter_bounds"
+
+    da, bounds = coord._get_xarray_and_bounds(encoding=True)
+    assert "time_counter_bounds" in bounds
+    assert "bounds" in da["time_counter"].encoding
+    assert da["time_counter"].encoding["bounds"] == "time_counter_bounds"
+
+    coord = Coordinate.from_xarray(nemo_ocean_16, "nav_lat")
+    da, bounds = coord._get_xarray_and_bounds(encoding=False)
+    assert "bounds_lat" in bounds
+    assert "bounds" in da["latitude"].encoding
+    assert da["latitude"].encoding["bounds"] == "bounds_lat"
+
+    da, bounds = coord._get_xarray_and_bounds(encoding=True)
+    assert "bounds_lat" in bounds
+    assert "bounds" in da["nav_lat"].encoding
+    assert da["nav_lat"].encoding["bounds"] == "bounds_lat"
+
+    coord = Coordinate.from_xarray(nemo_ocean_16, "nav_lon")
+    da, bounds = coord._get_xarray_and_bounds(encoding=False)
+    assert "bounds_lon" in bounds
+    assert "bounds" in da["longitude"].encoding
+    assert da["longitude"].encoding["bounds"] == "bounds_lon"
+
+    da, bounds = coord._get_xarray_and_bounds(encoding=True)
+    assert "bounds_lon" in bounds
+    assert "bounds" in da["nav_lon"].encoding
+    assert da["nav_lon"].encoding["bounds"] == "bounds_lon"

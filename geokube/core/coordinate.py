@@ -196,9 +196,12 @@ class Coordinate(Variable, Axis):
             and tuple(provided_bnds_shape[:-1]) == provided_data_shape
         ):
             return BoundsND
+        elif provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
+            # The case where there is a scalar coordinate with bounds, e.g. after single value selection
+            return Bounds1D
         else:
             raise ex.HCubeValueError(
-                f"Bounds should have dimensions: (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
+                f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
                 logger=Coordinate._LOG,
             )
 
@@ -282,9 +285,16 @@ class Coordinate(Variable, Axis):
         ]
 
     @log_func_debug
-    def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
-        # TODO:
-        pass
+    def _get_xarray_and_bounds(
+        self, encoding=False
+    ) -> xr.core.coordinates.DatasetCoordinates:
+        da = self.to_xarray(encoding=encoding)
+        bounds = {
+            k: xr.DataArray(Variable.to_xarray(b, encoding=encoding), name=k)
+            for k, b in self.bounds.items()
+        }
+        da.encoding["bounds"] = " ".join(bounds.keys())
+        return da, bounds
 
     @classmethod
     @log_func_debug
