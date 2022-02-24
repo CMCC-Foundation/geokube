@@ -312,67 +312,67 @@ def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf):
 
 def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
-    res = c.to_xarray(encoding=False)
+    coord_dset = c.to_xarray(encoding=False)
+    coord = coord_dset["depth"]
 
-    assert res.name == "depth"
-    assert np.all(era5_rotated_netcdf.soil1.values == res.depth.values)
-    assert res.attrs == era5_rotated_netcdf.soil1.attrs
-    assert set(res.encoding) - {"name"} == set(
+    assert coord.name == "depth"
+    assert np.all(era5_rotated_netcdf.soil1.values == coord.depth.values)
+    assert coord.attrs == era5_rotated_netcdf.soil1.attrs
+    assert set(coord.encoding) - {"name"} == set(
         era5_rotated_netcdf.soil1.encoding.keys()
-    ) - {"bounds"}
+    )
 
-    # with simple `to_xarray` bounds are not returned and shouldn't be recorded
-    assert "bounds" not in res.encoding
-    assert "bounds" not in res.attrs
+    assert ("bounds" in coord.encoding) or ("bounds" in coord.attrs)
     compare_dicts(
-        res.encoding,
+        coord.encoding,
         era5_rotated_netcdf.soil1.encoding,
         exclude_d1="name",
-        exclude_d2="bounds",
-    )  # TODO: currently bounds are not included
+    )
 
 
 def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "soil1")
-    res = c.to_xarray(encoding=True)
+    coord_dset = c.to_xarray(encoding=True)
+    coord = coord_dset["soil1"]
 
-    assert res.name == "soil1"
-    assert np.all(era5_rotated_netcdf.soil1.values == res.soil1.values)
-    assert res.attrs == era5_rotated_netcdf.soil1.attrs
-    assert set(res.encoding) - {"name"} == set(
+    assert coord.name == "soil1"
+    assert np.all(era5_rotated_netcdf.soil1.values == coord.soil1.values)
+    assert coord.attrs == era5_rotated_netcdf.soil1.attrs
+    assert set(coord.encoding) - {"name"} == set(
         era5_rotated_netcdf.soil1.encoding.keys()
-    ) - {"bounds"}
+    )
     compare_dicts(
-        res.encoding,
+        coord.encoding,
         era5_rotated_netcdf.soil1.encoding,
         exclude_d1="name",
-        exclude_d2="bounds",
-    )  # TODO: currently bounds are not included
+    )
 
 
 def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "lat")
     assert c.type is CoordinateType.DEPENDENT
-    res = c.to_xarray(encoding=False)
-    assert res.name == "latitude"
-    assert "grid_latitude" in res.dims
-    assert "grid_longitude" in res.dims
-    assert np.all(era5_rotated_netcdf.lat.values == res.latitude.values)
-    assert res.attrs == era5_rotated_netcdf.lat.attrs
-    assert set(res.encoding) - {"name"} == set(
+    coord_dset = c.to_xarray(encoding=False)
+    coord = coord_dset["latitude"]
+    assert coord.name == "latitude"
+    assert "grid_latitude" in coord.dims
+    assert "grid_longitude" in coord.dims
+    assert np.all(era5_rotated_netcdf.lat.values == coord.latitude.values)
+    assert coord.attrs == era5_rotated_netcdf.lat.attrs
+    assert set(coord.encoding) - {"name"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
 
 def test_to_xarray_rotated_pole_without_encoding_2(era5_rotated_netcdf):
     c = Coordinate.from_xarray(era5_rotated_netcdf, "lat")
-    res = c.to_xarray(encoding=True)
-    assert res.name == "lat"
-    assert "rlat" in res.dims
-    assert "rlon" in res.dims
-    assert np.all(era5_rotated_netcdf.lat.values == res.lat.values)
-    assert res.attrs == era5_rotated_netcdf.lat.attrs
-    assert set(res.encoding) - {"name"} == set(
+    coord_dset = c.to_xarray(encoding=True)
+    coord = coord_dset["lat"]
+    assert coord.name == "lat"
+    assert "rlat" in coord.dims
+    assert "rlon" in coord.dims
+    assert np.all(era5_rotated_netcdf.lat.values == coord.lat.values)
+    assert coord.attrs == era5_rotated_netcdf.lat.attrs
+    assert set(coord.encoding) - {"name"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
@@ -380,7 +380,8 @@ def test_to_xarray_rotated_pole_without_encoding_2(era5_rotated_netcdf):
 def test_toxarray_keeping_encoding_encoding_false_no_dims_passed():
     D = da.random.random((100,))
     c = Coordinate(data=D, axis=Axis("lat", is_dim=True))
-    coord = c.to_xarray(encoding=False)
+    coord_dset = c.to_xarray(encoding=False)
+    coord = coord_dset["lat"]
     assert "lat" in coord.coords
     assert "latitude" not in coord.coords
     assert coord.name == "lat"
@@ -393,7 +394,8 @@ def test_toxarray_keeping_encoding_encoding_false_no_dims_passed():
     assert coord.encoding["name"] == "lat"
 
     c = Coordinate(data=D, axis=Axis("latitude", is_dim=True))
-    coord = c.to_xarray(encoding=False)
+    coord_dset = c.to_xarray(encoding=False)
+    coord = coord_dset["latitude"]
     assert "latitude" in coord.coords
     assert coord.name == "latitude"
     assert "lat" not in coord.coords
@@ -409,7 +411,8 @@ def test_toxarray_keeping_encoding_encoding_false_no_dims_passed():
 def test_toxarray_keeping_encoding_encoding_false():
     D = da.random.random((100,))
     c = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("lat"))
-    coord = c.to_xarray(encoding=False)
+    coords_dset = c.to_xarray(encoding=False)
+    coord = coords_dset["lat"]
     assert "lat" in coord.coords
     assert coord.name == "lat"
     assert coord.dims == ("lat",)
@@ -421,7 +424,8 @@ def test_toxarray_keeping_encoding_encoding_false():
     assert coord.encoding["name"] == "lat"
 
     c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
-    coord = c.to_xarray(encoding=False)
+    coords_dset = c.to_xarray(encoding=False)
+    coord = coords_dset["latitude"]
     assert coord.dims == ("latitude",)
     assert coord.name == "latitude"
     assert "standard_name" in coord.attrs
@@ -456,7 +460,8 @@ def test_init_fails_if_is_dim_and_axis_name_differ_from_dims():
 def test_toxarray_keeping_encoding_encoding_true():
     D = da.random.random((100,))
     c = Coordinate(data=D, axis=Axis("lat", is_dim=True))
-    coord = c.to_xarray(encoding=True)
+    coord_dset = c.to_xarray(encoding=True)
+    coord = coord_dset["lat"]
     assert coord.name == "lat"
     assert coord.dims == ("lat",)
     assert "standard_name" in coord.attrs
@@ -467,7 +472,8 @@ def test_toxarray_keeping_encoding_encoding_true():
     assert coord.encoding["name"] == "lat"
 
     c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
-    coord = c.to_xarray(encoding=True)
+    coord_dset = c.to_xarray(encoding=True)
+    coord = coord_dset["latitude"]
     assert coord.name == "latitude"
     assert coord.dims == ("latitude",)
     assert "standard_name" in coord.attrs
@@ -506,3 +512,44 @@ def test_coord_data_always_numpy_array(era5_rotated_netcdf, era5_netcdf):
     )
 
     assert isinstance(coord._data, np.ndarray)
+
+
+def test_to_xarray_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
+    coord = Coordinate.from_xarray(era5_rotated_netcdf, "time")
+    coord_dset = coord.to_xarray(encoding=False)
+    assert "time_bnds" in coord_dset
+    assert "bounds" in coord_dset["time"].encoding
+    assert coord_dset["time"].encoding["bounds"] == "time_bnds"
+
+    coord = Coordinate.from_xarray(nemo_ocean_16, "time_counter")
+    coord_dset = coord.to_xarray(encoding=False)
+    assert "time_counter_bounds" in coord_dset
+    assert "bounds" in coord_dset["time"].encoding
+    assert coord_dset["time"].encoding["bounds"] == "time_counter_bounds"
+
+    coord_dset = coord.to_xarray(encoding=True)
+    assert "time_counter_bounds" in coord_dset
+    assert "bounds" in coord_dset["time_counter"].encoding
+    assert coord_dset["time_counter"].encoding["bounds"] == "time_counter_bounds"
+
+    coord = Coordinate.from_xarray(nemo_ocean_16, "nav_lat")
+    coord_dset = coord.to_xarray(encoding=False)
+    assert "bounds_lat" in coord_dset
+    assert "bounds" in coord_dset["latitude"].encoding
+    assert coord_dset["latitude"].encoding["bounds"] == "bounds_lat"
+
+    coord_dset = coord.to_xarray(encoding=True)
+    assert "bounds_lat" in coord_dset
+    assert "bounds" in coord_dset["nav_lat"].encoding
+    assert coord_dset["nav_lat"].encoding["bounds"] == "bounds_lat"
+
+    coord = Coordinate.from_xarray(nemo_ocean_16, "nav_lon")
+    coord_dset = coord.to_xarray(encoding=False)
+    assert "bounds_lon" in coord_dset
+    assert "bounds" in coord_dset["longitude"].encoding
+    assert coord_dset["longitude"].encoding["bounds"] == "bounds_lon"
+
+    coord_dset = coord.to_xarray(encoding=True)
+    assert "bounds_lon" in coord_dset
+    assert "bounds" in coord_dset["nav_lon"].encoding
+    assert coord_dset["nav_lon"].encoding["bounds"] == "bounds_lon"
