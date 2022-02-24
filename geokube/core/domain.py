@@ -165,8 +165,8 @@ class Domain(DomainMixin):
             raise ex.HCubeNoSuchAxisError(
                 f"Time axis was not found for that dataset!", logger=self._LOG
             )
-        time_coord = time_coord.to_xarray()
-        time_coord_dt = time_coord.dt
+        time_coord_dset = time_coord.to_xarray(encoding=False)
+        time_coord_dt = time_coord_dset[time_coord.name].dt
 
         year_mask = _reduce_boolean_selection(time_coord_dt, "year", indexer)
         month_mask = _reduce_boolean_selection(time_coord_dt, "month", indexer)
@@ -319,30 +319,15 @@ class Domain(DomainMixin):
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
         grid = {}
+        grid = xr.Dataset().coords
         for coord in self._coords.values():
-            if encoding:
-                coord_name = coord.ncvar
-            else:
-                coord_name = coord.name
-            if coord.has_bounds:
-                xr_coord, xr_bounds_dict = coord._get_xarray_and_bounds(
-                    encoding=encoding
-                )
-                if len(xr_bounds_dict) > 1:
-                    raise ex.HCubeNotImplementedError(
-                        "Multiple bounds are currently not supported!",
-                        logger=Domain._LOG,
-                    )
-                grid.update(xr_bounds_dict)
-            else:
-                xr_coord = coord.to_xarray(encoding=encoding)
-            grid[coord_name] = xr_coord
+            grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-            grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
-        return xr.Dataset(coords=grid).coords
+            grid.update({"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)})
+        return grid
 
     @classmethod
     def _make_domain_from_coords_dict_dims_and_crs(cls, coords, dims, crs=None):

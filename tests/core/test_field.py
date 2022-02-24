@@ -280,7 +280,7 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert np.sum(res.longitude.values >= 16) / W > 0.95
     assert np.sum(res.longitude.values <= 19) / W > 0.95
 
-    dset = res.to_xarray(True)
+    dset = res.to_xarray(encoding=True)
     assert "W_SO" in dset.data_vars
     assert "rlat" in dset.coords
     assert "rlon" in dset.coords

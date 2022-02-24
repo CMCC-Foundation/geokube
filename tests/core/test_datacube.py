@@ -119,7 +119,7 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
         > 0.95
     )
 
-    dset = res.to_xarray(True)
+    dset = res.to_xarray(encoding=True)
     assert "TMIN_2M" in dset.data_vars
     assert "W_SO" in dset.data_vars
     assert "rlat" in dset.coords

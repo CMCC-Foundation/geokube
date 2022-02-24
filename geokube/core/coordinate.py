@@ -274,27 +274,23 @@ class Coordinate(Variable, Axis):
     #     return xr.DataArray(data=da, name=res_name, coords=bds)
 
     @log_func_debug
-    def to_xarray(self, encoding=False) -> xr.DataArray:
+    def to_xarray(self, encoding=False) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
-        # In this method bounds are note returned, so also information about bounds shouldn't be encoded
-        _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
+        # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
         res_name = self.ncvar if encoding else self.name
         dim_names = self.dim_ncvars if encoding else self.dim_names
-        return xr.DataArray(var, name=res_name, coords={res_name: var}, dims=dim_names)[
+        da = xr.DataArray(var, name=res_name, coords={res_name: var}, dims=dim_names)[
             res_name
         ]
-
-    @log_func_debug
-    def _get_xarray_and_bounds(
-        self, encoding=False
-    ) -> xr.core.coordinates.DatasetCoordinates:
-        da = self.to_xarray(encoding=encoding)
-        bounds = {
-            k: xr.DataArray(Variable.to_xarray(b, encoding=encoding), name=k)
-            for k, b in self.bounds.items()
-        }
-        da.encoding["bounds"] = " ".join(bounds.keys())
-        return da, bounds
+        if self.has_bounds:
+            bounds = {
+                k: xr.DataArray(Variable.to_xarray(b, encoding=encoding), name=k)
+                for k, b in self.bounds.items()
+            }
+            da.encoding["bounds"] = " ".join(bounds.keys())
+        else:
+            bounds = {}
+        return xr.Dataset(coords={da.name: da, **bounds})
 
     @classmethod
     @log_func_debug
