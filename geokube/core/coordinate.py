@@ -196,9 +196,12 @@ class Coordinate(Variable, Axis):
             and tuple(provided_bnds_shape[:-1]) == provided_data_shape
         ):
             return BoundsND
+        elif provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
+            # The case where there is a scalar coordinate with bounds, e.g. after single value selection
+            return Bounds1D
         else:
             raise ex.HCubeValueError(
-                f"Bounds should have dimensions: (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
+                f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
                 logger=Coordinate._LOG,
             )
 
@@ -271,20 +274,23 @@ class Coordinate(Variable, Axis):
     #     return xr.DataArray(data=da, name=res_name, coords=bds)
 
     @log_func_debug
-    def to_xarray(self, encoding=False) -> xr.DataArray:
+    def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
-        # In this method bounds are note returned, so also information about bounds shouldn't be encoded
-        _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
+        # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
         res_name = self.ncvar if encoding else self.name
         dim_names = self.dim_ncvars if encoding else self.dim_names
-        return xr.DataArray(var, name=res_name, coords={res_name: var}, dims=dim_names)[
+        da = xr.DataArray(var, name=res_name, coords={res_name: var}, dims=dim_names)[
             res_name
         ]
-
-    @log_func_debug
-    def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
-        # TODO:
-        pass
+        if self.has_bounds:
+            bounds = {
+                k: xr.DataArray(Variable.to_xarray(b, encoding=encoding), name=k)
+                for k, b in self.bounds.items()
+            }
+            da.encoding["bounds"] = " ".join(bounds.keys())
+        else:
+            bounds = {}
+        return xr.Dataset(coords={da.name: da, **bounds})
 
     @classmethod
     @log_func_debug

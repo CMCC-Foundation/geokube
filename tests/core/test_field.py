@@ -280,7 +280,7 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert np.sum(res.longitude.values >= 16) / W > 0.95
     assert np.sum(res.longitude.values <= 19) / W > 0.95
 
-    dset = res.to_xarray(True)
+    dset = res.to_xarray(encoding=True)
     assert "W_SO" in dset.data_vars
     assert "rlat" in dset.coords
     assert "rlon" in dset.coords
@@ -501,12 +501,16 @@ def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
     assert "vt_std_name" not in dset.data_vars
     assert "nav_lat" in dset.coords
     assert "latitude" not in dset.coords
+    assert "bounds_lat" in dset.coords
+    assert "bounds_lon" in dset.coords
 
     dset = res.to_xarray(encoding=False)
     assert "vt" not in dset.data_vars
     assert "vt_std_name" in dset.data_vars
     assert "nav_lat" not in dset.coords
     assert "latitude" in dset.coords
+    assert "bounds_lat" in dset.coords
+    assert "bounds_lon" in dset.coords
 
 
 def test_field_create_with_dict_coords():
@@ -542,3 +546,52 @@ def test_field_create_with_dict_coords():
     assert np.all(f[Axis("longitude")].values == np.linspace(5, 10, 30))
     assert np.all(f[AxisType.LONGITUDE].values == np.linspace(5, 10, 30))
     assert f.units._unit == cf.Unit("m")
+
+
+def test_to_xarray_time_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
+    field = Field.from_xarray(era5_rotated_netcdf, "W_SO")
+    da = field.to_xarray(encoding=False)
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_bnds"
+    assert "time_bnds" in da.coords
+
+    da = field.to_xarray(encoding=True)
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_bnds"
+    assert "time_bnds" in da.coords
+
+    field = Field.from_xarray(nemo_ocean_16, "vt")
+    da = field.to_xarray(encoding=False)
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_centered_bounds"
+    assert "time_centered_bounds" in da.coords
+
+    da = field.to_xarray(encoding=True)
+    assert "bounds" in da["time_centered"].encoding
+    assert da["time_centered"].encoding["bounds"] == "time_centered_bounds"
+    assert "time_centered_bounds" in da.coords
+
+
+def test_to_xarray_time_with_bounds_mapping(era5_rotated_netcdf):
+    field = Field.from_xarray(
+        era5_rotated_netcdf, "W_SO", mapping={"time_bnds": {"name": "time_bounds_name"}}
+    )
+    da = field.to_xarray(encoding=False)
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_bounds_name"
+    assert "time_bounds_name" in da.coords
+
+
+def test_to_xarray_time_with_bounds_nemo_with_mapping(nemo_ocean_16):
+    field = Field.from_xarray(
+        nemo_ocean_16, "vt", mapping={"time_centered_bounds": {"name": "time_bnds"}}
+    )
+    da = field.to_xarray(encoding=False)
+    assert "bounds" in da["time"].encoding
+    assert da["time"].encoding["bounds"] == "time_bnds"
+    assert "time_bnds" in da.coords
+
+    da = field.to_xarray(encoding=True)
+    assert "bounds" in da["time_centered"].encoding
+    assert da["time_centered"].encoding["bounds"] == "time_bnds"
+    assert "time_bnds" in da.coords
