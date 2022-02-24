@@ -186,7 +186,7 @@ class Field(Variable, DomainMixin):
         )
 
     def _geobbox_cartopy(
-        self, south, north, west, east, top, bottom, roll_if_needed=True
+        self, south, north, west, east, top, bottom
     ):
         # TODO: add vertical also
         domain = self._domain
@@ -311,16 +311,8 @@ class Field(Variable, DomainMixin):
             List[Number]
         ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
     ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
-        # TODO: handle vertical, too
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
-        )
-
-        return self.interpolate(
-            domain=GeodeticPoints(
-                latitude=latitude, longitude=longitude, vertical=vertical
-            ),
-            method="nearest",
         )
 
     def interpolate(self, domain: Domain, method: str = "nearest") -> Field:
@@ -515,11 +507,6 @@ class Field(Variable, DomainMixin):
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
             )
-
-        # Assigning the domain.
-        result_field._domain = GeodeticPoints(
-            latitude=latitude, longitude=longitude, vertical=vertical
-        )
 
         return result_field
 
