@@ -506,3 +506,9 @@ def test_coord_data_always_numpy_array(era5_rotated_netcdf, era5_netcdf):
     )
 
     assert isinstance(coord._data, np.ndarray)
+
+
+def test_vertical_pattern_model_level_number(nemo_ocean_16):
+    nemo_ocean_16.depthv.attrs["standard_name"] = "model_level_number"
+    coord = Coordinate.from_xarray(nemo_ocean_16, "depthv")
+    assert coord.axis_type is AxisType.VERTICAL
