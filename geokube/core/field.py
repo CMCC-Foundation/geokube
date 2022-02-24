@@ -235,7 +235,7 @@ class Field(Variable, DomainMixin):
             id_pattern=self._id_pattern,
             mapping=self._mapping,
         )
-    
+
     def _geobbox_idx(
         self,
         south: Number,
@@ -261,13 +261,8 @@ class Field(Variable, DomainMixin):
                 )
             vert_incr = util_methods.is_nondecreasing(vert.data)
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
-            # HACK: The code inside `try` should just work.
-            try:
-                vert_idx = {vert.name: vert_slice}
-                field = field.sel(indexers=vert_idx, roll_if_needed=True)
-            except:
-                vert_idx = {vert.ncvar: vert_slice}
-                field = field.sel(indexers=vert_idx, roll_if_needed=True)
+            vert_idx = {vert.name: vert_slice}
+            field = field.sel(indexers=vert_idx, roll_if_needed=True)
 
         if field.is_latitude_independent and field.is_longitude_independent:
             # Case of latitude and longitude being independent.
