@@ -274,7 +274,7 @@ class Coordinate(Variable, Axis):
     #     return xr.DataArray(data=da, name=res_name, coords=bds)
 
     @log_func_debug
-    def to_xarray(self, encoding=False) -> xr.core.coordinates.DatasetCoordinates:
+    def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
         # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
         res_name = self.ncvar if encoding else self.name

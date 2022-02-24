@@ -274,7 +274,7 @@ class DataCube(DomainMixin):
         return DataCube(fields=fields, properties=ds.attrs, encoding=ds.encoding)
 
     @log_func_debug
-    def to_xarray(self, encoding=False):
+    def to_xarray(self, encoding=True):
         xarray_fields = [f.to_xarray(encoding=encoding) for f in self.fields.values()]
         dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
         dset.attrs = self.properties
