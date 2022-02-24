@@ -252,7 +252,10 @@ class Field(Variable, DomainMixin):
         # NOTE: In this implementation, vertical is always considered an
         # independent coordinate.
         if top is not None or bottom is not None:
-            vert = field.vertical
+            try:
+                vert = field.vertical
+            except ex.HCubeKeyError:
+                vert = None
             # TODO: Reconsider `not vert.shape`.
             if vert is None or not vert.shape:
                 raise ValueError(
