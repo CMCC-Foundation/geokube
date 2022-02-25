@@ -156,24 +156,24 @@ class Field(Variable, DomainMixin):
         #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
         # return formatting_html.array_repr(self)
 
+    def __next__(self):
+        for k, v in self.domain._coords.items():
+            yield k, v
+        raise StopIteration
+
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical
     @log_func_debug
     def geobbox(
         self,
-        north=None,
-        south=None,
-        west=None,
-        east=None,
-        top=None,
-        bottom=None,
+        north: Number,
+        south: Number,
+        west: Number,
+        east: Number,
+        top: Number | None = None,
+        bottom: Number | None = None,
     ):
-        if (top is not None) or (bottom is not None):
-            raise ex.HCubeNotImplementedError(
-                "Selecting by geobbox containing vertical is currently not supported!",
-                logger=Field._LOG,
-            )
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
@@ -190,48 +190,121 @@ class Field(Variable, DomainMixin):
             bottom=bottom,
         )
 
-    def _geobbox_idx(self, south, north, west, east, top=None, bottom=None):
+    def _geobbox_cartopy(self, south, north, west, east, top, bottom):
         # TODO: add vertical also
         domain = self._domain
-        lat = domain.latitude.values
-        lon = domain.longitude.values
 
         ind_lat = domain.is_latitude_independent
         ind_lon = domain.is_longitude_independent
         if ind_lat and ind_lon:
             idx = {
                 domain.latitude.name: np.s_[south:north]
-                if util_methods.is_nondecreasing(domain.latitude.values)
+                if util_methods.is_nondecreasing(domain.latitude.data)
                 else np.s_[north:south],
                 domain.longitude.name: np.s_[west:east]
-                if util_methods.is_nondecreasing(domain.longitude.values)
+                if util_methods.is_nondecreasing(domain.longitude.data)
                 else np.s_[east:west],
             }
-            return self.sel(indexers=idx, roll_if_needed=True)
+            return self.sel(indexers=idx, roll_if_needed=roll_if_needed)
 
-        # Specifying the mask(s) and extracting the indices that correspond to
-        # the inside the bounding box.
-        if np.sum(lat_mask := (lat >= float(south)) & (lat <= float(north))) == 0:
-            lat_mask = (lat <= float(south)) & (lat >= float(north))
-        if np.sum(lon_mask := (lon >= float(west)) & (lon <= float(east))) == 0:
-            lon_mask = (lon <= float(west)) & (lon <= float(east))
-        x = np.nonzero(lat_mask & lon_mask)
-        # lat(x), lon(x); lat(x,y), lon(x,y); lat(x,y,z), lon(x,y,z), etc.
+        # Specifying the corner points of the bounding box in the rectangular
+        # coordinate system (`cartopy.crs.PlateCarree()`).
+        lats = np.array([south, south, north, north], dtype=np.float32)
+        lons = np.array([west, east, west, east], dtype=np.float32)
+
+        # Transforming the corner points of the bounding box from the
+        # rectangular coordinate system (`cartopy.crs.PlateCarree`) to the
+        # coordinate system of the field.
+        plate = ccrs.PlateCarree()
+        pts = domain.crs.as_cartopy_crs().transform_points(
+            src_crs=plate, x=lons, y=lats
+        )
+        x, y = pts[:, 0], pts[:, 1]
+
+        # Spatial subseting.
         idx = {
-            ax.name: np.s_[v.min() : v.max() + 1]
-            for ax, v in zip(domain[AxisType.LATITUDE].dims, x)
+            domain[AxisType.LATITUDE].dims[1].ncvar: np.s_[x.min() : x.max()],
+            domain[AxisType.LATITUDE].dims[0].ncvar: np.s_[y.min() : y.max()],
         }
-
-        # Dependent coordinates cannot be rolled (no changing convention)
-        # TODO: We may warn a user if there is wrong convention for dependent coordinate
-        ds = self.to_xarray(encoding=False)
+        ds = (
+            self._check_and_roll_longitude(self.to_xarray(), idx)
+            if roll_if_needed
+            else self.to_xarray()
+        )
         return Field.from_xarray(
-            ds=ds.isel(indexers=idx),
-            ncvar=self.name,
+            ds=ds.sel(indexers=idx),
+            ncvar=self.ncvar,
             copy=False,
             id_pattern=self._id_pattern,
             mapping=self._mapping,
         )
+
+    def _geobbox_idx(
+        self,
+        south: Number,
+        north: Number,
+        west: Number,
+        east: Number,
+        top: Number | None = None,
+        bottom: Number | None = None,
+    ):
+        field = self
+        lat, lon = field.latitude, field.longitude
+
+        # Vertical
+        # NOTE: In this implementation, vertical is always considered an
+        # independent coordinate.
+        if top is not None or bottom is not None:
+            try:
+                vert = field.vertical
+            except ex.HCubeKeyError:
+                vert = None
+            # TODO: Reconsider `not vert.shape`.
+            if vert is None or not vert.shape:
+                raise ValueError(
+                    "'top' and 'bottom' must be None because there is no "
+                    "vertical coordinate or it is constant"
+                )
+            vert_incr = util_methods.is_nondecreasing(vert.data)
+            vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
+            vert_idx = {vert.name: vert_slice}
+            field = field.sel(indexers=vert_idx, roll_if_needed=True)
+
+        if field.is_latitude_independent and field.is_longitude_independent:
+            # Case of latitude and longitude being independent.
+            lat_incr = util_methods.is_nondecreasing(lat.data)
+            lat_slice = np.s_[south:north] if lat_incr else np.s_[north:south]
+            lon_incr = util_methods.is_nondecreasing(lon.data)
+            lon_slice = np.s_[west:east] if lon_incr else np.s_[east:west]
+            idx = {lat.name: lat_slice, lon.name: lon_slice}
+            return field.sel(indexers=idx, roll_if_needed=True)
+        else:
+            # Case of latitude and longitude being dependent.
+            # Specifying the mask(s) and extracting the indices that correspond
+            # to the inside the bounding box.
+            lat_mask = (lat.data >= south) & (lat.data <= north)
+            lon_mask = (lon.data >= west) & (lon.data <= east)
+            # TODO: Clarify why this is required.
+            if lat_mask.sum() == 0:
+                lat_mask = (lat.data <= south) & (lat.data >= north)
+            if lon_mask.sum() == 0:
+                lon_mask = (lon.data <= float(west)) & (lon.data <= float(east))
+            nonzero_idx = np.nonzero(lat_mask & lon_mask)
+            idx = {
+                lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
+                for i, incl_idx in enumerate(nonzero_idx)
+            }
+            dset = field.to_xarray(encoding=False)
+            dset = field._check_and_roll_longitude(dset, idx)
+            dset = dset.isel(indexers=idx)
+
+            return Field.from_xarray(
+                ds=dset,
+                ncvar=self.name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+            )
 
     def locations(
         self,
@@ -241,18 +314,8 @@ class Field(Variable, DomainMixin):
             List[Number]
         ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
     ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
-        # TODO: handle vertical, too
-        if vertical is not None:
-            raise ex.HCubeNotImplementedError(
-                "Selecting by location with vertical is currently not supported!",
-                logger=Field._LOG,
-            )
-
-        return self.interpolate(
-            domain=GeodeticPoints(
-                latitude=latitude, longitude=longitude, vertical=vertical
-            ),
-            method="nearest",
+        return self._locations_idx(
+            latitude=latitude, longitude=longitude, vertical=vertical
         )
 
     def interpolate(self, domain: Domain, method: str = "nearest") -> Field:
@@ -345,7 +408,9 @@ class Field(Variable, DomainMixin):
             # system (`cartopy.crs.PlateCarree`) to the coordinate system of
             # the field.
             plate = ccrs.PlateCarree()
-            pts = domain.crs.transform_points(src_crs=plate, x=lons, y=lats)
+            pts = domain.crs.as_cartopy_crs().transform_points(
+                src_crs=plate, x=lons, y=lats
+            )
             idx = {
                 domain.x.name: xr.DataArray(data=pts[:, 0], dims="points"),
                 domain.y.name: xr.DataArray(data=pts[:, 1], dims="points"),
@@ -360,30 +425,50 @@ class Field(Variable, DomainMixin):
         )
 
     def _locations_idx(self, latitude, longitude, vertical=None):
-        lats = np.array(latitude, dtype=np.float32, ndmin=1)
-        lons = np.array(longitude, dtype=np.float32, ndmin=1)
+        field = self
+        sel_kwa = {"roll_if_needed": False, "method": "nearest"}
+        lats = np.array(latitude, dtype=np.float32).reshape(-1)
+        lons = np.array(longitude, dtype=np.float32).reshape(-1)
 
-        domain = self._domain
-        ind_lat = domain.is_latitude_independent
-        ind_lon = domain.is_longitude_independent
+        n = lats.size
+        if lons.size != n:
+            raise ValueError(
+                "'latitude' and 'longitude' must have the same number of " "items"
+            )
 
-        if ind_lat and ind_lon:
-            idx = {
-                domain.latitude.name: lats.item() if len(lats) == 1 else lats,
-                domain.longitude.name: lons.item() if len(lons) == 1 else lons,
-            }
+        # Vertical
+        # NOTE: In this implementation, vertical is always considered an
+        # independent coordinate.
+        if vertical is not None:
+            verts = np.array(vertical, dtype=np.float32).reshape(-1)
+            if verts.size != n:
+                raise ValueError(
+                    "'vertical' must have the same number of items as "
+                    "'latitude' and 'longitude'"
+                )
+            verts = xr.DataArray(data=verts, dims="points")
+            vert_ax = Axis(name=self.vertical.name, axistype=AxisType.VERTICAL)
+            field = field.sel(indexers={vert_ax: verts}, **sel_kwa)
 
-            return self.sel(indexers=idx, roll_if_needed=False, method="nearest")
+        # Case of latitude and longitude being independent.
+        if self.is_latitude_independent and self.is_longitude_independent:
+            # TODO: Check lon values conventions.
+            lats = xr.DataArray(data=lats, dims="points")
+            lons = xr.DataArray(data=lons, dims="points")
+            idx = {self.latitude.name: lats, self.longitude.name: lons}
+            result_field = field.sel(indexers=idx, **sel_kwa)
         else:
+            # TODO: Check lon values conventions if possible, otherwise raise error.
+            # Case of latitude and longitude being dependent on y and x.
             # Adjusting the shape of the latitude and longitude coordinates.
             # TODO: Check if these are NumPy arrays.
             # TODO: Check axes and shapes manipulation again.
-            lat_coord = domain.latitude.values
-            lat_dims = (np.s_[:],) + (np.newaxis,) * lat_coord.ndim
-            lat_coord = lat_coord[np.newaxis, :]
-            lon_coord = domain.longitude.values
-            lon_dims = (np.s_[:],) + (np.newaxis,) * lon_coord.ndim
-            lon_coord = lon_coord[np.newaxis, :]
+            lat_data = self.latitude.values
+            lat_dims = (np.s_[:],) + (np.newaxis,) * lat_data.ndim
+            lat_data = lat_data[np.newaxis, :]
+            lon_data = self.longitude.values
+            lon_dims = (np.s_[:],) + (np.newaxis,) * lon_data.ndim
+            lon_data = lon_data[np.newaxis, :]
 
             # Adjusting the shape of the latitude and longitude of the
             # locations.
@@ -391,36 +476,38 @@ class Field(Variable, DomainMixin):
             lons = lons[lon_dims]
 
             # Calculating the squares of the Euclidean distance.
-            lat_diff = lat_coord - lats
-            lon_diff = lon_coord - lons
+            lat_diff = lat_data - lats
+            lon_diff = lon_data - lons
             diff_sq = lat_diff * lat_diff + lon_diff * lon_diff
 
             # Selecting the indices that correspond to the squares of the
             # Euclidean distance.
             # TODO: Improve vectorization.
             # TODO: Consider replacing `numpy.unravel_index` with
-            # `numpy.argwhere`, with the constructs like
+            # `numpy.argwhere`, using the constructs like
             # `np.argwhere(diff_sq[i] == diff_sq[i].min())[0]`.
             n, *shape = diff_sq.shape
-            idx = tuple(
+            idx_ = tuple(
                 np.unravel_index(indices=diff_sq[i].argmin(), shape=shape)
                 for i in range(n)
             )
-            idx = np.array(idx, dtype=np.int_)
+            idx_ = np.array(idx_, dtype=np.int64)
 
             # Spatial subseting.
             idx = {
-                ax.ncvar: xr.DataArray(data=v, dims="points")
-                for ax, v in zip(domain[AxisType.LATITUDE].dims, idx.transpose())
+                dim.name: xr.DataArray(data=idx_[:, i], dims="points")
+                for (i,), dim in np.ndenumerate(self.latitude.dims)
             }
+            result_dset = field.to_xarray(encoding=False).isel(indexers=idx)
+            result_field = Field.from_xarray(
+                ds=result_dset,
+                ncvar=self.name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+            )
 
-        return Field.from_xarray(
-            ds=self.to_xarray(encoding=False).isel(indexers=idx),
-            ncvar=self.name,
-            copy=False,
-            id_pattern=self._id_pattern,
-            mapping=self._mapping,
-        )
+        return result_field
 
     # consider only independent coordinates
     # TODO: we should use metpy approach (user can also specify - units)

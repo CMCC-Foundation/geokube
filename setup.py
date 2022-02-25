@@ -1,4 +1,4 @@
-"""Geokube framework"""
+"""geokube framework"""
 import setuptools
 from distutils.util import convert_path
 
@@ -13,9 +13,9 @@ with open("README.md", "r") as f:
 setuptools.setup(
     name="geokube",
     version=main_ns['__version__'],
-    author="CMCC PPOS Research Group",
-    author_email="ppos-services@cmcc.it",
-    description=("Python library for accessing and managing Earth Science Data based on xarray and CF conventions"),
+    author="geokube Contributors",
+    author_email="geokube@googlegroups.com",
+    description=("Python package for Earth Science Data Analysis"),
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/geokube/geokube",

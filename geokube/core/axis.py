@@ -14,7 +14,7 @@ from ..utils.hcube_logger import HCubeLogger
 coordinate_criteria_regular_expression = {
     "y": r"(y|rlat|grid_lat.*)",
     "x": r"(x|rlon|grid_lon.*)",
-    "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric|pres|isotherm)[a-z_]*[0-9]*",
+    "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric|pres|isotherm|model_level_number)[a-z_]*[0-9]*",
     "timedelta": r"time_delta",
     "time": r"(time[0-9]*|T)",
     "latitude": r"(x?lat[a-z0-9]*|nav_lat)",
@@ -150,3 +150,17 @@ class Axis:
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
+
+    @classmethod
+    def get_name_for_object(cls, obj: Union[str, Axis, AxisType]) -> str:
+        if isinstance(obj, Axis):
+            return obj.name
+        elif isinstance(obj, str):
+            return obj
+        elif isinstance(obj, AxisType):
+            return obj.axis_type_name
+        else:
+            raise ex.HCubeTypeError(
+                f"`dims` can be a tuple or a list of [geokube.Axis, geokube.AxisType, str], but provided type is `{type(obj)}`",
+                logger=Axis._LOG,
+            )

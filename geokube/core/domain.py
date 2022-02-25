@@ -140,6 +140,11 @@ class Domain(DomainMixin):
             return key.type in self._axis_to_name
         return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
 
+    def __next__(self):
+        for k, v in self._coords.items():
+            yield k, v
+        raise StopIteration
+
     def nbytes(self) -> int:
         return sum(coord.nbytes for coord in self._coords)
 
@@ -165,8 +170,8 @@ class Domain(DomainMixin):
             raise ex.HCubeNoSuchAxisError(
                 f"Time axis was not found for that dataset!", logger=self._LOG
             )
-        time_coord = time_coord.to_xarray()
-        time_coord_dt = time_coord.dt
+        time_coord_dset = time_coord.to_xarray(encoding=False)
+        time_coord_dt = time_coord_dset[time_coord.name].dt
 
         year_mask = _reduce_boolean_selection(time_coord_dt, "year", indexer)
         month_mask = _reduce_boolean_selection(time_coord_dt, "month", indexer)
@@ -270,7 +275,7 @@ class Domain(DomainMixin):
     @classmethod
     @log_func_debug
     def merge(cls, domains: List[Domain]):
-        # check if the domains are defined on the same crs
+        # TODO: check if the domains are defined on the same crs
         coords = {}
         for domain in domains:
             coords.update(**domain.coords)
@@ -319,31 +324,15 @@ class Domain(DomainMixin):
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
         grid = {}
+        grid = xr.Dataset().coords
         for coord in self._coords.values():
-            if encoding:
-                coord_name = coord.ncvar
-            else:
-                coord_name = coord.name
-            grid[coord_name] = coord.to_xarray(encoding)  # to xarray variable
-            if (bounds := coord.bounds) is not None:
-                continue
-                # TODO: bounds support latter
-                if len(bounds) > 1:
-                    raise ex.HCubeNotImplementedError(
-                        f"Multiple bounds are currently not supported!"
-                    )
-                for bnd in bounds.values():
-                    if encoding:
-                        bounds_name = bnd.ncvar
-                    else:
-                        bounds_name = bnd.name
-                    grid[bounds_name] = bnd.to_xarray(encoding)  # to xarray variable
+            grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-            grid["crs"] = xr.DataArray(1, name="crs", attrs=not_none_attrs)
-        return xr.Dataset(coords=grid).coords
+            grid.update({"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)})
+        return grid
 
     @classmethod
     def _make_domain_from_coords_dict_dims_and_crs(cls, coords, dims, crs=None):
