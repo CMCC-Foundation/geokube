@@ -209,10 +209,10 @@ def test_from_xarray_regular_latlon_with_mapping(era5_netcdf):
 
 def test_geobbox_regular_latlon(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
-    with pytest.raises(
-        ex.HCubeNotImplementedError, match=r"Selecting by geobbox containing*"
-    ):
-        _ = tp.geobbox(north=10, south=-10, west=50, east=80, top=5, bottom=10)
+    with pytest.raises(ValueError):
+        __ = tp.geobbox(
+            north=10, south=-10, west=50, east=80, top=5, bottom=10
+        )
 
     res = tp.geobbox(north=10, south=-10, west=50, east=80)
     assert np.all(res["latitude"].values <= 10)
