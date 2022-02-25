@@ -388,7 +388,7 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     coords_str = dset["d2m"].attrs.get(
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
-    assert coords_str == "latitude longitude"
+    assert set(coords_str.split(" ")) == {"latitude", "longitude"}
 
 
 @pytest.mark.skip("`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid")
