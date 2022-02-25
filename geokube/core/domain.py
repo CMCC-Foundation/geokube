@@ -96,6 +96,10 @@ class Domain(DomainMixin):
     def crs(self) -> CoordSystem:  # horizontal coordinate reference system
         return self._crs
 
+    @crs.setter
+    def crs(self, crs):
+        self._crs = crs
+
     @property
     def aux_coords(self) -> List[str]:
         return [c.name for c in self._coords.values() if not c.is_dim]

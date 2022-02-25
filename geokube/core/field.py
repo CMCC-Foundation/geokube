@@ -506,6 +506,7 @@ class Field(Variable, DomainMixin):
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
             )
+            result_field.domain.crs = RegularLatLon()
 
         return result_field
 
