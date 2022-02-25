@@ -12,7 +12,9 @@ geokube is a Python package for analysis of Earth Science Data.
 - [Jakub Walczak](https://github.com/jamesWalczak)
 - [Mirko Stojiljkovic](https://github.com/MMStojiljkovic)
 
-#### Installation Requirements
+## Installation 
+
+#### Requirements
 You need to install xesmf and cartopy to use geokube. This can be done during the creation of conda virtual environment, as shown below
 
 Add or append conda-forge channel
@@ -24,10 +26,10 @@ or
 conda config --append channels conda-forge
 ```
 
-#### Installation
+#### Conda Environment
 Create virtual environment with installing xesmf and cartopy package
 ```bash
-conda create -n geokube python=3.8 xesmf=0.6.1 cartopy=0.18 -y
+conda create -n geokube python=3.9 xesmf cartopy -y
 ```
 Activate virtual environment
 ```bash
@@ -38,7 +40,7 @@ Install geokube framework
 python setup.py insttall
 ```
 
-#### Conda package creation
+#### Conda Package
 Create virtual environment with installing conda-build package
 ```bash
 conda create -n geokube python=3.9 conda-build -y
