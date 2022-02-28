@@ -71,20 +71,20 @@ class DataCube(DomainMixin):
         self._encoding = encoding if encoding is not None else {}
 
     @property
-    def properties(self):
+    def properties(self) -> dict:
         return self._properties
 
     @property
-    def encoding(self):
+    def encoding(self) -> dict:
         return self._encoding
 
     @property
-    def domain(self):
+    def domain(self) -> Domain:
         return self._domain
 
     @property
-    def fields(self):
-        return self._fields.values
+    def fields(self) -> pd.Series:
+        return self._fields
 
     @property
     def nbytes(self) -> int:
@@ -141,9 +141,9 @@ class DataCube(DomainMixin):
                 )
             if key[1] not in self._ncvar_index:
                 raise ex.HCubeKeyError(
-                    f"`{key[0]}` not found among fields' ncvars!", logger=DataCube._LOG
+                    f"`{key[1]}` not found among fields' ncvars!", logger=DataCube._LOG
                 )
-            return self._fields[key].values
+            return self._fields[key]
         elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(
                 fields=[self[k] for k in key],
