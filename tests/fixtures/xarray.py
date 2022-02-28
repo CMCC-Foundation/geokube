@@ -1,6 +1,16 @@
 import pytest
 import xarray as xr
 
+from geokube.backend.netcdf import open_dataset
+
+
+@pytest.fixture
+def dataset():
+    yield open_dataset(
+        "tests//resources//*-single-levels-reanalysis_*",
+        pattern="tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc",
+    )
+
 
 @pytest.fixture
 def era5_point_domain():

@@ -59,7 +59,7 @@ class Dataset:
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
 
-        self.__cube_idx = len(self.__attrs)
+        self.__cube_idx = len(self.__attrs) + 1
         self.__metadata = dict(metadata) if metadata is not None else {}
 
     def __getitem__(self, key: Union[str, Tuple[str]]) -> Dataset:
