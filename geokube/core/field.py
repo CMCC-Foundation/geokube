@@ -156,6 +156,11 @@ class Field(Variable, DomainMixin):
         #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
         # return formatting_html.array_repr(self)
 
+    def __next__(self):
+        for k, v in self.domain._coords.items():
+            yield k, v
+        raise StopIteration
+
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical

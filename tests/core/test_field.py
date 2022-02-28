@@ -546,6 +546,26 @@ def test_field_create_with_dict_coords():
     assert f.units._unit == cf.Unit("m")
 
 
+def test_var_name_when_field_from_field_id_is_missing(era5_rotated_netcdf):
+    wso = Field.from_xarray(
+        era5_rotated_netcdf,
+        ncvar="W_SO",
+        id_pattern="{standard_name}_{not_existing_fied}",
+    )
+    assert wso.name == "W_SO"
+    assert wso.latitude.name == "lat"
+    assert wso.longitude.name == "lon"
+    assert wso.time.name == "time"
+
+    wso = Field.from_xarray(
+        era5_rotated_netcdf, ncvar="W_SO", id_pattern="{standard_name}"
+    )
+    assert wso.name == "lwe_thickness_of_moisture_content_of_soil_layer"
+    assert wso.latitude.name == "latitude"
+    assert wso.longitude.name == "longitude"
+    assert wso.time.name == "time"
+
+
 def test_to_xarray_time_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
     field = Field.from_xarray(era5_rotated_netcdf, "W_SO")
     da = field.to_xarray(encoding=False)

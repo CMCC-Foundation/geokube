@@ -11,6 +11,22 @@ def dataset():
         pattern="tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc",
     )
 
+from geokube.core.datacube import DataCube
+
+
+@pytest.fixture
+def datacube_with_the_same_standard_name(era5_rotated_netcdf, era5_netcdf):
+    era5_rotated_netcdf["TMIN_2M"].attrs["standard_name"] = "std_name1"
+    era5_rotated_netcdf["W_SO"].attrs["standard_name"] = "std_name1"
+    dc = DataCube.from_xarray(era5_rotated_netcdf)
+    yield dc
+
+
+@pytest.fixture
+def rotated_pole_datacube(era5_rotated_netcdf):
+    dc = DataCube.from_xarray(era5_rotated_netcdf)
+    return dc
+
 
 @pytest.fixture
 def era5_point_domain():

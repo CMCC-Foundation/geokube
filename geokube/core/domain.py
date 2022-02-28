@@ -144,6 +144,11 @@ class Domain(DomainMixin):
             return key.type in self._axis_to_name
         return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
 
+    def __next__(self):
+        for k, v in self._coords.items():
+            yield k, v
+        raise StopIteration
+
     def nbytes(self) -> int:
         return sum(coord.nbytes for coord in self._coords)
 
