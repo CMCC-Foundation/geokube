@@ -449,8 +449,8 @@ class Field(Variable, DomainMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
-            if verts.attrs.get('positive') == 'down':
-                vertical = -vertical
+            if field.vertical.attrs.get('positive') == 'down':
+                verts = -verts
             verts = xr.DataArray(data=verts, dims='points')
             vert_ax = Axis(name=self.vertical.name, axistype=AxisType.VERTICAL)
             field = field.sel(indexers={vert_ax: verts}, **sel_kwa)
@@ -511,7 +511,9 @@ class Field(Variable, DomainMixin):
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
             )
-            result_field.domain.crs = RegularLatLon()
+
+        result_field.domain.crs = RegularLatLon()
+        result_field.domain._type = DomainType.POINTS
 
         return result_field
 
