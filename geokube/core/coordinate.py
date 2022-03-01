@@ -199,6 +199,14 @@ class Coordinate(Variable, Axis):
         elif provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
             # The case where there is a scalar coordinate with bounds, e.g. after single value selection
             return Bounds1D
+        elif (
+            len(provided_bnds_shape) == 2
+            and len(provided_data_shape) == 1
+            and provided_bnds_shape[0] == provided_data_shape[0]
+            and (provided_bnds_shape[1] == 2 or provided_bnds_shape[1] == 4)
+        ):
+            # Case of points domain:
+            return BoundsND
         else:
             raise ex.HCubeValueError(
                 f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
