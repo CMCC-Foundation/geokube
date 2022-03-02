@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import functools as ft
 import os
 import warnings
@@ -173,7 +174,32 @@ class Field(Variable, DomainMixin):
         east: Number,
         top: Number | None = None,
         bottom: Number | None = None,
-    ):
+    ) -> Field:
+        """
+        Subset a field using a bounding box.
+
+        Subsets the original field with the given bounding box.  If a
+        bound is omitted or `None`, no subsetting takes place in that
+        direction.
+
+        Parameters
+        ----------
+        north, south, west, east : number or None, optional
+            Horizontal bounds.
+        top, bottom : number or None, optional
+            Vertical bounds.
+
+        Returns
+        -------
+        Field
+            A field with the coordinate values between given bounds.
+
+        Raises
+        ------
+        HCubeKeyError
+            If no horizontal bound is provided.
+
+        """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
@@ -308,12 +334,31 @@ class Field(Variable, DomainMixin):
 
     def locations(
         self,
-        latitude,
-        longitude,
-        vertical: Optional[
-            List[Number]
-        ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
-    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        latitude: Number | Sequence[Number],
+        longitude: Number | Sequence[Number],
+        vertical: Number | Sequence[Number] | None = None
+    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        """
+        Select points with given coordinates from a field.
+
+        Subsets the original field by selecting only the points with
+        provided coordinates and returns a new field with these points.
+
+        Parameters
+        ----------
+        latitude, longitude : array-like or number
+            Latitude and longitude coordinate values.  Must be of the
+            same shape.
+        vertical : array-like or number or None, optional
+            Verical coordinate values.  If given and not `None`, must be
+            of the same shape as `latitude` and `longitude`.
+
+        Returns
+        -------
+        Field
+            A field with a point domain that contains given locations.
+
+        """
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
         )
