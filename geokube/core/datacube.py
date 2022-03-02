@@ -92,11 +92,15 @@ class DataCube(DomainMixin):
 
     @property
     def _name_index(self):
-        return self._fields.index.get_level_values("name")
+        return self._fields.index.get_level_values(0)
 
     @property
     def _ncvar_index(self):
-        return self._fields.index.get_level_values("ncvar")
+        # we pass `0` to `get_level_values` if "ncvar" is not avaialble among MultiLevelIndex names
+        # to avoid error rising if pandas.Series `_fields` is empty
+        return self._fields.index.get_level_values(
+            1 if "ncvar" in self._fields.index.names else 0
+        )
 
     def __len__(self):
         return len(self._fields)
