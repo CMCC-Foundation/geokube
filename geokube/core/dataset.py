@@ -55,7 +55,7 @@ class Dataset:
         self.__data[self.FIELD_COL] = [
             None
             if isinstance(hcube, Delayed) or hcube is None
-            else list(hcube._fields.keys())
+            else list(set(hcube._name_index) | set(hcube._ncvar_index))
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
 
@@ -67,11 +67,18 @@ class Dataset:
         data = self.__data.iloc[:, : self.__cube_idx].copy()
         key = {key} if isinstance(key, str) else set(key)
         data[self.DATACUBE_COL] = [
-            None if isinstance(hcube, Delayed) else hcube[key & hcube._fields.keys()]
+            None
+            if isinstance(hcube, Delayed)
+            else Dataset._get_hcube_for_fields(hcube, key)
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
         dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
         return dset._drop_empty()
+
+    @staticmethod
+    def _get_hcube_for_fields(hcube: DataCube, key: set) -> set:
+        index = (key & set(hcube._name_index)) | (key & set(hcube._ncvar_index))
+        return hcube[index]
 
     def geobbox(
         self,

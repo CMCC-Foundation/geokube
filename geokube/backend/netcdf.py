@@ -1,3 +1,8 @@
+__all__ = (
+    "open_datacube",
+    "open_dataset",
+)
+
 import glob
 import logging
 import os

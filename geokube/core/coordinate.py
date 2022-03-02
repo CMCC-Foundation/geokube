@@ -262,18 +262,6 @@ class Coordinate(Variable, Axis):
             )
 
     @log_func_debug
-    # def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
-    #     da = self.to_xarray(encoding)
-    #     if not self.has_bounds:
-    #         return da
-    #     res_name = self.ncvar if encoding else self.name
-    #     bds = {k:v.to_xarray(encoding=encoding) for k,v in self.bounds.items()}
-    #     # TODO: how to store many bounds in `bounds` attribute? Should they be separated with a space, `bound1 bound2 bound3`?
-    #     da.attrs["bounds"] = " ".join(self.bounds.keys())
-    #     import pdb;pdb.set_trace()
-    #     return xr.DataArray(data=da, name=res_name, coords=bds)
-
-    @log_func_debug
     def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
         # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
