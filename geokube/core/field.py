@@ -748,12 +748,10 @@ class Field(Variable, DomainMixin):
         Examples:
         ----------
         Resample to day frequency taking the maximum over the elements in each day:
-        >>> resulting_field = field.resample(MethodType.FIRST, frequency='1D')
+        >>> res = field.resample("max", frequency='1D')
         Resample to 2 month frequency taking the sum (omitting NaNs) over each 2 months
         >>> resulting_field = field.resample("nansum", frequency='2M')
         """
-        time_axis = self.domain[Axis.TIME]
-        time = time_axis.name
         func = None
         if isinstance(operator, str):
             operator_func = MethodType(operator)
@@ -780,37 +778,41 @@ class Field(Variable, DomainMixin):
 
         # TODO: handle `formula_terms` bounds attribute
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
-        tb = time_axis.bounds
         ds = self.to_xarray(encoding=False)
-        if self.cell_methods and tb is not None:
+        (bnds_name, bnds), = self.time.bounds.items()
+        if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
             resample_kwargs.update({"closed": "right"})
-            da = ds.resample(indexer={time: frequency}, **resample_kwargs)
-            new_bounds = np.empty(
+            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            new_bnds = np.empty(
                 shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bounds[i] = [tb.values[v].min(), tb.values[v].max()]
-            if tb is None:
+                new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
+            if bnds is None:
                 Field._LOG.warn("Time bounds not defined for the cell methods!")
                 warnings.warn("Time bounds not defined for the cell methods!")
         else:
-            da = ds.resample(indexer={time: frequency}, **resample_kwargs)
-            new_bounds = np.empty(
+            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            new_bnds = np.empty(
                 shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bounds[i] = [time_axis.values[v].min(), time_axis.values[v].max()]
-        da = da.reduce(func=func, dim=time, keep_attrs=True)
+                new_bnds[i] = [self.time.values[v].min(), self.time.values[v].max()]
+
+        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
         res = xr.Dataset(
-            da,
-            coords={f"{time}_bnds": ((time, "bnds"), new_bounds)},
+             da,
+             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
+        field = Field.from_xarray(res, ncvar=self.name)
+        # field.time.bounds = {f'{bnds_name}': new_bnds}
+        
         # TODO: adjust cell_methods after resampling!
 
         # #########################################################################################
-        return Field.from_xarray_dataset(res, field_name=self.variable.name)
+        return field
 
     @log_func_debug
     def to_netcdf(self, path):
