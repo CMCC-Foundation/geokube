@@ -257,6 +257,39 @@ def test_geobbox_regular_latlon_2(era5_globe_netcdf):
     assert dset.longitude.attrs["units"] == "degrees_east"
 
 
+def test_geobbox_regular_latlon_3(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    res = tp.geobbox(north=10, west=2)
+    assert np.all(res["latitude"].values <= 10)
+    assert np.all(res.latitude.values <= 10)
+
+    assert np.all(res["longitude"].values >= 2)
+    assert np.all(res.longitude.values >= 2)
+
+    dset = res.to_xarray(True)
+    assert np.all(dset.latitude <= 10)
+    assert dset.latitude.attrs["units"] == "degrees_north"
+
+    assert np.all(dset.longitude >= 2)
+    assert dset.longitude.attrs["units"] == "degrees_east"
+
+
+def test_geobbox_regular_latlon_4(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    with pytest.raises(ValueError, match="'top' and 'bottom' must be None"):
+        tp.geobbox(top=2)
+
+    res = tp.geobbox(north=10)
+    assert np.all(res["latitude"].values <= 10)
+    assert np.all(res.latitude.values <= 10)
+
+    dset = res.to_xarray(True)
+    assert np.all(dset.latitude <= 10)
+    assert dset.latitude.attrs["units"] == "degrees_north"
+
+
 def test_geobbox_rotated_pole(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
     assert wso.latitude.name == "latitude"
