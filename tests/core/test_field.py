@@ -330,6 +330,73 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert "crs" in dset.coords
 
 
+def test_geobbox_rotated_pole_partial_arguments_1(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    res = wso.geobbox(north=40, west=16)
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.crs == crs.RotatedGeogCS(
+        grid_north_pole_latitude=47, grid_north_pole_longitude=-168
+    )
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values <= 40) / W > 0.95
+    assert np.sum(res.longitude.values >= 16) / W > 0.95
+
+    dset = res.to_xarray(encoding=True)
+    assert "W_SO" in dset.data_vars
+    assert "rlat" in dset.coords
+    assert "rlon" in dset.coords
+    assert "lat" in dset
+    assert dset.lat.attrs["units"] == "degrees_north"
+    assert "lon" in dset
+    assert dset.lon.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+    dset = res.to_xarray(False)
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in dset.data_vars
+    assert "latitude" in dset
+    assert dset.latitude.attrs["units"] == "degrees_north"
+    assert "longitude" in dset
+    assert dset.longitude.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+
+def test_geobbox_rotated_pole_partial_arguments_2(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    res = wso.geobbox(north=40)
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.crs == crs.RotatedGeogCS(
+        grid_north_pole_latitude=47, grid_north_pole_longitude=-168
+    )
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values <= 40) / W > 0.95
+
+    dset = res.to_xarray(encoding=True)
+    assert "W_SO" in dset.data_vars
+    assert "rlat" in dset.coords
+    assert "rlon" in dset.coords
+    assert "lat" in dset
+    assert dset.lat.attrs["units"] == "degrees_north"
+    assert "lon" in dset
+    assert dset.lon.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+    dset = res.to_xarray(False)
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in dset.data_vars
+    assert "latitude" in dset
+    assert dset.latitude.attrs["units"] == "degrees_north"
+    assert "longitude" in dset
+    assert dset.longitude.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+
 def test_geobbox_curvilinear_grid(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     assert vt.latitude.name == "latitude"
