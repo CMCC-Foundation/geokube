@@ -429,12 +429,6 @@ def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
 
 def test_geobbox_curvilinear_grid_horizontal_all_wrong_vertical(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    assert vt.latitude.name == "latitude"
-    assert vt.longitude.name == "longitude"
-    assert vt.latitude.ncvar == "nav_lat"
-    assert vt.longitude.ncvar == "nav_lon"
-    assert vt.vertical.name == "depthv"
-    assert vt.vertical.ncvar == "depthv"
 
     res = vt.geobbox(
         north=-19, south=-22, west=-115, east=-110, bottom=1, top=5
@@ -458,12 +452,6 @@ def test_geobbox_curvilinear_grid_horizontal_all_wrong_vertical(nemo_ocean_16):
 
 def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    assert vt.latitude.name == "latitude"
-    assert vt.longitude.name == "longitude"
-    assert vt.latitude.ncvar == "nav_lat"
-    assert vt.longitude.ncvar == "nav_lon"
-    assert vt.vertical.name == "depthv"
-    assert vt.vertical.ncvar == "depthv"
 
     res = vt.geobbox(north=-19, south=-22, west=-115, east=-110)
     assert res.latitude.name == "latitude"
@@ -484,12 +472,6 @@ def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
 
 def test_geobbox_curvilinear_grid_horizontal_partial_1(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    assert vt.latitude.name == "latitude"
-    assert vt.longitude.name == "longitude"
-    assert vt.latitude.ncvar == "nav_lat"
-    assert vt.longitude.ncvar == "nav_lon"
-    assert vt.vertical.name == "depthv"
-    assert vt.vertical.ncvar == "depthv"
 
     res = vt.geobbox(north=-19, west=-115)
     assert res.latitude.name == "latitude"
@@ -508,12 +490,6 @@ def test_geobbox_curvilinear_grid_horizontal_partial_1(nemo_ocean_16):
 
 def test_geobbox_curvilinear_grid_horizontal_partial_2(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    assert vt.latitude.name == "latitude"
-    assert vt.longitude.name == "longitude"
-    assert vt.latitude.ncvar == "nav_lat"
-    assert vt.longitude.ncvar == "nav_lon"
-    assert vt.vertical.name == "depthv"
-    assert vt.vertical.ncvar == "depthv"
 
     res = vt.geobbox(north=-19)
     assert res.latitude.name == "latitude"
@@ -527,6 +503,40 @@ def test_geobbox_curvilinear_grid_horizontal_partial_2(nemo_ocean_16):
 
     W = np.prod(res.latitude.shape)
     assert np.sum(res.latitude.values <= -19) / W > 0.95
+
+
+def test_geobbox_curvilinear_grid_vertical(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(bottom=-5, top=-1)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    # TODO: Check if this is desired behavior:
+    # assert res.vertical.name == "depthv"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    assert res.vertical.values.size > 0
+    assert np.all((res.vertical.values >= 1) & (res.vertical.values <= 5))
+
+
+def test_geobbox_curvilinear_grid_vertical_partial(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(top=-2.5)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    # TODO: Check if this is desired behavior:
+    # assert res.vertical.name == "depthv"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    assert res.vertical.values.size > 0
+    assert np.all(res.vertical.values >= 2.5)
 
 
 def test_timecombo_single_hour(era5_netcdf):
