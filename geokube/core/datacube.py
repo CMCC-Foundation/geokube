@@ -20,11 +20,7 @@ from typing import (
     Tuple,
     Union,
 )
-
-import numpy as np
-import pyarrow as pa
 import xarray as xr
-import pandas as pd
 
 from ..utils import exceptions as ex
 from ..utils.decorators import log_func_debug
@@ -56,16 +52,12 @@ class DataCube(DomainMixin):
     ) -> None:
         if len(fields) == 0:
             warnings.warn("No fields provided for the DataCube!")
-            self._fields = pd.Series()
+            self._fields = {}
             self._domain = None
             self._ncvar_to_name = None
         else:
-            multilevel_index = pd.MultiIndex.from_tuples(
-                tuple(zip([f.name for f in fields], [f.ncvar for f in fields])),
-                names=["name", "ncvar"],
-            )
-            self._fields = pd.Series(fields, index=multilevel_index)
             self._ncvar_to_name = {f.ncvar: f.name for f in fields}
+            self._fields = {f.name: f for f in fields}
             self._domain = Domain.merge([f.domain for f in fields])
         self._properties = properties if properties is not None else {}
         self._encoding = encoding if encoding is not None else {}
@@ -83,81 +75,47 @@ class DataCube(DomainMixin):
         return self._domain
 
     @property
-    def fields(self) -> pd.Series:
+    def fields(self) -> dict:
         return self._fields
 
     @property
     def nbytes(self) -> int:
-        return sum(field.nbytes for field in self.fields)
-
-    @property
-    def _name_index(self):
-        return self._fields.index.get_level_values(0)
-
-    @property
-    def _ncvar_index(self):
-        # we pass `0` to `get_level_values` if "ncvar" is not avaialble among MultiLevelIndex names
-        # to avoid error rising if pandas.Series `_fields` is empty
-        return self._fields.index.get_level_values(
-            1 if "ncvar" in self._fields.index.names else 0
-        )
+        return sum(field.nbytes for field in self.fields.values())
 
     def __len__(self):
         return len(self._fields)
 
     def __contains__(self, key: str) -> bool:
         return (
-            (key in self._name_index)
-            or (key in self._ncvar_index)
+            (key in self._fields)
+            or (key in self._ncvar_to_name)
             or (key in self._domain)
         )
-
-    def _get_index_level(self, key: str) -> Optional[str]:
-        if key in self._name_index:
-            return "name"
-        elif key in self._ncvar_index:
-            return "ncvar"
-        return None
 
     def __getitem__(
         self, key: Union[Iterable[str], Iterable[Tuple[str, str]], str, Tuple[str, str]]
     ):
-        if isinstance(key, str):
-            index_level = self._get_index_level(key)
-            if index_level is None:
-                return self.domain[key]
-            selected_field = self._fields.xs(key=key, level=index_level).values
-            if len(selected_field) > 1:
-                raise ex.HCubeKeyError(
-                    f"There are multiple fields withe name `{key}`! Use `ncvar` or combination `(name, ncvar)`!",
-                    logger=DataCube._LOG,
-                )
-            return selected_field.item()
-        elif isinstance(key, tuple):
-            if len(key) != 2:
-                raise ex.HCubeValueError(
-                    f"Tuple index should have exactly two values: (name, ncvar)!",
-                    logger=DataCube._LOG,
-                )
-            if key[0] not in self._name_index:
-                raise ex.HCubeKeyError(
-                    f"`{key[0]}` not found among fields' names!", logger=DataCube._LOG
-                )
-            if key[1] not in self._ncvar_index:
-                raise ex.HCubeKeyError(
-                    f"`{key[1]}` not found among fields' ncvars!", logger=DataCube._LOG
-                )
-            return self._fields[key]
+        if isinstance(key, str) and (
+            (key in self._fields) or key in self._ncvar_to_name
+        ):
+            return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
         elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(
-                fields=[self[k] for k in key],
+                fields=[self._fields[k] for k in key],
                 properties=self.properties,
                 encoding=self.encoding,
             )
-        return self.domain[key]
+        else:
+            item = self.domain[key]
+            if item is None:
+                raise ex.HCubeKeyError(
+                    f"Key `{key}` of type `{type(key)}` is not found in the DataCube",
+                    logger=DataCube._LOG,
+                )
+            return item
 
-    def __next__(self):
-        for f in self._fields:
+    def __iter__(self):
+        for f in self._fields.values():
             yield f
         raise StopIteration
 
@@ -315,7 +273,7 @@ class DataCube(DomainMixin):
 
     @log_func_debug
     def to_xarray(self, encoding=True):
-        xarray_fields = [f.to_xarray(encoding=encoding) for f in self.fields]
+        xarray_fields = [f.to_xarray(encoding=encoding) for f in self.fields.values()]
         dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
         dset.attrs = self.properties
         dset.encoding = self.encoding
