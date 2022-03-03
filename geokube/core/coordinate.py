@@ -191,11 +191,7 @@ class Coordinate(Variable, Axis):
             and provided_bnds_shape[0] == provided_data_shape[0]
         ):
             return True
-        if (
-            provided_data_shape == ()
-            and ndim == 0
-            and provided_bnds_shape[0] == 2
-        ):
+        if provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
             # The case where there is a scalar coordinate with bounds, e.g.
             # after single value selection
             return True
