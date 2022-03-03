@@ -180,7 +180,7 @@ class Field(Variable, DomainMixin):
 
         Subsets the original field with the given bounding box.  If a
         bound is omitted or `None`, no subsetting takes place in that
-        direction.
+        direction.  At least one bound must be provided.
 
         Parameters
         ----------
@@ -197,7 +197,7 @@ class Field(Variable, DomainMixin):
         Raises
         ------
         HCubeKeyError
-            If no horizontal bound is provided.
+            If no bound is provided.
 
         """
         if not util_methods.is_atleast_one_not_none(
