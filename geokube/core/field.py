@@ -167,10 +167,10 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def geobbox(
         self,
-        north: Number,
-        south: Number,
-        west: Number,
-        east: Number,
+        north: Number | None = None,
+        south: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
         top: Number | None = None,
         bottom: Number | None = None,
     ):
@@ -282,13 +282,13 @@ class Field(Variable, DomainMixin):
             # Case of latitude and longitude being dependent.
             # Specifying the mask(s) and extracting the indices that correspond
             # to the inside the bounding box.
-            lat_mask = (lat.data >= south) & (lat.data <= north)
-            lon_mask = (lon.data >= west) & (lon.data <= east)
+            lat_mask = util_methods.is_between(lat.data, south, north)
+            lon_mask = util_methods.is_between(lon.data, west, east)
             # TODO: Clarify why this is required.
             if lat_mask.sum() == 0:
-                lat_mask = (lat.data <= south) & (lat.data >= north)
+                lat_mask = util_methods.is_between(lat.data, north, south)
             if lon_mask.sum() == 0:
-                lon_mask = (lon.data <= float(west)) & (lon.data <= float(east))
+                lon_mask = util_methods.is_between(lon.data, east, west)
             nonzero_idx = np.nonzero(lat_mask & lon_mask)
             idx = {
                 lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
