@@ -407,12 +407,46 @@ def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
     assert res["longitude"].type is CoordinateType.SCALAR
 
 
+def test_locations_regular_latlon_single_point(era5_netcdf):
+    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
+
+    res = d2m.locations(latitude=41, longitude=9)
+    assert res.latitude.values.item() == 41
+    assert res.longitude.values.item() == 9
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.domain.type.name == 'POINTS'
+
+    dset = res.to_xarray()
+    assert dset.latitude.item() == 41
+    assert dset.longitude.item() == 9
+    assert dset["d2m"].attrs["units"] == "K"
+    coords_str = dset["d2m"].attrs.get(
+        "coordinates", dset["d2m"].encoding.get("coordinates")
+    )
+    assert set(coords_str.split(" ")) == {"latitude", "longitude"}
+    assert 'points' in res.to_xarray().dims
+    assert 'latitude' not in res.to_xarray().dims
+    assert 'longitude' not in res.to_xarray().dims
+
+
 def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
     res = d2m.locations(latitude=[41, 42], longitude=[9, 12])
     assert np.all((res.latitude.values == 41) | (res.latitude.values == 42))
     assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.domain.type.name == 'POINTS'
 
     dset = res.to_xarray()
     assert np.all((dset.latitude == 41) | (dset.latitude == 42))
@@ -422,6 +456,9 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
     assert set(coords_str.split(" ")) == {"latitude", "longitude"}
+    assert 'points' in res.to_xarray().dims
+    assert 'latitude' not in res.to_xarray().dims
+    assert 'longitude' not in res.to_xarray().dims
 
 
 @pytest.mark.skip("`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid")
