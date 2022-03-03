@@ -20,9 +20,6 @@ from typing import (
     Tuple,
     Union,
 )
-
-import numpy as np
-import pyarrow as pa
 import xarray as xr
 
 from ..utils import exceptions as ex
@@ -53,7 +50,6 @@ class DataCube(DomainMixin):
         properties: Mapping[Any, Any],
         encoding: Mapping[Any, Any],
     ) -> None:
-        # TODO: save only fields variables and coordinates names to build the field domain
         if len(fields) == 0:
             warnings.warn("No fields provided for the DataCube!")
             self._fields = {}
@@ -67,19 +63,19 @@ class DataCube(DomainMixin):
         self._encoding = encoding if encoding is not None else {}
 
     @property
-    def properties(self):
+    def properties(self) -> dict:
         return self._properties
 
     @property
-    def encoding(self):
+    def encoding(self) -> dict:
         return self._encoding
 
     @property
-    def domain(self):
+    def domain(self) -> Domain:
         return self._domain
 
     @property
-    def fields(self):
+    def fields(self) -> dict:
         return self._fields
 
     @property
@@ -96,7 +92,9 @@ class DataCube(DomainMixin):
             or (key in self._domain)
         )
 
-    def __getitem__(self, key: Union[Iterable[str], str]):
+    def __getitem__(
+        self, key: Union[Iterable[str], Iterable[Tuple[str, str]], str, Tuple[str, str]]
+    ):
         if isinstance(key, str) and (
             (key in self._fields) or key in self._ncvar_to_name
         ):
@@ -116,8 +114,8 @@ class DataCube(DomainMixin):
                 )
             return item
 
-    def __next__(self):
-        for f in self._fields:
+    def __iter__(self):
+        for f in self._fields.values():
             yield f
         raise StopIteration
 

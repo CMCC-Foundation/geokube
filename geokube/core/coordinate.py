@@ -183,27 +183,48 @@ class Coordinate(Variable, Axis):
         return _bounds
 
     @classmethod
-    def _get_bounds_cls(cls, provided_bnds_shape, provided_data_shape):
+    def _is_valid_1d_bounds(cls, provided_bnds_shape, provided_data_shape):
         ndim = len(provided_bnds_shape) - 1
         if (
             2 * ndim == 2
             and provided_bnds_shape[-1] == 2
             and provided_bnds_shape[0] == provided_data_shape[0]
         ):
-            return Bounds1D
-        elif (
+            return True
+        if provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
+            # The case where there is a scalar coordinate with bounds, e.g.
+            # after single value selection
+            return True
+        return False
+
+    @classmethod
+    def _is_valid_nd_bounds(cls, provided_bnds_shape, provided_data_shape):
+        ndim = len(provided_bnds_shape) - 1
+        if (
             provided_bnds_shape[-1] == 2 * ndim
             and tuple(provided_bnds_shape[:-1]) == provided_data_shape
         ):
-            return BoundsND
-        elif provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
-            # The case where there is a scalar coordinate with bounds, e.g. after single value selection
+            return True
+        if (
+            len(provided_bnds_shape) == 2
+            and len(provided_data_shape) == 1
+            and provided_bnds_shape[0] == provided_data_shape[0]
+            and (provided_bnds_shape[1] == 2 or provided_bnds_shape[1] == 4)
+        ):
+            # The case of points domain
+            return True
+        return False
+
+    @classmethod
+    def _get_bounds_cls(cls, provided_bnds_shape, provided_data_shape):
+        if cls._is_valid_1d_bounds(provided_bnds_shape, provided_data_shape):
             return Bounds1D
-        else:
-            raise ex.HCubeValueError(
-                f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
-                logger=Coordinate._LOG,
-            )
+        if cls._is_valid_nd_bounds(provided_bnds_shape, provided_data_shape):
+            return BoundsND
+        raise ex.HCubeValueError(
+            f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
+            logger=Coordinate._LOG,
+        )
 
     @property
     def is_dimension(self) -> bool:
@@ -260,18 +281,6 @@ class Coordinate(Variable, Axis):
                 if self.min() >= 0
                 else LongitudeConvention.NEGATIVE_WEST
             )
-
-    @log_func_debug
-    # def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
-    #     da = self.to_xarray(encoding)
-    #     if not self.has_bounds:
-    #         return da
-    #     res_name = self.ncvar if encoding else self.name
-    #     bds = {k:v.to_xarray(encoding=encoding) for k,v in self.bounds.items()}
-    #     # TODO: how to store many bounds in `bounds` attribute? Should they be separated with a space, `bound1 bound2 bound3`?
-    #     da.attrs["bounds"] = " ".join(self.bounds.keys())
-    #     import pdb;pdb.set_trace()
-    #     return xr.DataArray(data=da, name=res_name, coords=bds)
 
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:

@@ -210,9 +210,7 @@ def test_from_xarray_regular_latlon_with_mapping(era5_netcdf):
 def test_geobbox_regular_latlon(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
     with pytest.raises(ValueError):
-        __ = tp.geobbox(
-            north=10, south=-10, west=50, east=80, top=5, bottom=10
-        )
+        __ = tp.geobbox(north=10, south=-10, west=50, east=80, top=5, bottom=10)
 
     res = tp.geobbox(north=10, south=-10, west=50, east=80)
     assert np.all(res["latitude"].values <= 10)
@@ -390,7 +388,7 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     coords_str = dset["d2m"].attrs.get(
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
-    assert coords_str == "latitude longitude"
+    assert set(coords_str.split(" ")) == {"latitude", "longitude"}
 
 
 @pytest.mark.skip("`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid")
@@ -546,6 +544,26 @@ def test_field_create_with_dict_coords():
     assert np.all(f[Axis("longitude")].values == np.linspace(5, 10, 30))
     assert np.all(f[AxisType.LONGITUDE].values == np.linspace(5, 10, 30))
     assert f.units._unit == cf.Unit("m")
+
+
+def test_var_name_when_field_from_field_id_is_missing(era5_rotated_netcdf):
+    wso = Field.from_xarray(
+        era5_rotated_netcdf,
+        ncvar="W_SO",
+        id_pattern="{standard_name}_{not_existing_fied}",
+    )
+    assert wso.name == "W_SO"
+    assert wso.latitude.name == "lat"
+    assert wso.longitude.name == "lon"
+    assert wso.time.name == "time"
+
+    wso = Field.from_xarray(
+        era5_rotated_netcdf, ncvar="W_SO", id_pattern="{standard_name}"
+    )
+    assert wso.name == "lwe_thickness_of_moisture_content_of_soil_layer"
+    assert wso.latitude.name == "latitude"
+    assert wso.longitude.name == "longitude"
+    assert wso.time.name == "time"
 
 
 def test_to_xarray_time_with_bounds(era5_rotated_netcdf, nemo_ocean_16):

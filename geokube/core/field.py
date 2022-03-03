@@ -156,16 +156,21 @@ class Field(Variable, DomainMixin):
         #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
         # return formatting_html.array_repr(self)
 
+    def __next__(self):
+        for k, v in self.domain._coords.items():
+            yield k, v
+        raise StopIteration
+
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical
     @log_func_debug
     def geobbox(
         self,
-        north: Number,
-        south: Number,
-        west: Number,
-        east: Number,
+        north: Number | None = None,
+        south: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
         top: Number | None = None,
         bottom: Number | None = None,
     ):
@@ -185,9 +190,7 @@ class Field(Variable, DomainMixin):
             bottom=bottom,
         )
 
-    def _geobbox_cartopy(
-        self, south, north, west, east, top, bottom
-    ):
+    def _geobbox_cartopy(self, south, north, west, east, top, bottom):
         # TODO: add vertical also
         domain = self._domain
 
@@ -243,7 +246,7 @@ class Field(Variable, DomainMixin):
         west: Number,
         east: Number,
         top: Number | None = None,
-        bottom: Number | None = None
+        bottom: Number | None = None,
     ):
         field = self
         lat, lon = field.latitude, field.longitude
@@ -281,16 +284,16 @@ class Field(Variable, DomainMixin):
             # Case of latitude and longitude being dependent.
             # Specifying the mask(s) and extracting the indices that correspond
             # to the inside the bounding box.
-            lat_mask = (lat.data >= south) & (lat.data <= north)
-            lon_mask = (lon.data >= west) & (lon.data <= east)
+            lat_mask = util_methods.is_between(lat.data, south, north)
+            lon_mask = util_methods.is_between(lon.data, west, east)
             # TODO: Clarify why this is required.
             if lat_mask.sum() == 0:
-                lat_mask = (lat.data <= south) & (lat.data >= north)
+                lat_mask = util_methods.is_between(lat.data, north, south)
             if lon_mask.sum() == 0:
-                lon_mask = (lon.data <= float(west)) & (lon.data <= float(east))
+                lon_mask = util_methods.is_between(lon.data, east, west)
             nonzero_idx = np.nonzero(lat_mask & lon_mask)
             idx = {
-                lat.dims[i].name: np.s_[incl_idx.min():incl_idx.max() + 1]
+                lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
                 for i, incl_idx in enumerate(nonzero_idx)
             }
             dset = field.to_xarray(encoding=False)
@@ -302,7 +305,7 @@ class Field(Variable, DomainMixin):
                 ncvar=self.name,
                 copy=False,
                 id_pattern=self._id_pattern,
-                mapping=self._mapping
+                mapping=self._mapping,
             )
 
     def locations(
@@ -407,7 +410,9 @@ class Field(Variable, DomainMixin):
             # system (`cartopy.crs.PlateCarree`) to the coordinate system of
             # the field.
             plate = ccrs.PlateCarree()
-            pts = domain.crs.as_cartopy_crs().transform_points(src_crs=plate, x=lons, y=lats)
+            pts = domain.crs.as_cartopy_crs().transform_points(
+                src_crs=plate, x=lons, y=lats
+            )
             idx = {
                 domain.x.name: xr.DataArray(data=pts[:, 0], dims="points"),
                 domain.y.name: xr.DataArray(data=pts[:, 1], dims="points"),
@@ -421,23 +426,17 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-    def _locations_idx(
-        self,
-        latitude,
-        longitude,
-        vertical=None
-    ):
+    def _locations_idx(self, latitude, longitude, vertical=None):
         field = self
-        sel_kwa = {'roll_if_needed': False, 'method': 'nearest'}
+        sel_kwa = {"roll_if_needed": False, "method": "nearest"}
         lats = np.array(latitude, dtype=np.float32).reshape(-1)
         lons = np.array(longitude, dtype=np.float32).reshape(-1)
 
         n = lats.size
         if lons.size != n:
             raise ValueError(
-                    "'latitude' and 'longitude' must have the same number of "
-                    "items"
-                )
+                "'latitude' and 'longitude' must have the same number of " "items"
+            )
 
         # Vertical
         # NOTE: In this implementation, vertical is always considered an
@@ -458,8 +457,8 @@ class Field(Variable, DomainMixin):
         # Case of latitude and longitude being independent.
         if self.is_latitude_independent and self.is_longitude_independent:
             # TODO: Check lon values conventions.
-            lats = xr.DataArray(data=lats, dims='points')
-            lons = xr.DataArray(data=lons, dims='points')
+            lats = xr.DataArray(data=lats, dims="points")
+            lons = xr.DataArray(data=lons, dims="points")
             idx = {self.latitude.name: lats, self.longitude.name: lons}
             result_field = field.sel(indexers=idx, **sel_kwa)
         else:
@@ -500,7 +499,7 @@ class Field(Variable, DomainMixin):
 
             # Spatial subseting.
             idx = {
-                dim.name: xr.DataArray(data=idx_[:, i], dims='points')
+                dim.name: xr.DataArray(data=idx_[:, i], dims="points")
                 for (i,), dim in np.ndenumerate(self.latitude.dims)
             }
             result_dset = field.to_xarray(encoding=False).isel(indexers=idx)
