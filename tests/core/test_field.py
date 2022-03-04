@@ -341,7 +341,7 @@ def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
         ex.HCubeKeyError,
         match='Axis of type `AxisType.VERTICAL` does not exist in the domain!'
     ):
-       tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
+        tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
 
 
 def test_geobbox_rotated_pole(era5_rotated_netcdf):
@@ -449,6 +449,52 @@ def test_geobbox_rotated_pole_partial_arguments_2(era5_rotated_netcdf):
     assert "longitude" in dset
     assert dset.longitude.attrs["units"] == "degrees_east"
     assert "crs" in dset.coords
+
+
+def test_locations_rotated_pole_1(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    lat, lon = 40, 15
+    res = wso.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.type.name == 'POINTS'
+    
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+
+def test_locations_rotated_pole_2(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    lat, lon = [35, 40], [15, 18]
+    res = wso.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.type.name == 'POINTS'
+    
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
 
 
 def test_geobbox_curvilinear_grid_all(nemo_ocean_16):
