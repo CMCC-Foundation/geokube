@@ -397,7 +397,7 @@ def test_geobbox_rotated_pole_partial_arguments_2(era5_rotated_netcdf):
     assert "crs" in dset.coords
 
 
-def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
+def test_geobbox_curvilinear_grid_all(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     assert vt.latitude.name == "latitude"
     assert vt.longitude.name == "longitude"
@@ -427,7 +427,7 @@ def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
     assert np.all((res.vertical.values >= 1) & (res.vertical.values <= 5))
 
 
-def test_geobbox_curvilinear_grid_horizontal_all_wrong_vertical(nemo_ocean_16):
+def test_geobbox_curvilinear_grid_all_wrong_vertical(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
 
     res = vt.geobbox(
@@ -505,7 +505,7 @@ def test_geobbox_curvilinear_grid_horizontal_partial_2(nemo_ocean_16):
     assert np.sum(res.latitude.values <= -19) / W > 0.95
 
 
-def test_geobbox_curvilinear_grid_vertical(nemo_ocean_16):
+def test_geobbox_curvilinear_grid_vertical_both(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
 
     res = vt.geobbox(bottom=-5, top=-1)
