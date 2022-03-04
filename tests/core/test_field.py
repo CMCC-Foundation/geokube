@@ -613,3 +613,12 @@ def test_to_xarray_time_with_bounds_nemo_with_mapping(nemo_ocean_16):
     assert "bounds" in da["time_centered"].encoding
     assert da["time_centered"].encoding["bounds"] == "time_bnds"
     assert "time_bnds" in da.coords
+
+
+def test_geobbox_regular_latlon_negative_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    res = tp.geobbox(north=10, south=-10, west=25, east=25)
+    assert np.all(res.longitude <= 25)
+    assert np.all(res.longitude >= 25)
+    assert np.all(res.latitude <= 10)
+    assert np.all(res.latitude >= -10)
