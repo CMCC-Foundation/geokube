@@ -555,7 +555,9 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
-        if "longitude" not in indexers or not isinstance(indexers["longitude"], slice):
+        if Axis("longitude") not in indexers or not isinstance(
+            indexers[Axis("longitude")], slice
+        ):
             return ds
         if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
