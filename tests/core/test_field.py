@@ -290,6 +290,60 @@ def test_geobbox_regular_latlon_4(era5_globe_netcdf):
     assert dset.latitude.attrs["units"] == "degrees_north"
 
 
+def test_locations_regular_latlon_1(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    lat, lon = 40, 15
+    res = tp.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == 'latitude'
+    assert res.latitude.ncvar == 'latitude'
+    assert res.longitude.name == 'longitude'
+    assert res.longitude.ncvar == 'longitude'
+
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon)
+
+
+def test_locations_regular_latlon_2(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    lat, lon = [35, 40], [15, 20]
+    res = tp.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == 'latitude'
+    assert res.latitude.ncvar == 'latitude'
+    assert res.longitude.name == 'longitude'
+    assert res.longitude.ncvar == 'longitude'
+
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon)
+
+
+def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    with pytest.raises(
+        ex.HCubeKeyError,
+        match='Axis of type `AxisType.VERTICAL` does not exist in the domain!'
+    ):
+       tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
+
+
 def test_geobbox_rotated_pole(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
     assert wso.latitude.name == "latitude"
