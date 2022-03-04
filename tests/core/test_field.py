@@ -545,6 +545,13 @@ def test_locations_curvilinear_grid_horizontal_1(nemo_ocean_16):
     lat, lon = -20, -115
     res = vt.locations(latitude=lat, longitude=lon)
 
+    assert res.latitude.name == 'latitude'
+    assert res.latitude.ncvar == 'nav_lat'
+    assert res.longitude.name == 'longitude'
+    assert res.longitude.ncvar == 'nav_lon'
+    assert res.vertical.name == 'vertical'
+    assert res.vertical.ncvar == 'depthv'
+
     assert res.latitude.type.name == 'DEPENDENT'
     assert len(res.latitude.dims) == 1
     assert res.latitude.dims[0].name == 'points'
@@ -566,6 +573,13 @@ def test_locations_curvilinear_grid_horizontal_2(nemo_ocean_16):
     lat, lon = [-20, -22], [-115, -120]
     res = vt.locations(latitude=lat, longitude=lon)
 
+    assert res.latitude.name == 'latitude'
+    assert res.latitude.ncvar == 'nav_lat'
+    assert res.longitude.name == 'longitude'
+    assert res.longitude.ncvar == 'nav_lon'
+    assert res.vertical.name == 'vertical'
+    assert res.vertical.ncvar == 'depthv'
+
     assert res.latitude.type.name == 'DEPENDENT'
     assert len(res.latitude.dims) == 1
     assert res.latitude.dims[0].name == 'points'
@@ -586,6 +600,13 @@ def test_locations_curvilinear_grid_all_1(nemo_ocean_16):
 
     lat, lon, vert = -20, -115, -5
     res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
+
+    assert res.latitude.name == 'latitude'
+    assert res.latitude.ncvar == 'nav_lat'
+    assert res.longitude.name == 'longitude'
+    assert res.longitude.ncvar == 'nav_lon'
+    assert res.vertical.name == 'vertical'
+    assert res.vertical.ncvar == 'depthv'
 
     assert res.latitude.type.name == 'DEPENDENT'
     assert len(res.latitude.dims) == 1
@@ -610,6 +631,13 @@ def test_locations_curvilinear_grid_all_2(nemo_ocean_16):
 
     lat, lon, vert = [-20, -22], [-115, -120], [-5, -10]
     res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
+
+    assert res.latitude.name == 'latitude'
+    assert res.latitude.ncvar == 'nav_lat'
+    assert res.longitude.name == 'longitude'
+    assert res.longitude.ncvar == 'nav_lon'
+    assert res.vertical.name == 'vertical'
+    assert res.vertical.ncvar == 'depthv'
 
     assert res.latitude.type.name == 'DEPENDENT'
     assert len(res.latitude.dims) == 1
