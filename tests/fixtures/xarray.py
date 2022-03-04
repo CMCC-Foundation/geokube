@@ -2,6 +2,7 @@ import pytest
 import xarray as xr
 
 from geokube.backend.netcdf import open_dataset
+from geokube.core.datacube import DataCube
 
 
 @pytest.fixture
@@ -12,7 +13,13 @@ def dataset():
     )
 
 
-from geokube.core.datacube import DataCube
+@pytest.fixture
+def dataset_idpattern():
+    yield open_dataset(
+        "tests//resources//era5-single-levels-reanalysis_*",
+        pattern="tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc",
+        id_pattern="std_{units}",
+    )
 
 
 @pytest.fixture

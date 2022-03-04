@@ -75,6 +75,9 @@ class Dataset:
         dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
         return dset._drop_empty()
 
+    def __len__(self):
+        return len(self.__data)
+
     @staticmethod
     def _get_eligible_fields_for_datacube(hcube, key: set):
         return hcube[(key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())]
