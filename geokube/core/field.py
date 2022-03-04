@@ -266,7 +266,9 @@ class Field(Variable, DomainMixin):
                     "vertical coordinate or it is constant"
                 )
             if vert.attrs.get('positive') == 'down':
-                top, bottom = -bottom, -top
+                top_ = top
+                top = -bottom if bottom is not None else None
+                bottom = -top_ if top_ is not None else None
             vert_incr = util_methods.is_nondecreasing(vert.data)
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
             vert_idx = {vert.name: vert_slice}
