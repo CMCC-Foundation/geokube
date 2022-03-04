@@ -539,6 +539,96 @@ def test_geobbox_curvilinear_grid_vertical_partial(nemo_ocean_16):
     assert np.all(res.vertical.values >= 2.5)
 
 
+def test_locations_curvilinear_grid_horizontal_1(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon = -20, -115
+    res = vt.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == 'INDEPENDENT'
+    assert res.vertical.shape == vt.vertical.shape
+    assert np.allclose(res.vertical.values, vt.vertical.values)
+
+
+def test_locations_curvilinear_grid_horizontal_2(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon = [-20, -22], [-115, -120]
+    res = vt.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == 'INDEPENDENT'
+    assert res.vertical.shape == vt.vertical.shape
+    assert np.allclose(res.vertical.values, vt.vertical.values)
+
+
+def test_locations_curvilinear_grid_all_1(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon, vert = -20, -115, -5
+    res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
+
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == 'DEPENDENT'
+    assert len(res.vertical.dims) == 1
+    assert res.vertical.dims[0].name == 'points'
+    assert np.allclose(
+        -res.vertical.values, vert, atol=np.diff(vt.vertical.values).max() / 2
+    )
+
+
+def test_locations_curvilinear_grid_all_2(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon, vert = [-20, -22], [-115, -120], [-5, -10]
+    res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
+
+    assert res.latitude.type.name == 'DEPENDENT'
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == 'DEPENDENT'
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == 'DEPENDENT'
+    assert len(res.vertical.dims) == 1
+    assert res.vertical.dims[0].name == 'points'
+    assert np.allclose(
+        -res.vertical.values, vert, atol=np.diff(vt.vertical.values).max() / 2
+    )
+
+
 def test_timecombo_single_hour(era5_netcdf):
     tp = Field.from_xarray(era5_netcdf, ncvar="tp")
     res = tp.sel(time={"year": 2020, "day": [1, 6, 10], "hour": 5})
