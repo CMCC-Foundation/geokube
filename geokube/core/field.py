@@ -265,6 +265,8 @@ class Field(Variable, DomainMixin):
                     "'top' and 'bottom' must be None because there is no "
                     "vertical coordinate or it is constant"
                 )
+            if vert.attrs.get('positive') == 'down':
+                top, bottom = -bottom, -top
             vert_incr = util_methods.is_nondecreasing(vert.data)
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
             vert_idx = {vert.name: vert_slice}
@@ -446,7 +448,9 @@ class Field(Variable, DomainMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
-            verts = xr.DataArray(data=verts, dims="points")
+            if field.vertical.attrs.get('positive') == 'down':
+                verts = -verts
+            verts = xr.DataArray(data=verts, dims='points')
             vert_ax = Axis(name=self.vertical.name, axistype=AxisType.VERTICAL)
             field = field.sel(indexers={vert_ax: verts}, **sel_kwa)
 
@@ -506,7 +510,9 @@ class Field(Variable, DomainMixin):
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
             )
-            result_field.domain.crs = RegularLatLon()
+
+        result_field.domain.crs = RegularLatLon()
+        result_field.domain._type = DomainType.POINTS
 
         return result_field
 
