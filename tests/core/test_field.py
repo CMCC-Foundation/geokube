@@ -413,8 +413,7 @@ def test_geobbox_curvilinear_grid_all(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
@@ -437,8 +436,7 @@ def test_geobbox_curvilinear_grid_all_wrong_vertical(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
@@ -458,8 +456,7 @@ def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
@@ -478,8 +475,7 @@ def test_geobbox_curvilinear_grid_horizontal_partial_1(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
@@ -496,8 +492,7 @@ def test_geobbox_curvilinear_grid_horizontal_partial_2(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
@@ -513,8 +508,7 @@ def test_geobbox_curvilinear_grid_vertical_both(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
@@ -530,8 +524,7 @@ def test_geobbox_curvilinear_grid_vertical_partial(nemo_ocean_16):
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
     assert res.longitude.ncvar == "nav_lon"
-    # TODO: Check if this is desired behavior:
-    # assert res.vertical.name == "depthv"
+    assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
 
