@@ -265,9 +265,11 @@ class Field(Variable, DomainMixin):
                     "'top' and 'bottom' must be None because there is no "
                     "vertical coordinate or it is constant"
                 )
-            if vert.attrs.get('positive') == 'down':
-                top, bottom = -bottom, -top
             vert_incr = util_methods.is_nondecreasing(vert.data)
+            if vert.attrs.get("positive") == "down":
+                top = None if top is None else -top
+                bottom = None if bottom is None else -bottom
+                vert_incr = ~vert_incr
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
             vert_idx = {vert.name: vert_slice}
             field = field.sel(indexers=vert_idx, roll_if_needed=True)
@@ -448,9 +450,9 @@ class Field(Variable, DomainMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
-            if field.vertical.attrs.get('positive') == 'down':
+            if field.vertical.attrs.get("positive") == "down":
                 verts = -verts
-            verts = xr.DataArray(data=verts, dims='points')
+            verts = xr.DataArray(data=verts, dims="points")
             vert_ax = Axis(name=self.vertical.name, axistype=AxisType.VERTICAL)
             field = field.sel(indexers={vert_ax: verts}, **sel_kwa)
 
@@ -578,7 +580,8 @@ class Field(Variable, DomainMixin):
 
         start = indexers[Axis("longitude")].start
         stop = indexers[Axis("longitude")].stop
-
+        start = 0 if start is None else start
+        stop = 0 if stop is None else stop
         sel_neg_conv = (start < 0) | (stop < 0)
         sel_pos_conv = (start > 180) | (stop > 180)
 
@@ -589,7 +592,7 @@ class Field(Variable, DomainMixin):
         if dset_pos_conv and sel_neg_conv:
             # from [0,360] to [-180,180]
             # Attributes are lost while doing `assign_coords`. They need to be reassigned (e.q. by `update`)
-            roll_value = (ds[lng_name] > 180).sum().item()
+            roll_value = (ds[lng_name] >= 180).sum().item()
             res = ds.assign_coords(
                 {lng_name: (((ds[lng_name] + 180) % 360) - 180)}
             ).roll(**{lng_name: roll_value}, roll_coords=True)
@@ -598,7 +601,7 @@ class Field(Variable, DomainMixin):
             return res
         if dset_neg_conv and sel_pos_conv:
             # from [-180,-180] to [0,360]
-            roll_value = (ds[lng_name] < 0).sum().item()
+            roll_value = (ds[lng_name] <= 0).sum().item()
             res = (
                 ds.assign_coords({lng_name: (ds[lng_name] % 360)})
                 .roll(**{lng_name: -roll_value}, roll_coords=True)
