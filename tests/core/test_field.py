@@ -477,7 +477,7 @@ def test_locations_rotated_pole_1(era5_rotated_netcdf):
 def test_locations_rotated_pole_2(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
 
-    lat, lon = [35, 40], [15, 18]
+    lat, lon = [38, 40], [15, 18]
     res = wso.locations(latitude=lat, longitude=lon)
 
     assert res.latitude.name == "latitude"
@@ -485,7 +485,7 @@ def test_locations_rotated_pole_2(era5_rotated_netcdf):
     assert res.longitude.name == "longitude"
     assert res.longitude.ncvar == "lon"
     assert res.domain.type.name == 'POINTS'
-    
+
     assert res.latitude.type.name == 'DEPENDENT'
     assert len(res.latitude.dims) == 1
     assert res.latitude.dims[0].name == 'points'
