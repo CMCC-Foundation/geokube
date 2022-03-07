@@ -296,19 +296,19 @@ def test_locations_regular_latlon_1(era5_globe_netcdf):
     lat, lon = 40, 15
     res = tp.locations(latitude=lat, longitude=lon)
 
-    assert res.latitude.name == 'latitude'
-    assert res.latitude.ncvar == 'latitude'
-    assert res.longitude.name == 'longitude'
-    assert res.longitude.ncvar == 'longitude'
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "longitude"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon)
 
 
@@ -318,19 +318,19 @@ def test_locations_regular_latlon_2(era5_globe_netcdf):
     lat, lon = [35, 40], [15, 20]
     res = tp.locations(latitude=lat, longitude=lon)
 
-    assert res.latitude.name == 'latitude'
-    assert res.latitude.ncvar == 'latitude'
-    assert res.longitude.name == 'longitude'
-    assert res.longitude.ncvar == 'longitude'
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "longitude"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon)
 
 
@@ -339,7 +339,7 @@ def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
 
     with pytest.raises(
         ex.HCubeKeyError,
-        match='Axis of type `AxisType.VERTICAL` does not exist in the domain!'
+        match="Axis of type `AxisType.VERTICAL` does not exist in the domain!",
     ):
         tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
 
@@ -506,9 +506,7 @@ def test_geobbox_curvilinear_grid_all(nemo_ocean_16):
     assert vt.vertical.name == "depthv"
     assert vt.vertical.ncvar == "depthv"
 
-    res = vt.geobbox(
-        north=-19, south=-22, west=-115, east=-110, bottom=-5, top=-1
-    )
+    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110, bottom=-5, top=-1)
     assert res.latitude.name == "latitude"
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
@@ -529,9 +527,7 @@ def test_geobbox_curvilinear_grid_all(nemo_ocean_16):
 def test_geobbox_curvilinear_grid_all_wrong_vertical(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
 
-    res = vt.geobbox(
-        north=-19, south=-22, west=-115, east=-110, bottom=1, top=5
-    )
+    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110, bottom=1, top=5)
     assert res.latitude.name == "latitude"
     assert res.longitude.name == "longitude"
     assert res.latitude.ncvar == "nav_lat"
@@ -627,7 +623,6 @@ def test_geobbox_curvilinear_grid_vertical_partial(nemo_ocean_16):
     assert res.vertical.name == "vertical"
     assert res.vertical.ncvar == "depthv"
     assert res.domain.crs == vt.domain.crs
-
     assert res.vertical.values.size > 0
     assert np.all(res.vertical.values >= 2.5)
 
@@ -638,24 +633,24 @@ def test_locations_curvilinear_grid_horizontal_1(nemo_ocean_16):
     lat, lon = -20, -115
     res = vt.locations(latitude=lat, longitude=lon)
 
-    assert res.latitude.name == 'latitude'
-    assert res.latitude.ncvar == 'nav_lat'
-    assert res.longitude.name == 'longitude'
-    assert res.longitude.ncvar == 'nav_lon'
-    assert res.vertical.name == 'vertical'
-    assert res.vertical.ncvar == 'depthv'
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat, atol=0.1)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon, atol=0.1)
 
-    assert res.vertical.type.name == 'INDEPENDENT'
+    assert res.vertical.type.name == "INDEPENDENT"
     assert res.vertical.shape == vt.vertical.shape
     assert np.allclose(res.vertical.values, vt.vertical.values)
 
@@ -666,24 +661,24 @@ def test_locations_curvilinear_grid_horizontal_2(nemo_ocean_16):
     lat, lon = [-20, -22], [-115, -120]
     res = vt.locations(latitude=lat, longitude=lon)
 
-    assert res.latitude.name == 'latitude'
-    assert res.latitude.ncvar == 'nav_lat'
-    assert res.longitude.name == 'longitude'
-    assert res.longitude.ncvar == 'nav_lon'
-    assert res.vertical.name == 'vertical'
-    assert res.vertical.ncvar == 'depthv'
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat, atol=0.1)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon, atol=0.1)
 
-    assert res.vertical.type.name == 'INDEPENDENT'
+    assert res.vertical.type.name == "INDEPENDENT"
     assert res.vertical.shape == vt.vertical.shape
     assert np.allclose(res.vertical.values, vt.vertical.values)
 
@@ -694,26 +689,26 @@ def test_locations_curvilinear_grid_all_1(nemo_ocean_16):
     lat, lon, vert = -20, -115, -5
     res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
 
-    assert res.latitude.name == 'latitude'
-    assert res.latitude.ncvar == 'nav_lat'
-    assert res.longitude.name == 'longitude'
-    assert res.longitude.ncvar == 'nav_lon'
-    assert res.vertical.name == 'vertical'
-    assert res.vertical.ncvar == 'depthv'
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat, atol=0.1)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon, atol=0.1)
 
-    assert res.vertical.type.name == 'DEPENDENT'
+    assert res.vertical.type.name == "DEPENDENT"
     assert len(res.vertical.dims) == 1
-    assert res.vertical.dims[0].name == 'points'
+    assert res.vertical.dims[0].name == "points"
     assert np.allclose(
         -res.vertical.values, vert, atol=np.diff(vt.vertical.values).max() / 2
     )
@@ -725,26 +720,26 @@ def test_locations_curvilinear_grid_all_2(nemo_ocean_16):
     lat, lon, vert = [-20, -22], [-115, -120], [-5, -10]
     res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
 
-    assert res.latitude.name == 'latitude'
-    assert res.latitude.ncvar == 'nav_lat'
-    assert res.longitude.name == 'longitude'
-    assert res.longitude.ncvar == 'nav_lon'
-    assert res.vertical.name == 'vertical'
-    assert res.vertical.ncvar == 'depthv'
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat, atol=0.1)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon, atol=0.1)
 
-    assert res.vertical.type.name == 'DEPENDENT'
+    assert res.vertical.type.name == "DEPENDENT"
     assert len(res.vertical.dims) == 1
-    assert res.vertical.dims[0].name == 'points'
+    assert res.vertical.dims[0].name == "points"
     assert np.allclose(
         -res.vertical.values, vert, atol=np.diff(vt.vertical.values).max() / 2
     )
@@ -813,12 +808,12 @@ def test_locations_regular_latlon_single_point(era5_netcdf):
     assert res.latitude.values.item() == 41
     assert res.longitude.values.item() == 9
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
-    assert res.latitude.type.name == 'DEPENDENT'
-    assert res.longitude.type.name == 'DEPENDENT'
-    assert res.domain.type.name == 'POINTS'
+    assert res.latitude.dims[0].name == "points"
+    assert res.latitude.type.name == "DEPENDENT"
+    assert res.longitude.type.name == "DEPENDENT"
+    assert res.domain.type.name == "POINTS"
 
     dset = res.to_xarray()
     assert dset.latitude.item() == 41
@@ -828,9 +823,9 @@ def test_locations_regular_latlon_single_point(era5_netcdf):
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
     assert set(coords_str.split(" ")) == {"latitude", "longitude"}
-    assert 'points' in res.to_xarray().dims
-    assert 'latitude' not in res.to_xarray().dims
-    assert 'longitude' not in res.to_xarray().dims
+    assert "points" in res.to_xarray().dims
+    assert "latitude" not in res.to_xarray().dims
+    assert "longitude" not in res.to_xarray().dims
 
 
 def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
@@ -840,12 +835,12 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     assert np.all((res.latitude.values == 41) | (res.latitude.values == 42))
     assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
-    assert res.latitude.type.name == 'DEPENDENT'
-    assert res.longitude.type.name == 'DEPENDENT'
-    assert res.domain.type.name == 'POINTS'
+    assert res.latitude.dims[0].name == "points"
+    assert res.latitude.type.name == "DEPENDENT"
+    assert res.longitude.type.name == "DEPENDENT"
+    assert res.domain.type.name == "POINTS"
 
     dset = res.to_xarray()
     assert np.all((dset.latitude == 41) | (dset.latitude == 42))
@@ -855,9 +850,9 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
     assert set(coords_str.split(" ")) == {"latitude", "longitude"}
-    assert 'points' in res.to_xarray().dims
-    assert 'latitude' not in res.to_xarray().dims
-    assert 'longitude' not in res.to_xarray().dims
+    assert "points" in res.to_xarray().dims
+    assert "latitude" not in res.to_xarray().dims
+    assert "longitude" not in res.to_xarray().dims
 
 
 @pytest.mark.skip("`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid")
@@ -1082,3 +1077,54 @@ def test_to_xarray_time_with_bounds_nemo_with_mapping(nemo_ocean_16):
     assert "bounds" in da["time_centered"].encoding
     assert da["time_centered"].encoding["bounds"] == "time_bnds"
     assert "time_bnds" in da.coords
+
+
+def test_geobbox_regular_latlon_negative_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    res = tp.geobbox(north=10, south=-10, west=25, east=25)
+    assert np.all(res.longitude <= 25)
+    assert np.all(res.longitude >= 25)
+    assert np.all(res.latitude <= 10)
+    assert np.all(res.latitude >= -10)
+
+
+def test_sel_longitude_with_leftnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(None, 20)).longitude.values
+    assert np.all(selected_longitude <= 20)
+    assert np.all(selected_longitude >= np.min(tp.longitude.values))
+
+
+def test_sel_longitude_with_rightnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(45, None)).longitude.values
+    assert np.all(selected_longitude <= np.max(tp.longitude.values))
+    assert np.all(selected_longitude >= 45)
+
+
+def test_sel_longitude_with_leftnone_slice_change_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(None, -10)).longitude.values
+    assert np.all(selected_longitude <= -10)
+    assert np.all(selected_longitude >= -180)
+
+
+def test_sel_longitude_with_rightnone_slice_change_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(-20, None)).longitude.values
+    assert np.all(selected_longitude <= 180)
+    assert np.all(selected_longitude >= -20)
+
+
+def test_sel_latitude_with_leftnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_latitude = tp.sel(latitude=slice(None, 20)).latitude.values
+    assert np.all(selected_latitude >= 20)
+    assert np.all(selected_latitude <= np.max(tp.latitude.values))
+
+
+def test_sel_latitude_with_rightnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_latitude = tp.sel(latitude=slice(45, None)).latitude.values
+    assert np.all(selected_latitude >= np.min(tp.latitude.values))
+    assert np.all(selected_latitude <= 45)

@@ -101,7 +101,7 @@ class DataCube(DomainMixin):
             return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
         elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(
-                fields=[self._fields[k] for k in key],
+                fields=[self[k] for k in key],
                 properties=self.properties,
                 encoding=self.encoding,
             )
