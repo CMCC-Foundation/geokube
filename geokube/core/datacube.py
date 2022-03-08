@@ -265,7 +265,6 @@ class DataCube(DomainMixin):
         # TODO ancillary variables
         #
         for dv in ds.data_vars:
-            print(dv)
             fields.append(
                 Field.from_xarray(ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping)
             )
