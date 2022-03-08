@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import functools as ft
 import os
 import warnings
@@ -173,7 +174,32 @@ class Field(Variable, DomainMixin):
         east: Number | None = None,
         top: Number | None = None,
         bottom: Number | None = None,
-    ):
+    ) -> Field:
+        """
+        Subset a field using a bounding box.
+
+        Subsets the original field with the given bounding box.  If a
+        bound is omitted or `None`, no subsetting takes place in that
+        direction.  At least one bound must be provided.
+
+        Parameters
+        ----------
+        north, south, west, east : number or None, optional
+            Horizontal bounds.
+        top, bottom : number or None, optional
+            Vertical bounds.
+
+        Returns
+        -------
+        Field
+            A field with the coordinate values between given bounds.
+
+        Raises
+        ------
+        HCubeKeyError
+            If no bound is provided.
+
+        """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
@@ -312,12 +338,71 @@ class Field(Variable, DomainMixin):
 
     def locations(
         self,
-        latitude,
-        longitude,
-        vertical: Optional[
-            List[Number]
-        ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
-    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        latitude: Number | Sequence[Number],
+        longitude: Number | Sequence[Number],
+        vertical: Number | Sequence[Number] | None = None
+    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        """
+        Select points with given coordinates from a field.
+
+        Subsets the original field by selecting only the points with
+        provided coordinates and returns a new field with these points.
+        Uses the nearest neighbor method.  The resulting field has a
+        domain with the points nearest to the provided coordinates.
+
+        Parameters
+        ----------
+        latitude, longitude : array-like or number
+            Latitude and longitude coordinate values.  Must be of the
+            same shape.
+        vertical : array-like or number or None, optional
+            Verical coordinate values.  If given and not `None`, must be
+            of the same shape as `latitude` and `longitude`.
+
+        Returns
+        -------
+        Field
+            A field with a point domain that contains given locations.
+
+        Examples
+        --------
+        >>> result = field.locations(latitude=40, longitude=35)
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+
+        Vertical coordinate is optional.  If provided, the vertical axis
+        of the resulting field is also expressed with points:
+
+        >>> result = field.locations(
+        ...     latitude=40,
+        ...     longitude=35,
+        ...     vertical=-2
+        ... )
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786], dtype=float32)
+
+        It is possible to provide the coordinates of multiple points at
+        once with an array-like object.  In that case, `latitude`,
+        `longitude`, and `vertical` must have the same length.
+
+        >>> result = temperature_field.locations(
+        ...     latitude=[40, 41],
+        ...     longitude=[32, 35],
+        ...     vertical=[-2, -5]
+        ... )
+        >>> result.latitude.values
+        array([40.86   , 40.99889], dtype=float32)
+        >>> result.longitude.values
+        array([31.99963, 34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786, 2.5010786], dtype=float32)
+        """
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
         )
