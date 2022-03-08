@@ -515,7 +515,7 @@ class Field(Variable, DomainMixin):
 
     def _locations_idx(self, latitude, longitude, vertical=None):
         field = self
-        sel_kwa = {"roll_if_needed": False, "method": "nearest"}
+        sel_kwa = {"roll_if_needed": True, "method": "nearest"}
         lats = np.array(latitude, dtype=np.float32).reshape(-1)
         lons = np.array(longitude, dtype=np.float32).reshape(-1)
 
@@ -589,7 +589,10 @@ class Field(Variable, DomainMixin):
                 dim.name: xr.DataArray(data=idx_[:, i], dims="points")
                 for (i,), dim in np.ndenumerate(self.latitude.dims)
             }
-            result_dset = field.to_xarray(encoding=False).isel(indexers=idx)
+
+            result_dset = field.to_xarray(encoding=False)
+            result_dset = field._check_and_roll_longitude(result_dset, idx)
+            result_dset = result_dset.isel(indexers=idx)
             result_field = Field.from_xarray(
                 ds=result_dset,
                 ncvar=self.name,
@@ -648,9 +651,7 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
-        if Axis("longitude") not in indexers or not isinstance(
-            indexers[Axis("longitude")], slice
-        ):
+        if Axis("longitude") not in indexers:
             return ds
         if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
@@ -663,12 +664,17 @@ class Field(Variable, DomainMixin):
             self.domain[Axis("longitude")].max(),
         )
 
-        start = indexers[Axis("longitude")].start
-        stop = indexers[Axis("longitude")].stop
-        start = 0 if start is None else start
-        stop = 0 if stop is None else stop
-        sel_neg_conv = (start < 0) | (stop < 0)
-        sel_pos_conv = (start > 180) | (stop > 180)
+        if isinstance(indexers[Axis("longitude")], slice):
+            start = indexers[Axis("longitude")].start
+            stop = indexers[Axis("longitude")].stop
+            start = 0 if start is None else start
+            stop = 0 if stop is None else stop
+            sel_neg_conv = (start < 0) | (stop < 0)
+            sel_pos_conv = (start > 180) | (stop > 180)
+        else:
+            vals = np.array(indexers[Axis("longitude")], ndmin=1)
+            sel_neg_conv = np.any(vals < 0)
+            sel_pos_conv = np.any(vals > 180)
 
         dset_neg_conv = first_el < 0
         dset_pos_conv = first_el >= 0
