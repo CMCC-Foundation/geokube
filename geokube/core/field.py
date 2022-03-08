@@ -343,6 +343,8 @@ class Field(Variable, DomainMixin):
 
         Subsets the original field by selecting only the points with
         provided coordinates and returns a new field with these points.
+        Uses the nearest neighbor method.  The resulting field has a
+        domain with the points nearest to the provided coordinates.
 
         Parameters
         ----------
@@ -358,6 +360,44 @@ class Field(Variable, DomainMixin):
         Field
             A field with a point domain that contains given locations.
 
+        Examples
+        --------
+        >>> result = field.locations(latitude=40, longitude=35)
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+
+        Vertical coordinate is optional.  If provided, the vertical axis
+        of the resulting field is also expressed with points:
+
+        >>> result = field.locations(
+        ...     latitude=40,
+        ...     longitude=35,
+        ...     vertical=-2
+        ... )
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786], dtype=float32)
+
+        It is possible to provide the coordinates of multiple points at
+        once with an array-like object.  In that case, `latitude`,
+        `longitude`, and `vertical` must have the same length.
+
+        >>> result = temperature_field.locations(
+        ...     latitude=[40, 41],
+        ...     longitude=[32, 35],
+        ...     vertical=[-2, -5]
+        ... )
+        >>> result.latitude.values
+        array([40.86   , 40.99889], dtype=float32)
+        >>> result.longitude.values
+        array([31.99963, 34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786, 2.5010786], dtype=float32)
         """
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
