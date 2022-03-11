@@ -319,10 +319,9 @@ class Coordinate(Variable, Axis):
             )
 
         da = ds[ncvar]
-
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
-        ncvar = da.encoding.get("name", ncvar)
-        var.encoding.update(name=ncvar)
+        encoded_ncvar = da.encoding.get("name", ncvar)
+        var.encoding.update(name=encoded_ncvar)
 
         axis_name = Variable._get_name(da, mapping, id_pattern)
         # `axis` attribute cannot be used below, as e.g for EOBS `latitude` has axis `Y`, so wrong AxisType is chosen
@@ -331,7 +330,7 @@ class Coordinate(Variable, Axis):
             name=axis_name,
             is_dim=ncvar in da.dims,
             axistype=axistype,
-            encoding={"name": ncvar},
+            encoding={"name": encoded_ncvar},
         )
 
         bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds"))

@@ -559,3 +559,9 @@ def test_to_xarray_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
     assert "bounds_lon" in coord_dset
     assert "bounds" in coord_dset["nav_lon"].encoding
     assert coord_dset["nav_lon"].encoding["bounds"] == "bounds_lon"
+
+
+def test_era5_check_if_independent_when_name_encoding_set(era5_netcdf):
+    era5_netcdf["latitude"].encoding["name"] = "lat"
+    coord = Coordinate.from_xarray(era5_netcdf, "latitude")
+    assert coord.is_independent
