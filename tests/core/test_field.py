@@ -461,16 +461,16 @@ def test_locations_rotated_pole_1(era5_rotated_netcdf):
     assert res.latitude.ncvar == "lat"
     assert res.longitude.name == "longitude"
     assert res.longitude.ncvar == "lon"
-    assert res.domain.type.name == 'POINTS'
-    
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.domain.type.name == "POINTS"
+
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat, atol=0.1)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon, atol=0.1)
 
 
@@ -484,16 +484,16 @@ def test_locations_rotated_pole_2(era5_rotated_netcdf):
     assert res.latitude.ncvar == "lat"
     assert res.longitude.name == "longitude"
     assert res.longitude.ncvar == "lon"
-    assert res.domain.type.name == 'POINTS'
+    assert res.domain.type.name == "POINTS"
 
-    assert res.latitude.type.name == 'DEPENDENT'
+    assert res.latitude.type.name == "DEPENDENT"
     assert len(res.latitude.dims) == 1
-    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.dims[0].name == "points"
     assert np.allclose(res.latitude.values, lat, atol=0.1)
 
-    assert res.longitude.type.name == 'DEPENDENT'
+    assert res.longitude.type.name == "DEPENDENT"
     assert len(res.longitude.dims) == 1
-    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.dims[0].name == "points"
     assert np.allclose(res.longitude.values, lon, atol=0.1)
 
 

@@ -340,7 +340,7 @@ class Field(Variable, DomainMixin):
         self,
         latitude: Number | Sequence[Number],
         longitude: Number | Sequence[Number],
-        vertical: Number | Sequence[Number] | None = None
+        vertical: Number | Sequence[Number] | None = None,
     ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
         """
         Select points with given coordinates from a field.
