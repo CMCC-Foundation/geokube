@@ -56,7 +56,7 @@ class Domain(DomainMixin):
             self._coords = {}
             for name, coord in coords.items():
                 self._coords[name] = Domain._as_coordinate(coord, name)
-        if isinstance(coords, list):
+        if isinstance(coords, (list, set)):
             # TODO: check if it is a coordinate or just data!
             self._coords = {c.name: c for c in coords}
         if isinstance(coords, Domain):
@@ -297,12 +297,12 @@ class Domain(DomainMixin):
     ) -> "Domain":
 
         da = ds[ncvar]
-        coords = []
-        for dim in da.dims:
-            if dim in da.coords:
-                coords.append(
+        coords = set()
+        for dim_name in da.dims:
+            if dim_name in da.coords:
+                coords.add(
                     Coordinate.from_xarray(
-                        ds=ds, ncvar=dim, id_pattern=id_pattern, mapping=mapping
+                        ds=ds, ncvar=dim_name, id_pattern=id_pattern, mapping=mapping
                     )
                 )
 
@@ -310,12 +310,16 @@ class Domain(DomainMixin):
             "coordinates", ds[ncvar].encoding.get("coordinates", None)
         )
         if xr_coords is not None:
-            for coord in xr_coords.split(" "):
-                coords.append(
-                    Coordinate.from_xarray(
-                        ds=ds, ncvar=coord, id_pattern=id_pattern, mapping=mapping
-                    )
+            for coord_name in xr_coords.split(" "):
+                coord = Coordinate.from_xarray(
+                    ds=ds, ncvar=coord_name, id_pattern=id_pattern, mapping=mapping
                 )
+                if coord in coords:
+                    warnings.warn(
+                        f"Coordinate {coord_name} was already defined as dimension!"
+                    )
+                    continue
+                coords.add(coord)
         if "grid_mapping" in da.encoding:
             crs = parse_crs(da[da.encoding.get("grid_mapping")])
         elif "grid_mapping" in da.attrs:

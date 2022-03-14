@@ -23,26 +23,9 @@ class CoordinateType(Enum):
     INDEPENDENT = "independent"  # equivalent to CF DIMENSION Coordinate
 
 
-#
 # coordinate is a dimension or axis with data and units
 # coordinate name is dimension/axis name
 # coordinate axis type is dimension/axis type
-#
-
-# class Coordinate(Variable, Dimension):
-# __slots__ = ("_bounds")
-#    def __init__(
-#        self,
-#        name
-#        data: Union[np.ndarray, da.Array, Variable],
-# axis: Optional[Union[str, AxisType, Axis, Dimension]],
-# dims: Optional[Tuple[Dimension]] = None,
-# units: Optional[Union[Unit, str]] = None,
-# bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
-# properties: Optional[Mapping[Any, Any]] = None,
-# encoding: Optional[Mapping[Any, Any]] = None
-
-# )
 
 
 class Coordinate(Variable, Axis):
@@ -121,6 +104,17 @@ class Coordinate(Variable, Axis):
             axis=(Axis)(self),
         )
         self._update_properties_and_encoding()
+
+    def __hash__(self):
+        # NOTE: maybe hash for Cooridnate should be more complex.
+        return Axis.__hash__(self)
+
+    def __eq__(self, other):
+        # NOTE: it doesn't take into account real values at all
+        return Axis.__eq__(self, other)
+
+    def __ne__(self, other):
+        return not self == other
 
     def _update_properties_and_encoding(self):
         if "standard_name" not in self.properties:
@@ -332,7 +326,6 @@ class Coordinate(Variable, Axis):
             axistype=axistype,
             encoding={"name": encoded_ncvar},
         )
-
         bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds"))
         if bnds_ncvar:
             bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)

@@ -74,7 +74,7 @@ def test_from_xarray_curvilinear_grid(nemo_ocean_16):
     assert "x" not in domain
     assert "y" not in domain
     assert domain.time.has_bounds
-    assert isinstance(domain.time.bounds["time_centered_bounds"], Bounds1D)
+    assert isinstance(domain.time.bounds["time_counter_bounds"], Bounds1D)
     assert domain.vertical.has_bounds
     assert isinstance(domain.vertical.bounds["depthv_bounds"], Bounds1D)
     assert domain.latitude.has_bounds
@@ -273,3 +273,21 @@ def test_regular_lat_lon_domain_with_bounds_and_properties_from_dict():
     assert domain[AxisType.TIME].has_bounds
     assert "some_prop" in domain[Axis("Time")].properties
     assert domain[Axis("Time")].properties["some_prop"] == "prop_val"
+
+
+def test_skip_redundand_coord_from_coordinates_string_in_encoding(era5_globe_netcdf):
+    era5_globe_netcdf["tp"].encoding["coordinates"] = "time latitude"
+    with pytest.warns(
+        UserWarning,
+        match=r"Coordinate (time|latitude) was already defined as dimension!",
+    ):
+        Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+
+def test_skip_redundand_coord_from_coordinates_string_in_attrs(era5_globe_netcdf):
+    era5_globe_netcdf["tp"].attrs["coordinates"] = "time latitude"
+    with pytest.warns(
+        UserWarning,
+        match=r"Coordinate (time|latitude) was already defined as dimension!",
+    ):
+        Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
