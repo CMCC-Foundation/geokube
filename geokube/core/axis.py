@@ -130,10 +130,13 @@ class Axis:
         return self._is_dim
 
     def __hash__(self):
-        return hash((self._name, self._type, self._encoding, self._is_dim))
+        enc_keys = (
+            tuple(self._encoding.keys()) if self._encoding is not None else tuple()
+        )
+        return hash((self._name, self._type, enc_keys, self._is_dim))
 
     def __eq__(self, other):
-        if isinstance(other, Axis):
+        if issubclass(type(other), Axis):
             return (
                 (self.name == other.name)
                 and (self.type == other.type)

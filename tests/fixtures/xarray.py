@@ -97,6 +97,10 @@ def era5_rotated_netcdf_soil_bnds(era5_rotated_netcdf_wso):
 
 @pytest.fixture
 def nemo_ocean_16():
-    yield xr.open_mfdataset(
+    dset = xr.open_mfdataset(
         "tests//resources//nemo_ocean_16.nc", chunks="auto", decode_coords="all"
     )
+    # NOTE: there are two time-related coordinates.
+    # It is not supported yet to have multiple coordinates of the same AxisType
+    dset["vt"].encoding["coordinates"] = "depthv nav_lat nav_lon"
+    yield dset.drop(["time_centered", "time_centered_bounds"])
