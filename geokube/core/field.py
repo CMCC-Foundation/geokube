@@ -881,7 +881,10 @@ class Field(Variable, DomainMixin):
         # TODO: handle `formula_terms` bounds attribute
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
         ds = self.to_xarray(encoding=False)
-        (bnds_name, bnds), = self.time.bounds.items()
+        if (time_bnds := self.time.bounds) is None:
+            bnds_name, bnds = 'time_bnds', None
+        else:
+            (bnds_name, bnds), = time_bnds.items()
         if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
@@ -892,6 +895,7 @@ class Field(Variable, DomainMixin):
             )
             for i, v in enumerate(da.groups.values()):
                 new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
+            # TODO: Check if this is redundant
             if bnds is None:
                 Field._LOG.warn("Time bounds not defined for the cell methods!")
                 warnings.warn("Time bounds not defined for the cell methods!")
@@ -909,6 +913,8 @@ class Field(Variable, DomainMixin):
              coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
         field = Field.from_xarray(res, ncvar=self.name)
+        field.domain.crs = self.domain.crs
+        field.domain._type = self.domain._type
         # field.time.bounds = {f'{bnds_name}': new_bnds}
         
         # TODO: adjust cell_methods after resampling!
