@@ -257,6 +257,93 @@ def test_geobbox_regular_latlon_2(era5_globe_netcdf):
     assert dset.longitude.attrs["units"] == "degrees_east"
 
 
+def test_geobbox_regular_latlon_3(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    res = tp.geobbox(north=10, west=2)
+    assert np.all(res["latitude"].values <= 10)
+    assert np.all(res.latitude.values <= 10)
+
+    assert np.all(res["longitude"].values >= 2)
+    assert np.all(res.longitude.values >= 2)
+
+    dset = res.to_xarray(True)
+    assert np.all(dset.latitude <= 10)
+    assert dset.latitude.attrs["units"] == "degrees_north"
+
+    assert np.all(dset.longitude >= 2)
+    assert dset.longitude.attrs["units"] == "degrees_east"
+
+
+def test_geobbox_regular_latlon_4(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    with pytest.raises(ValueError, match="'top' and 'bottom' must be None"):
+        tp.geobbox(top=2)
+
+    res = tp.geobbox(north=10)
+    assert np.all(res["latitude"].values <= 10)
+    assert np.all(res.latitude.values <= 10)
+
+    dset = res.to_xarray(True)
+    assert np.all(dset.latitude <= 10)
+    assert dset.latitude.attrs["units"] == "degrees_north"
+
+
+def test_locations_regular_latlon_1(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    lat, lon = 40, 15
+    res = tp.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "longitude"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon)
+
+
+def test_locations_regular_latlon_2(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    lat, lon = [35, 40], [15, 20]
+    res = tp.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "longitude"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon)
+
+
+def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+    with pytest.raises(
+        ex.HCubeKeyError,
+        match="Axis of type `AxisType.VERTICAL` does not exist in the domain!",
+    ):
+        tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
+
+
 def test_geobbox_rotated_pole(era5_rotated_netcdf):
     wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
     assert wso.latitude.name == "latitude"
@@ -297,25 +384,365 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert "crs" in dset.coords
 
 
-def test_geobbox_curvilinear_grid(nemo_ocean_16):
+def test_geobbox_rotated_pole_partial_arguments_1(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    res = wso.geobbox(north=40, west=16)
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.crs == crs.RotatedGeogCS(
+        grid_north_pole_latitude=47, grid_north_pole_longitude=-168
+    )
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values <= 40) / W > 0.95
+    assert np.sum(res.longitude.values >= 16) / W > 0.95
+
+    dset = res.to_xarray(encoding=True)
+    assert "W_SO" in dset.data_vars
+    assert "rlat" in dset.coords
+    assert "rlon" in dset.coords
+    assert "lat" in dset
+    assert dset.lat.attrs["units"] == "degrees_north"
+    assert "lon" in dset
+    assert dset.lon.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+    dset = res.to_xarray(False)
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in dset.data_vars
+    assert "latitude" in dset
+    assert dset.latitude.attrs["units"] == "degrees_north"
+    assert "longitude" in dset
+    assert dset.longitude.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+
+def test_geobbox_rotated_pole_partial_arguments_2(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    res = wso.geobbox(north=40)
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.crs == crs.RotatedGeogCS(
+        grid_north_pole_latitude=47, grid_north_pole_longitude=-168
+    )
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values <= 40) / W > 0.95
+
+    dset = res.to_xarray(encoding=True)
+    assert "W_SO" in dset.data_vars
+    assert "rlat" in dset.coords
+    assert "rlon" in dset.coords
+    assert "lat" in dset
+    assert dset.lat.attrs["units"] == "degrees_north"
+    assert "lon" in dset
+    assert dset.lon.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+    dset = res.to_xarray(False)
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in dset.data_vars
+    assert "latitude" in dset
+    assert dset.latitude.attrs["units"] == "degrees_north"
+    assert "longitude" in dset
+    assert dset.longitude.attrs["units"] == "degrees_east"
+    assert "crs" in dset.coords
+
+
+def test_locations_rotated_pole_1(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    lat, lon = 40, 15
+    res = wso.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.type.name == "POINTS"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+
+def test_locations_rotated_pole_2(era5_rotated_netcdf):
+    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
+
+    lat, lon = [38, 40], [15, 18]
+    res = wso.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "lon"
+    assert res.domain.type.name == "POINTS"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+
+def test_geobbox_curvilinear_grid_all(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     assert vt.latitude.name == "latitude"
     assert vt.longitude.name == "longitude"
     assert vt.latitude.ncvar == "nav_lat"
     assert vt.longitude.ncvar == "nav_lon"
+    assert vt.vertical.name == "depthv"
+    assert vt.vertical.ncvar == "depthv"
 
-    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110)
-    assert vt.latitude.name == "latitude"
-    assert vt.longitude.name == "longitude"
-    assert vt.latitude.ncvar == "nav_lat"
-    assert vt.longitude.ncvar == "nav_lon"
-    assert res.domain.crs == crs.CurvilinearGrid()
+    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110, bottom=-5, top=-1)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
 
     W = np.prod(res.latitude.shape)
     assert np.sum(res.latitude.values >= -22) / W > 0.95
     assert np.sum(res.latitude.values <= -19) / W > 0.95
     assert np.sum(res.longitude.values >= -115) / W > 0.95
     assert np.sum(res.longitude.values <= -110) / W > 0.95
+    assert res.vertical.values.size == 5
+    assert np.all((res.vertical.values >= 1) & (res.vertical.values <= 5))
+
+
+def test_geobbox_curvilinear_grid_all_wrong_vertical(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110, bottom=1, top=5)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values >= -22) / W > 0.95
+    assert np.sum(res.latitude.values <= -19) / W > 0.95
+    assert np.sum(res.longitude.values >= -115) / W > 0.95
+    assert np.sum(res.longitude.values <= -110) / W > 0.95
+    assert res.vertical.values.size == 0
+
+
+def test_geobbox_curvilinear_grid_horizontal_all(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(north=-19, south=-22, west=-115, east=-110)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values >= -22) / W > 0.95
+    assert np.sum(res.latitude.values <= -19) / W > 0.95
+    assert np.sum(res.longitude.values >= -115) / W > 0.95
+    assert np.sum(res.longitude.values <= -110) / W > 0.95
+
+
+def test_geobbox_curvilinear_grid_horizontal_partial_1(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(north=-19, west=-115)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values <= -19) / W > 0.95
+    assert np.sum(res.longitude.values >= -115) / W > 0.95
+
+
+def test_geobbox_curvilinear_grid_horizontal_partial_2(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(north=-19)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    W = np.prod(res.latitude.shape)
+    assert np.sum(res.latitude.values <= -19) / W > 0.95
+
+
+def test_geobbox_curvilinear_grid_vertical_both(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(bottom=-5, top=-1)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+
+    assert res.vertical.values.size > 0
+    assert np.all((res.vertical.values >= 1) & (res.vertical.values <= 5))
+
+
+def test_geobbox_curvilinear_grid_vertical_partial(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    res = vt.geobbox(top=-2.5)
+    assert res.latitude.name == "latitude"
+    assert res.longitude.name == "longitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+    assert res.domain.crs == vt.domain.crs
+    assert res.vertical.values.size > 0
+    assert np.all(res.vertical.values >= 2.5)
+
+
+def test_locations_curvilinear_grid_horizontal_1(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon = -20, -115
+    res = vt.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == "INDEPENDENT"
+    assert res.vertical.shape == vt.vertical.shape
+    assert np.allclose(res.vertical.values, vt.vertical.values)
+
+
+def test_locations_curvilinear_grid_horizontal_2(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon = [-20, -22], [-115, -120]
+    res = vt.locations(latitude=lat, longitude=lon)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == "INDEPENDENT"
+    assert res.vertical.shape == vt.vertical.shape
+    assert np.allclose(res.vertical.values, vt.vertical.values)
+
+
+def test_locations_curvilinear_grid_all_1(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon, vert = -20, -115, -5
+    res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == "DEPENDENT"
+    assert len(res.vertical.dims) == 1
+    assert res.vertical.dims[0].name == "points"
+    assert np.allclose(
+        -res.vertical.values, vert, atol=np.diff(vt.vertical.values).max() / 2
+    )
+
+
+def test_locations_curvilinear_grid_all_2(nemo_ocean_16):
+    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
+
+    lat, lon, vert = [-20, -22], [-115, -120], [-5, -10]
+    res = vt.locations(latitude=lat, longitude=lon, vertical=vert)
+
+    assert res.latitude.name == "latitude"
+    assert res.latitude.ncvar == "nav_lat"
+    assert res.longitude.name == "longitude"
+    assert res.longitude.ncvar == "nav_lon"
+    assert res.vertical.name == "vertical"
+    assert res.vertical.ncvar == "depthv"
+
+    assert res.latitude.type.name == "DEPENDENT"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert np.allclose(res.latitude.values, lat, atol=0.1)
+
+    assert res.longitude.type.name == "DEPENDENT"
+    assert len(res.longitude.dims) == 1
+    assert res.longitude.dims[0].name == "points"
+    assert np.allclose(res.longitude.values, lon, atol=0.1)
+
+    assert res.vertical.type.name == "DEPENDENT"
+    assert len(res.vertical.dims) == 1
+    assert res.vertical.dims[0].name == "points"
+    assert np.allclose(
+        -res.vertical.values, vert, atol=np.diff(vt.vertical.values).max() / 2
+    )
 
 
 def test_timecombo_single_hour(era5_netcdf):
@@ -374,12 +801,46 @@ def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
     assert res["longitude"].type is CoordinateType.SCALAR
 
 
+def test_locations_regular_latlon_single_point(era5_netcdf):
+    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
+
+    res = d2m.locations(latitude=41, longitude=9)
+    assert res.latitude.values.item() == 41
+    assert res.longitude.values.item() == 9
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert res.latitude.type.name == "DEPENDENT"
+    assert res.longitude.type.name == "DEPENDENT"
+    assert res.domain.type.name == "POINTS"
+
+    dset = res.to_xarray()
+    assert dset.latitude.item() == 41
+    assert dset.longitude.item() == 9
+    assert dset["d2m"].attrs["units"] == "K"
+    coords_str = dset["d2m"].attrs.get(
+        "coordinates", dset["d2m"].encoding.get("coordinates")
+    )
+    assert set(coords_str.split(" ")) == {"latitude", "longitude"}
+    assert "points" in res.to_xarray().dims
+    assert "latitude" not in res.to_xarray().dims
+    assert "longitude" not in res.to_xarray().dims
+
+
 def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
     res = d2m.locations(latitude=[41, 42], longitude=[9, 12])
     assert np.all((res.latitude.values == 41) | (res.latitude.values == 42))
     assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert len(res.latitude.dims) == 1
+    assert res.latitude.dims[0].name == "points"
+    assert res.latitude.type.name == "DEPENDENT"
+    assert res.longitude.type.name == "DEPENDENT"
+    assert res.domain.type.name == "POINTS"
 
     dset = res.to_xarray()
     assert np.all((dset.latitude == 41) | (dset.latitude == 42))
@@ -389,6 +850,9 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
         "coordinates", dset["d2m"].encoding.get("coordinates")
     )
     assert set(coords_str.split(" ")) == {"latitude", "longitude"}
+    assert "points" in res.to_xarray().dims
+    assert "latitude" not in res.to_xarray().dims
+    assert "longitude" not in res.to_xarray().dims
 
 
 @pytest.mark.skip("`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid")
@@ -581,13 +1045,13 @@ def test_to_xarray_time_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
     field = Field.from_xarray(nemo_ocean_16, "vt")
     da = field.to_xarray(encoding=False)
     assert "bounds" in da["time"].encoding
-    assert da["time"].encoding["bounds"] == "time_centered_bounds"
-    assert "time_centered_bounds" in da.coords
+    assert da["time"].encoding["bounds"] == "time_counter_bounds"
+    assert "time_counter_bounds" in da.coords
 
     da = field.to_xarray(encoding=True)
-    assert "bounds" in da["time_centered"].encoding
-    assert da["time_centered"].encoding["bounds"] == "time_centered_bounds"
-    assert "time_centered_bounds" in da.coords
+    assert "bounds" in da["time_counter"].encoding
+    assert da["time_counter"].encoding["bounds"] == "time_counter_bounds"
+    assert "time_counter_bounds" in da.coords
 
 
 def test_to_xarray_time_with_bounds_mapping(era5_rotated_netcdf):
@@ -602,7 +1066,7 @@ def test_to_xarray_time_with_bounds_mapping(era5_rotated_netcdf):
 
 def test_to_xarray_time_with_bounds_nemo_with_mapping(nemo_ocean_16):
     field = Field.from_xarray(
-        nemo_ocean_16, "vt", mapping={"time_centered_bounds": {"name": "time_bnds"}}
+        nemo_ocean_16, "vt", mapping={"time_counter_bounds": {"name": "time_bnds"}}
     )
     da = field.to_xarray(encoding=False)
     assert "bounds" in da["time"].encoding
@@ -610,6 +1074,57 @@ def test_to_xarray_time_with_bounds_nemo_with_mapping(nemo_ocean_16):
     assert "time_bnds" in da.coords
 
     da = field.to_xarray(encoding=True)
-    assert "bounds" in da["time_centered"].encoding
-    assert da["time_centered"].encoding["bounds"] == "time_bnds"
+    assert "bounds" in da["time_counter"].encoding
+    assert da["time_counter"].encoding["bounds"] == "time_bnds"
     assert "time_bnds" in da.coords
+
+
+def test_geobbox_regular_latlon_negative_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    res = tp.geobbox(north=10, south=-10, west=25, east=25)
+    assert np.all(res.longitude <= 25)
+    assert np.all(res.longitude >= 25)
+    assert np.all(res.latitude <= 10)
+    assert np.all(res.latitude >= -10)
+
+
+def test_sel_longitude_with_leftnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(None, 20)).longitude.values
+    assert np.all(selected_longitude <= 20)
+    assert np.all(selected_longitude >= np.min(tp.longitude.values))
+
+
+def test_sel_longitude_with_rightnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(45, None)).longitude.values
+    assert np.all(selected_longitude <= np.max(tp.longitude.values))
+    assert np.all(selected_longitude >= 45)
+
+
+def test_sel_longitude_with_leftnone_slice_change_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(None, -10)).longitude.values
+    assert np.all(selected_longitude <= -10)
+    assert np.all(selected_longitude >= -180)
+
+
+def test_sel_longitude_with_rightnone_slice_change_convention(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_longitude = tp.sel(longitude=slice(-20, None)).longitude.values
+    assert np.all(selected_longitude <= 180)
+    assert np.all(selected_longitude >= -20)
+
+
+def test_sel_latitude_with_leftnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_latitude = tp.sel(latitude=slice(None, 20)).latitude.values
+    assert np.all(selected_latitude >= 20)
+    assert np.all(selected_latitude <= np.max(tp.latitude.values))
+
+
+def test_sel_latitude_with_rightnone_slice(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    selected_latitude = tp.sel(latitude=slice(45, None)).latitude.values
+    assert np.all(selected_latitude >= np.min(tp.latitude.values))
+    assert np.all(selected_latitude <= 45)

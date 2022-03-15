@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import functools as ft
 import os
 import warnings
@@ -167,13 +168,38 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def geobbox(
         self,
-        north: Number,
-        south: Number,
-        west: Number,
-        east: Number,
+        north: Number | None = None,
+        south: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
         top: Number | None = None,
         bottom: Number | None = None,
-    ):
+    ) -> Field:
+        """
+        Subset a field using a bounding box.
+
+        Subsets the original field with the given bounding box.  If a
+        bound is omitted or `None`, no subsetting takes place in that
+        direction.  At least one bound must be provided.
+
+        Parameters
+        ----------
+        north, south, west, east : number or None, optional
+            Horizontal bounds.
+        top, bottom : number or None, optional
+            Vertical bounds.
+
+        Returns
+        -------
+        Field
+            A field with the coordinate values between given bounds.
+
+        Raises
+        ------
+        HCubeKeyError
+            If no bound is provided.
+
+        """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
@@ -266,6 +292,10 @@ class Field(Variable, DomainMixin):
                     "vertical coordinate or it is constant"
                 )
             vert_incr = util_methods.is_nondecreasing(vert.data)
+            if vert.attrs.get("positive") == "down":
+                top = None if top is None else -top
+                bottom = None if bottom is None else -bottom
+                vert_incr = ~vert_incr
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
             vert_idx = {vert.name: vert_slice}
             field = field.sel(indexers=vert_idx, roll_if_needed=True)
@@ -282,13 +312,13 @@ class Field(Variable, DomainMixin):
             # Case of latitude and longitude being dependent.
             # Specifying the mask(s) and extracting the indices that correspond
             # to the inside the bounding box.
-            lat_mask = (lat.data >= south) & (lat.data <= north)
-            lon_mask = (lon.data >= west) & (lon.data <= east)
+            lat_mask = util_methods.is_between(lat.data, south, north)
+            lon_mask = util_methods.is_between(lon.data, west, east)
             # TODO: Clarify why this is required.
             if lat_mask.sum() == 0:
-                lat_mask = (lat.data <= south) & (lat.data >= north)
+                lat_mask = util_methods.is_between(lat.data, north, south)
             if lon_mask.sum() == 0:
-                lon_mask = (lon.data <= float(west)) & (lon.data <= float(east))
+                lon_mask = util_methods.is_between(lon.data, east, west)
             nonzero_idx = np.nonzero(lat_mask & lon_mask)
             idx = {
                 lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
@@ -308,12 +338,71 @@ class Field(Variable, DomainMixin):
 
     def locations(
         self,
-        latitude,
-        longitude,
-        vertical: Optional[
-            List[Number]
-        ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
-    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        latitude: Number | Sequence[Number],
+        longitude: Number | Sequence[Number],
+        vertical: Number | Sequence[Number] | None = None,
+    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        """
+        Select points with given coordinates from a field.
+
+        Subsets the original field by selecting only the points with
+        provided coordinates and returns a new field with these points.
+        Uses the nearest neighbor method.  The resulting field has a
+        domain with the points nearest to the provided coordinates.
+
+        Parameters
+        ----------
+        latitude, longitude : array-like or number
+            Latitude and longitude coordinate values.  Must be of the
+            same shape.
+        vertical : array-like or number or None, optional
+            Verical coordinate values.  If given and not `None`, must be
+            of the same shape as `latitude` and `longitude`.
+
+        Returns
+        -------
+        Field
+            A field with a point domain that contains given locations.
+
+        Examples
+        --------
+        >>> result = field.locations(latitude=40, longitude=35)
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+
+        Vertical coordinate is optional.  If provided, the vertical axis
+        of the resulting field is also expressed with points:
+
+        >>> result = field.locations(
+        ...     latitude=40,
+        ...     longitude=35,
+        ...     vertical=-2
+        ... )
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786], dtype=float32)
+
+        It is possible to provide the coordinates of multiple points at
+        once with an array-like object.  In that case, `latitude`,
+        `longitude`, and `vertical` must have the same length.
+
+        >>> result = temperature_field.locations(
+        ...     latitude=[40, 41],
+        ...     longitude=[32, 35],
+        ...     vertical=[-2, -5]
+        ... )
+        >>> result.latitude.values
+        array([40.86   , 40.99889], dtype=float32)
+        >>> result.longitude.values
+        array([31.99963, 34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786, 2.5010786], dtype=float32)
+        """
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
         )
@@ -426,7 +515,7 @@ class Field(Variable, DomainMixin):
 
     def _locations_idx(self, latitude, longitude, vertical=None):
         field = self
-        sel_kwa = {"roll_if_needed": False, "method": "nearest"}
+        sel_kwa = {"roll_if_needed": True, "method": "nearest"}
         lats = np.array(latitude, dtype=np.float32).reshape(-1)
         lons = np.array(longitude, dtype=np.float32).reshape(-1)
 
@@ -446,6 +535,8 @@ class Field(Variable, DomainMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
+            if field.vertical.attrs.get("positive") == "down":
+                verts = -verts
             verts = xr.DataArray(data=verts, dims="points")
             vert_ax = Axis(name=self.vertical.name, axistype=AxisType.VERTICAL)
             field = field.sel(indexers={vert_ax: verts}, **sel_kwa)
@@ -498,7 +589,10 @@ class Field(Variable, DomainMixin):
                 dim.name: xr.DataArray(data=idx_[:, i], dims="points")
                 for (i,), dim in np.ndenumerate(self.latitude.dims)
             }
-            result_dset = field.to_xarray(encoding=False).isel(indexers=idx)
+
+            result_dset = field.to_xarray(encoding=False)
+            result_dset = field._check_and_roll_longitude(result_dset, idx)
+            result_dset = result_dset.isel(indexers=idx)
             result_field = Field.from_xarray(
                 ds=result_dset,
                 ncvar=self.name,
@@ -506,7 +600,9 @@ class Field(Variable, DomainMixin):
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
             )
-            result_field.domain.crs = RegularLatLon()
+
+        result_field.domain.crs = RegularLatLon()
+        result_field.domain._type = DomainType.POINTS
 
         return result_field
 
@@ -555,7 +651,7 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
-        if "longitude" not in indexers or not isinstance(indexers["longitude"], slice):
+        if Axis("longitude") not in indexers:
             return ds
         if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
@@ -568,11 +664,17 @@ class Field(Variable, DomainMixin):
             self.domain[Axis("longitude")].max(),
         )
 
-        start = indexers[Axis("longitude")].start
-        stop = indexers[Axis("longitude")].stop
-
-        sel_neg_conv = (start < 0) | (stop < 0)
-        sel_pos_conv = (start > 180) | (stop > 180)
+        if isinstance(indexers[Axis("longitude")], slice):
+            start = indexers[Axis("longitude")].start
+            stop = indexers[Axis("longitude")].stop
+            start = 0 if start is None else start
+            stop = 0 if stop is None else stop
+            sel_neg_conv = (start < 0) | (stop < 0)
+            sel_pos_conv = (start > 180) | (stop > 180)
+        else:
+            vals = np.array(indexers[Axis("longitude")], ndmin=1)
+            sel_neg_conv = np.any(vals < 0)
+            sel_pos_conv = np.any(vals > 180)
 
         dset_neg_conv = first_el < 0
         dset_pos_conv = first_el >= 0
@@ -581,7 +683,7 @@ class Field(Variable, DomainMixin):
         if dset_pos_conv and sel_neg_conv:
             # from [0,360] to [-180,180]
             # Attributes are lost while doing `assign_coords`. They need to be reassigned (e.q. by `update`)
-            roll_value = (ds[lng_name] > 180).sum().item()
+            roll_value = (ds[lng_name] >= 180).sum().item()
             res = ds.assign_coords(
                 {lng_name: (((ds[lng_name] + 180) % 360) - 180)}
             ).roll(**{lng_name: roll_value}, roll_coords=True)
@@ -590,7 +692,7 @@ class Field(Variable, DomainMixin):
             return res
         if dset_neg_conv and sel_pos_conv:
             # from [-180,-180] to [0,360]
-            roll_value = (ds[lng_name] < 0).sum().item()
+            roll_value = (ds[lng_name] <= 0).sum().item()
             res = (
                 ds.assign_coords({lng_name: (ds[lng_name] % 360)})
                 .roll(**{lng_name: -roll_value}, roll_coords=True)
