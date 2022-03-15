@@ -291,3 +291,14 @@ def test_skip_redundand_coord_from_coordinates_string_in_attrs(era5_globe_netcdf
         match=r"Coordinate (time|latitude) was already defined as dimension!",
     ):
         Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+
+def test_skip_coordinate_from_coordinates_string_if_not_present_in_dataset(
+    era5_globe_netcdf,
+):
+    era5_globe_netcdf["tp"].attrs["coordinates"] = "time not_exsiting"
+    with pytest.warns(
+        UserWarning,
+        match=r"Coordinate not_exsiting does not exist in the dataset!",
+    ):
+        Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
