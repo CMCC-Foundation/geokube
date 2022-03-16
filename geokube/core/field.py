@@ -834,25 +834,31 @@ class Field(Variable, DomainMixin):
         """
         Perform resampling along the available `time` coordinate.
         Adjust appropriately time bounds.
+
         Parameters
         ----------
         operator : callable or str
-            Callable-object used for aggregation or string representation of a function.
-            Currently supported are methods of geokube.MethodType
+            Callable-object used for aggregation or string
+            representation of a function.  Currently supported are the
+            methods of ``geokube.MethodType``.
         frequency :  str
-            Expected resampling frequency
-        inplace : bool
-            Indicate if operations should be done inplace or a modified copy should be returned
+            Expected resampling frequency.
+
         Returns
         ----------
         field : Field
-            The field with values after resampling procedure if inplace==True, modified copy otherwise
+            The field with values after resampling procedure.
+
         Examples:
         ----------
-        Resample to day frequency taking the maximum over the elements in each day:
-        >>> res = field.resample("max", frequency='1D')
-        Resample to 2 month frequency taking the sum (omitting NaNs) over each 2 months
-        >>> resulting_field = field.resample("nansum", frequency='2M')
+        Resample to day frequency taking the maximum over the elements
+        in each day:
+        >>> res = field.resample("maximum", frequency='1D')
+
+        Resample to two-monts frequency taking the sum over each two
+        months:
+        >>> resulting_field = field.resample("sum", frequency='2M')
+
         """
         func = None
         if isinstance(operator, str):
