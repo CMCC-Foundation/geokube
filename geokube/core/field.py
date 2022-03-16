@@ -882,7 +882,7 @@ class Field(Variable, DomainMixin):
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
         ds = self.to_xarray(encoding=False)
         if (time_bnds := self.time.bounds) is None:
-            bnds_name, bnds = 'time_bnds', None
+            bnds_name, bnds = f'{self.time.name}_bnds', None
         else:
             (bnds_name, bnds), = time_bnds.items()
 
@@ -913,8 +913,11 @@ class Field(Variable, DomainMixin):
              da,
              coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
+        # NOTE: This is a workaround that should be replaced by setting the
+        # coordinate bounds after the field is created.
         res.coords[self.time.name].encoding['bounds'] = bnds_name
         field = Field.from_xarray(res, ncvar=self.name)
+        # field.time.bounds = new_bnds
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
 
