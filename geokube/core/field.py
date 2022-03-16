@@ -885,6 +885,7 @@ class Field(Variable, DomainMixin):
             bnds_name, bnds = 'time_bnds', None
         else:
             (bnds_name, bnds), = time_bnds.items()
+
         if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
@@ -915,8 +916,8 @@ class Field(Variable, DomainMixin):
         field = Field.from_xarray(res, ncvar=self.name)
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
-        # field.time.bounds = {f'{bnds_name}': new_bnds}
-        
+        field.time.bounds = {f'{bnds_name}': new_bnds}
+
         # TODO: adjust cell_methods after resampling!
 
         # #########################################################################################
