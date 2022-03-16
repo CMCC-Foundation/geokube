@@ -913,10 +913,10 @@ class Field(Variable, DomainMixin):
              da,
              coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
+        res.coords[self.time.name].encoding['bounds'] = bnds_name
         field = Field.from_xarray(res, ncvar=self.name)
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
-        field.time.bounds = {f'{bnds_name}': new_bnds}
 
         # TODO: adjust cell_methods after resampling!
 
