@@ -1128,3 +1128,19 @@ def test_sel_latitude_with_rightnone_slice(era5_globe_netcdf):
     selected_latitude = tp.sel(latitude=slice(45, None)).latitude.values
     assert np.all(selected_latitude >= np.min(tp.latitude.values))
     assert np.all(selected_latitude <= 45)
+
+
+def test_adding_time_bounds(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
+    assert field.time.bounds is None
+    time_bounds = np.empty(shape=(field.time.size, 2), dtype=field.time.dtype)
+    time_resolution = field.time.values[1] - field.time.values[0]
+    time_bounds[0, 0] = field.time.values[0] - time_resolution
+    time_bounds[1:, 0] = field.time.values[:-1]
+    time_bounds[:, 1] = field.time.values
+    field.time.bounds = time_bounds
+    assert isinstance(field.time.bounds, dict)
+    assert 'time_bounds' in field.time.bounds
+    assert field.time.bounds['time_bounds'].shape == field.time.shape + (2,)
+    assert 'bounds' in field.time.encoding
+    assert field.time.encoding['bounds'] == 'time_bounds'
