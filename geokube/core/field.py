@@ -474,7 +474,7 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-        field.domain.type = DomainType.POINTS
+        field.domain.type = domain.type
         return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
