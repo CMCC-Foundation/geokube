@@ -96,13 +96,7 @@ class Coordinate(Variable, Axis):
         )
         # Coordinates are always stored as NumPy data
         self._data = np.array(self._data)
-        self._bounds = Coordinate._process_bounds(
-            bounds,
-            name=self.name,
-            variable_shape=self.shape,
-            units=self.units,
-            axis=(Axis)(self),
-        )
+        self.bounds = bounds
         self._update_properties_and_encoding()
 
     def __hash__(self):
@@ -254,7 +248,15 @@ class Coordinate(Variable, Axis):
 
     @bounds.setter
     def bounds(self, value):
-        self._bounds = value
+        self._bounds = Coordinate._process_bounds(
+            value,
+            name=self.name,
+            variable_shape=self.shape,
+            units=self.units,
+            axis=(Axis)(self),
+        )
+        if self._bounds is not None:
+            self.encoding['bounds'] = next(iter(self.bounds))
 
     @property
     def has_bounds(self) -> bool:
