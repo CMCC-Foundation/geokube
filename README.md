@@ -6,7 +6,7 @@ geokube is a Python package for analysis of Earth Science Data.
 
 ## Authors
 
-* Maintainers:
+**Lead Developers**:
 
 - [Marco Mancini](https://github.com/km4rcus)
 - [Jakub Walczak](https://github.com/jamesWalczak)
@@ -37,7 +37,7 @@ conda activate geokube
 ```
 Install geokube framework
 ```bash
-python setup.py insttall
+python setup.py install
 ```
 
 #### Conda Package

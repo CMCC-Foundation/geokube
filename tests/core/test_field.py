@@ -1149,3 +1149,19 @@ def test_resample_with_original_bounds(era5_rotated_netcdf_wso):
     assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
     assert wso_r.time.bounds is not None
     assert wso_r.time.bounds['time_bnds'].shape[0] == wso_r.time.shape[0]
+
+
+def test_adding_time_bounds(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
+    assert field.time.bounds is None
+    time_bounds = np.empty(shape=(field.time.size, 2), dtype=field.time.dtype)
+    time_resolution = field.time.values[1] - field.time.values[0]
+    time_bounds[0, 0] = field.time.values[0] - time_resolution
+    time_bounds[1:, 0] = field.time.values[:-1]
+    time_bounds[:, 1] = field.time.values
+    field.time.bounds = time_bounds
+    assert isinstance(field.time.bounds, dict)
+    assert 'time_bounds' in field.time.bounds
+    assert field.time.bounds['time_bounds'].shape == field.time.shape + (2,)
+    assert 'bounds' in field.time.encoding
+    assert field.time.encoding['bounds'] == 'time_bounds'
