@@ -898,7 +898,7 @@ class Field(Variable, DomainMixin):
             resample_kwargs.update({"closed": "right"})
             da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
             new_bnds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
+                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
                 new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
@@ -909,7 +909,7 @@ class Field(Variable, DomainMixin):
         else:
             da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
             new_bnds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
+                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
                 new_bnds[i] = [self.time.values[v].min(), self.time.values[v].max()]
@@ -919,11 +919,8 @@ class Field(Variable, DomainMixin):
              da,
              coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
-        # NOTE: This is a workaround that should be replaced by setting the
-        # coordinate bounds after the field is created.
-        res.coords[self.time.name].encoding['bounds'] = bnds_name
         field = Field.from_xarray(res, ncvar=self.name)
-        # field.time.bounds = new_bnds
+        field.time.bounds = new_bnds
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
 

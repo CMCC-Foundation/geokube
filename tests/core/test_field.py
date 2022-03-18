@@ -1138,7 +1138,7 @@ def test_resample_without_original_bounds(era5_globe_netcdf):
     diff_ = np.diff(tp_r.time.values)
     assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
     assert tp_r.time.bounds is not None
-    assert tp_r.time.bounds['time_bnds'].shape[0] == tp_r.time.values.shape[0]
+    assert tp_r.time.bounds['time_bounds'].shape[0] == tp_r.time.shape[0]
 
 
 def test_resample_with_original_bounds(era5_rotated_netcdf_wso):
@@ -1148,7 +1148,7 @@ def test_resample_with_original_bounds(era5_rotated_netcdf_wso):
     diff_ = np.diff(wso_r.time.values)
     assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
     assert wso_r.time.bounds is not None
-    assert wso_r.time.bounds['time_bnds'].shape[0] == wso_r.time.shape[0]
+    assert wso_r.time.bounds['time_bounds'].shape[0] == wso_r.time.shape[0]
 
 
 def test_adding_time_bounds(era5_netcdf):
