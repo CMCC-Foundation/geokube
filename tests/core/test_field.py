@@ -1130,6 +1130,27 @@ def test_sel_latitude_with_rightnone_slice(era5_globe_netcdf):
     assert np.all(selected_latitude <= 45)
 
 
+def test_resample_without_original_bounds(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    tp_r = tp.resample(operator='maximum', frequency='W')
+    assert tp.values.max() == tp_r.values.max()
+    diff = 7 * 24 * 60 * 60 * 1_000_000_000
+    diff_ = np.diff(tp_r.time.values)
+    assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
+    assert tp_r.time.bounds is not None
+    assert tp_r.time.bounds['time_bounds'].shape[0] == tp_r.time.shape[0]
+
+
+def test_resample_with_original_bounds(era5_rotated_netcdf_wso):
+    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    wso_r = wso.resample(operator='sum', frequency='12H')
+    diff = 12 * 60 * 60 * 1_000_000_000
+    diff_ = np.diff(wso_r.time.values)
+    assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
+    assert wso_r.time.bounds is not None
+    assert wso_r.time.bounds['time_bounds'].shape[0] == wso_r.time.shape[0]
+
+
 def test_adding_time_bounds(era5_netcdf):
     field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
     assert field.time.bounds is None
