@@ -818,6 +818,7 @@ class Field(Variable, DomainMixin):
             regridder = xe.Regridder(**regrid_kwa)
         result = regridder(in_, keep_attrs=True, skipna=False)
         result = result.rename({v: k for k, v in names_in.items()})
+        result[self.name].encoding = in_[self.name].encoding
         if not isinstance(target.crs, GeogCS):
             # TODO: Check if `target.latitude` and `target.longitude` are
             # redundant.
@@ -828,7 +829,9 @@ class Field(Variable, DomainMixin):
                 if coord.name not in result.coords
             }
             result = result.assign_coords(coords=missing_coords)
-        result[self.name].encoding = in_[self.name].encoding
+            coord_names = ' '.join(target.coords.keys())
+            result[self.name].encoding['coordinates'] = coord_names
+            # result[self.name].encoding['coordinates'] = 'latitude longitude'
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
         # return result
