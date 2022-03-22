@@ -872,7 +872,7 @@ class Field(Variable, DomainMixin):
                     }
                     methods.discard('<undefined>')
                     raise ex.HCubeValueError(
-                        f"Provided operator `{operator}` was not found! "
+                        f"Provided operator '{operator}' was not found! "
                         f"Available operators are: {sorted(methods)}!",
                         logger=Field._LOG,
                     )
