@@ -25,7 +25,7 @@ from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .cell_methods import CellMethod
-from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
+from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
 from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
@@ -818,9 +818,20 @@ class Field(Variable, DomainMixin):
             regridder = xe.Regridder(**regrid_kwa)
         result = regridder(in_, keep_attrs=True, skipna=False)
         result = result.rename({v: k for k, v in names_in.items()})
+        if not isinstance(target.crs, GeogCS):
+            # TODO: Check if `target.latitude` and `target.longitude` are
+            # redundant.
+            coords = (target.latitude, target.longitude, target.x, target.y)
+            missing_coords = {
+                coord.name: out.coords[coord.name]
+                for coord in coords
+                if coord.name not in result.coords
+            }
+            result = result.assign_coords(coords=missing_coords)
         result[self.name].encoding = in_[self.name].encoding
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
+        # return result
         field_out = Field.from_xarray(
             ds=result,
             ncvar=self.name,
