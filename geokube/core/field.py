@@ -860,27 +860,35 @@ class Field(Variable, DomainMixin):
         >>> resulting_field = field.resample("sum", frequency='2M')
 
         """
-        func = None
-        if isinstance(operator, str):
-            operator_func = MethodType(operator)
-        if isinstance(operator_func, MethodType):
+        if callable(operator):
+            func = operator
+        else:
+            if isinstance(operator, str):
+                operator_func = MethodType(operator)
+            elif isinstance(operator, MethodType):
+                operator_func = operator
+            else:
+                raise ex.HCubeTypeError(
+                    "Operator must be `str`, `MethodType`, or `callable`. "
+                    f"Provided `{type(operator)}`",
+                    logger=Field._LOG,
+                )
+            if operator_func is MethodType.UNDEFINED:
+                methods = {
+                    method.value[0]
+                    for method in MethodType.__members__.values()
+                }
+                methods.discard('<undefined>')
+                raise ex.HCubeValueError(
+                    f"Provided operator '{operator}' was not found! Available "
+                    f"operators are: {sorted(methods)}!",
+                    logger=Field._LOG,
+                )
             func = (
                 operator_func.dask_operator
-                if is_dask_collection(self)
-                else operator_func.numpy_operator
-            )
-        elif callable(operator_func):
-            func = operator_func
-        else:
-            raise ex.HCubeTypeError(
-                f"Operator can be only one of: `str`, `MethodType`, `callable`. Provided `{type(operator)}`",
-                logger=Field._LOG,
-            )
-        if func is None:
-            raise ex.HCubeValueError(
-                f"Provided operator `{operator}` was not found! Check available operators or provide it the one yourself by pasing callable object!",
-                logger=Field._LOG,
-            )
+                if is_dask_collection(self) else
+                operator_func.numpy_operator
+            ) 
 
         # ################## Temporary solution for time bounds adjustmnent ######################
 
