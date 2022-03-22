@@ -23,26 +23,9 @@ class CoordinateType(Enum):
     INDEPENDENT = "independent"  # equivalent to CF DIMENSION Coordinate
 
 
-#
 # coordinate is a dimension or axis with data and units
 # coordinate name is dimension/axis name
 # coordinate axis type is dimension/axis type
-#
-
-# class Coordinate(Variable, Dimension):
-# __slots__ = ("_bounds")
-#    def __init__(
-#        self,
-#        name
-#        data: Union[np.ndarray, da.Array, Variable],
-# axis: Optional[Union[str, AxisType, Axis, Dimension]],
-# dims: Optional[Tuple[Dimension]] = None,
-# units: Optional[Union[Unit, str]] = None,
-# bounds: Optional[Union[np.ndarray, da.Array, Variable]] = None,
-# properties: Optional[Mapping[Any, Any]] = None,
-# encoding: Optional[Mapping[Any, Any]] = None
-
-# )
 
 
 class Coordinate(Variable, Axis):
@@ -113,14 +96,19 @@ class Coordinate(Variable, Axis):
         )
         # Coordinates are always stored as NumPy data
         self._data = np.array(self._data)
-        self._bounds = Coordinate._process_bounds(
-            bounds,
-            name=self.name,
-            variable_shape=self.shape,
-            units=self.units,
-            axis=(Axis)(self),
-        )
+        self.bounds = bounds
         self._update_properties_and_encoding()
+
+    def __hash__(self):
+        # NOTE: maybe hash for Cooridnate should be more complex.
+        return Axis.__hash__(self)
+
+    def __eq__(self, other):
+        # NOTE: it doesn't take into account real values at all
+        return Axis.__eq__(self, other)
+
+    def __ne__(self, other):
+        return not self == other
 
     def _update_properties_and_encoding(self):
         if "standard_name" not in self.properties:
@@ -183,27 +171,48 @@ class Coordinate(Variable, Axis):
         return _bounds
 
     @classmethod
-    def _get_bounds_cls(cls, provided_bnds_shape, provided_data_shape):
+    def _is_valid_1d_bounds(cls, provided_bnds_shape, provided_data_shape):
         ndim = len(provided_bnds_shape) - 1
         if (
             2 * ndim == 2
             and provided_bnds_shape[-1] == 2
             and provided_bnds_shape[0] == provided_data_shape[0]
         ):
-            return Bounds1D
-        elif (
+            return True
+        if provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
+            # The case where there is a scalar coordinate with bounds, e.g.
+            # after single value selection
+            return True
+        return False
+
+    @classmethod
+    def _is_valid_nd_bounds(cls, provided_bnds_shape, provided_data_shape):
+        ndim = len(provided_bnds_shape) - 1
+        if (
             provided_bnds_shape[-1] == 2 * ndim
             and tuple(provided_bnds_shape[:-1]) == provided_data_shape
         ):
-            return BoundsND
-        elif provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
-            # The case where there is a scalar coordinate with bounds, e.g. after single value selection
+            return True
+        if (
+            len(provided_bnds_shape) == 2
+            and len(provided_data_shape) == 1
+            and provided_bnds_shape[0] == provided_data_shape[0]
+            and (provided_bnds_shape[1] == 2 or provided_bnds_shape[1] == 4)
+        ):
+            # The case of points domain
+            return True
+        return False
+
+    @classmethod
+    def _get_bounds_cls(cls, provided_bnds_shape, provided_data_shape):
+        if cls._is_valid_1d_bounds(provided_bnds_shape, provided_data_shape):
             return Bounds1D
-        else:
-            raise ex.HCubeValueError(
-                f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
-                logger=Coordinate._LOG,
-            )
+        if cls._is_valid_nd_bounds(provided_bnds_shape, provided_data_shape):
+            return BoundsND
+        raise ex.HCubeValueError(
+            f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
+            logger=Coordinate._LOG,
+        )
 
     @property
     def is_dimension(self) -> bool:
@@ -239,7 +248,15 @@ class Coordinate(Variable, Axis):
 
     @bounds.setter
     def bounds(self, value):
-        self._bounds = value
+        self._bounds = Coordinate._process_bounds(
+            value,
+            name=self.name,
+            variable_shape=self.shape,
+            units=self.units,
+            axis=(Axis)(self),
+        )
+        if self._bounds is not None:
+            self.encoding['bounds'] = next(iter(self.bounds))
 
     @property
     def has_bounds(self) -> bool:
@@ -260,18 +277,6 @@ class Coordinate(Variable, Axis):
                 if self.min() >= 0
                 else LongitudeConvention.NEGATIVE_WEST
             )
-
-    @log_func_debug
-    # def to_xarray_with_bounds(self, encoding=False) -> xr.DataArray:
-    #     da = self.to_xarray(encoding)
-    #     if not self.has_bounds:
-    #         return da
-    #     res_name = self.ncvar if encoding else self.name
-    #     bds = {k:v.to_xarray(encoding=encoding) for k,v in self.bounds.items()}
-    #     # TODO: how to store many bounds in `bounds` attribute? Should they be separated with a space, `bound1 bound2 bound3`?
-    #     da.attrs["bounds"] = " ".join(self.bounds.keys())
-    #     import pdb;pdb.set_trace()
-    #     return xr.DataArray(data=da, name=res_name, coords=bds)
 
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
@@ -310,10 +315,9 @@ class Coordinate(Variable, Axis):
             )
 
         da = ds[ncvar]
-
         var = Variable.from_xarray(da, id_pattern=id_pattern, mapping=mapping)
-        ncvar = da.encoding.get("name", ncvar)
-        var.encoding.update(name=ncvar)
+        encoded_ncvar = da.encoding.get("name", ncvar)
+        var.encoding.update(name=encoded_ncvar)
 
         axis_name = Variable._get_name(da, mapping, id_pattern)
         # `axis` attribute cannot be used below, as e.g for EOBS `latitude` has axis `Y`, so wrong AxisType is chosen
@@ -322,9 +326,8 @@ class Coordinate(Variable, Axis):
             name=axis_name,
             is_dim=ncvar in da.dims,
             axistype=axistype,
-            encoding={"name": ncvar},
+            encoding={"name": encoded_ncvar},
         )
-
         bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds"))
         if bnds_ncvar:
             bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)

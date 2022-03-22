@@ -9,9 +9,12 @@ from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate
 from geokube.core.datacube import DataCube
+from geokube.core.field import Field
 from geokube.core.domain import Domain
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
+import geokube.utils.exceptions as ex
+
 from tests import RES_PATH, clear_test_res
 from tests.fixtures import *
 
@@ -175,3 +178,24 @@ def test_locations_rotated_pole(era5_rotated_netcdf):
     assert len(res.domain[AxisType.LATITUDE]) == 2
     assert len(res.domain[AxisType.LONGITUDE]) == 2
     assert res.domain.crs == RegularLatLon()
+
+
+def test_get_multiple_fields_by_standard_name_list(rotated_pole_datacube):
+    res = rotated_pole_datacube[
+        ["lwe_thickness_of_moisture_content_of_soil_layer", "air_temperature"]
+    ]
+    assert len(res) == 2
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in res.fields
+    assert "air_temperature" in res.fields
+
+
+def test_get_single_field_by_standard_name(rotated_pole_datacube):
+    res = rotated_pole_datacube["W_SO"]
+    assert isinstance(res, Field)
+    assert res.name == "lwe_thickness_of_moisture_content_of_soil_layer"
+    assert res.ncvar == "W_SO"
+
+    res = rotated_pole_datacube["TMIN_2M"]
+    assert isinstance(res, Field)
+    assert res.name == "air_temperature"
+    assert res.ncvar == "TMIN_2M"

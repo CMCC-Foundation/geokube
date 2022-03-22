@@ -198,3 +198,16 @@ def geokube_properties_to_xarray_attrs(properties, cell_methods=None):
     if cell_methods:
         attrs["cell_methods"] = cell_methods.encode_for_netcdf()
     return attrs
+
+
+def is_between(data, lower_bound=None, upper_bound=None):
+    if lower_bound is not None:
+        if upper_bound is not None:
+            return (data >= lower_bound) & (data <= upper_bound)
+        else:
+            return data >= lower_bound
+    else:
+        if upper_bound is not None:
+            return data <= upper_bound
+        else:
+            return np.full_like(data, fill_value=True, dtype=np.bool_)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import functools as ft
 import os
 import warnings
@@ -156,19 +157,49 @@ class Field(Variable, DomainMixin):
         #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
         # return formatting_html.array_repr(self)
 
+    def __next__(self):
+        for k, v in self.domain._coords.items():
+            yield k, v
+        raise StopIteration
+
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical
     @log_func_debug
     def geobbox(
         self,
-        north: Number,
-        south: Number,
-        west: Number,
-        east: Number,
+        north: Number | None = None,
+        south: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
         top: Number | None = None,
         bottom: Number | None = None,
-    ):
+    ) -> Field:
+        """
+        Subset a field using a bounding box.
+
+        Subsets the original field with the given bounding box.  If a
+        bound is omitted or `None`, no subsetting takes place in that
+        direction.  At least one bound must be provided.
+
+        Parameters
+        ----------
+        north, south, west, east : number or None, optional
+            Horizontal bounds.
+        top, bottom : number or None, optional
+            Vertical bounds.
+
+        Returns
+        -------
+        Field
+            A field with the coordinate values between given bounds.
+
+        Raises
+        ------
+        HCubeKeyError
+            If no bound is provided.
+
+        """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
@@ -185,9 +216,7 @@ class Field(Variable, DomainMixin):
             bottom=bottom,
         )
 
-    def _geobbox_cartopy(
-        self, south, north, west, east, top, bottom
-    ):
+    def _geobbox_cartopy(self, south, north, west, east, top, bottom):
         # TODO: add vertical also
         domain = self._domain
 
@@ -243,7 +272,7 @@ class Field(Variable, DomainMixin):
         west: Number,
         east: Number,
         top: Number | None = None,
-        bottom: Number | None = None
+        bottom: Number | None = None,
     ):
         field = self
         lat, lon = field.latitude, field.longitude
@@ -263,6 +292,10 @@ class Field(Variable, DomainMixin):
                     "vertical coordinate or it is constant"
                 )
             vert_incr = util_methods.is_nondecreasing(vert.data)
+            if vert.attrs.get("positive") == "down":
+                top = None if top is None else -top
+                bottom = None if bottom is None else -bottom
+                vert_incr = ~vert_incr
             vert_slice = np.s_[bottom:top] if vert_incr else np.s_[top:bottom]
             vert_idx = {vert.name: vert_slice}
             field = field.sel(indexers=vert_idx, roll_if_needed=True)
@@ -279,16 +312,16 @@ class Field(Variable, DomainMixin):
             # Case of latitude and longitude being dependent.
             # Specifying the mask(s) and extracting the indices that correspond
             # to the inside the bounding box.
-            lat_mask = (lat.data >= south) & (lat.data <= north)
-            lon_mask = (lon.data >= west) & (lon.data <= east)
+            lat_mask = util_methods.is_between(lat.data, south, north)
+            lon_mask = util_methods.is_between(lon.data, west, east)
             # TODO: Clarify why this is required.
             if lat_mask.sum() == 0:
-                lat_mask = (lat.data <= south) & (lat.data >= north)
+                lat_mask = util_methods.is_between(lat.data, north, south)
             if lon_mask.sum() == 0:
-                lon_mask = (lon.data <= float(west)) & (lon.data <= float(east))
+                lon_mask = util_methods.is_between(lon.data, east, west)
             nonzero_idx = np.nonzero(lat_mask & lon_mask)
             idx = {
-                lat.dims[i].name: np.s_[incl_idx.min():incl_idx.max() + 1]
+                lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
                 for i, incl_idx in enumerate(nonzero_idx)
             }
             dset = field.to_xarray(encoding=False)
@@ -300,17 +333,76 @@ class Field(Variable, DomainMixin):
                 ncvar=self.name,
                 copy=False,
                 id_pattern=self._id_pattern,
-                mapping=self._mapping
+                mapping=self._mapping,
             )
 
     def locations(
         self,
-        latitude,
-        longitude,
-        vertical: Optional[
-            List[Number]
-        ] = None,  # { 'latitude': [], 'longitude': [], 'vertical': []}
-    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        latitude: Number | Sequence[Number],
+        longitude: Number | Sequence[Number],
+        vertical: Number | Sequence[Number] | None = None,
+    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+        """
+        Select points with given coordinates from a field.
+
+        Subsets the original field by selecting only the points with
+        provided coordinates and returns a new field with these points.
+        Uses the nearest neighbor method.  The resulting field has a
+        domain with the points nearest to the provided coordinates.
+
+        Parameters
+        ----------
+        latitude, longitude : array-like or number
+            Latitude and longitude coordinate values.  Must be of the
+            same shape.
+        vertical : array-like or number or None, optional
+            Verical coordinate values.  If given and not `None`, must be
+            of the same shape as `latitude` and `longitude`.
+
+        Returns
+        -------
+        Field
+            A field with a point domain that contains given locations.
+
+        Examples
+        --------
+        >>> result = field.locations(latitude=40, longitude=35)
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+
+        Vertical coordinate is optional.  If provided, the vertical axis
+        of the resulting field is also expressed with points:
+
+        >>> result = field.locations(
+        ...     latitude=40,
+        ...     longitude=35,
+        ...     vertical=-2
+        ... )
+        >>> result.latitude.values
+        array([40.86], dtype=float32)
+        >>> result.longitude.values
+        array([34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786], dtype=float32)
+
+        It is possible to provide the coordinates of multiple points at
+        once with an array-like object.  In that case, `latitude`,
+        `longitude`, and `vertical` must have the same length.
+
+        >>> result = temperature_field.locations(
+        ...     latitude=[40, 41],
+        ...     longitude=[32, 35],
+        ...     vertical=[-2, -5]
+        ... )
+        >>> result.latitude.values
+        array([40.86   , 40.99889], dtype=float32)
+        >>> result.longitude.values
+        array([31.99963, 34.99963], dtype=float32)
+        >>> result.vertical.values
+        array([2.5010786, 2.5010786], dtype=float32)
+        """
         return self._locations_idx(
             latitude=latitude, longitude=longitude, vertical=vertical
         )
@@ -405,7 +497,9 @@ class Field(Variable, DomainMixin):
             # system (`cartopy.crs.PlateCarree`) to the coordinate system of
             # the field.
             plate = ccrs.PlateCarree()
-            pts = domain.crs.as_cartopy_crs().transform_points(src_crs=plate, x=lons, y=lats)
+            pts = domain.crs.as_cartopy_crs().transform_points(
+                src_crs=plate, x=lons, y=lats
+            )
             idx = {
                 domain.x.name: xr.DataArray(data=pts[:, 0], dims="points"),
                 domain.y.name: xr.DataArray(data=pts[:, 1], dims="points"),
@@ -419,23 +513,17 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-    def _locations_idx(
-        self,
-        latitude,
-        longitude,
-        vertical=None
-    ):
+    def _locations_idx(self, latitude, longitude, vertical=None):
         field = self
-        sel_kwa = {'roll_if_needed': False, 'method': 'nearest'}
+        sel_kwa = {"roll_if_needed": True, "method": "nearest"}
         lats = np.array(latitude, dtype=np.float32).reshape(-1)
         lons = np.array(longitude, dtype=np.float32).reshape(-1)
 
         n = lats.size
         if lons.size != n:
             raise ValueError(
-                    "'latitude' and 'longitude' must have the same number of "
-                    "items"
-                )
+                "'latitude' and 'longitude' must have the same number of " "items"
+            )
 
         # Vertical
         # NOTE: In this implementation, vertical is always considered an
@@ -447,15 +535,17 @@ class Field(Variable, DomainMixin):
                     "'vertical' must have the same number of items as "
                     "'latitude' and 'longitude'"
                 )
-            verts = xr.DataArray(data=verts, dims='points')
+            if field.vertical.attrs.get("positive") == "down":
+                verts = -verts
+            verts = xr.DataArray(data=verts, dims="points")
             vert_ax = Axis(name=self.vertical.name, axistype=AxisType.VERTICAL)
             field = field.sel(indexers={vert_ax: verts}, **sel_kwa)
 
         # Case of latitude and longitude being independent.
         if self.is_latitude_independent and self.is_longitude_independent:
             # TODO: Check lon values conventions.
-            lats = xr.DataArray(data=lats, dims='points')
-            lons = xr.DataArray(data=lons, dims='points')
+            lats = xr.DataArray(data=lats, dims="points")
+            lons = xr.DataArray(data=lons, dims="points")
             idx = {self.latitude.name: lats, self.longitude.name: lons}
             result_field = field.sel(indexers=idx, **sel_kwa)
         else:
@@ -496,10 +586,13 @@ class Field(Variable, DomainMixin):
 
             # Spatial subseting.
             idx = {
-                dim.name: xr.DataArray(data=idx_[:, i], dims='points')
+                dim.name: xr.DataArray(data=idx_[:, i], dims="points")
                 for (i,), dim in np.ndenumerate(self.latitude.dims)
             }
-            result_dset = field.to_xarray(encoding=False).isel(indexers=idx)
+
+            result_dset = field.to_xarray(encoding=False)
+            result_dset = field._check_and_roll_longitude(result_dset, idx)
+            result_dset = result_dset.isel(indexers=idx)
             result_field = Field.from_xarray(
                 ds=result_dset,
                 ncvar=self.name,
@@ -507,6 +600,9 @@ class Field(Variable, DomainMixin):
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
             )
+
+        result_field.domain.crs = RegularLatLon()
+        result_field.domain._type = DomainType.POINTS
 
         return result_field
 
@@ -555,7 +651,7 @@ class Field(Variable, DomainMixin):
     @log_func_debug
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
-        if "longitude" not in indexers or not isinstance(indexers["longitude"], slice):
+        if Axis("longitude") not in indexers:
             return ds
         if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
@@ -568,11 +664,17 @@ class Field(Variable, DomainMixin):
             self.domain[Axis("longitude")].max(),
         )
 
-        start = indexers[Axis("longitude")].start
-        stop = indexers[Axis("longitude")].stop
-
-        sel_neg_conv = (start < 0) | (stop < 0)
-        sel_pos_conv = (start > 180) | (stop > 180)
+        if isinstance(indexers[Axis("longitude")], slice):
+            start = indexers[Axis("longitude")].start
+            stop = indexers[Axis("longitude")].stop
+            start = 0 if start is None else start
+            stop = 0 if stop is None else stop
+            sel_neg_conv = (start < 0) | (stop < 0)
+            sel_pos_conv = (start > 180) | (stop > 180)
+        else:
+            vals = np.array(indexers[Axis("longitude")], ndmin=1)
+            sel_neg_conv = np.any(vals < 0)
+            sel_pos_conv = np.any(vals > 180)
 
         dset_neg_conv = first_el < 0
         dset_pos_conv = first_el >= 0
@@ -581,7 +683,7 @@ class Field(Variable, DomainMixin):
         if dset_pos_conv and sel_neg_conv:
             # from [0,360] to [-180,180]
             # Attributes are lost while doing `assign_coords`. They need to be reassigned (e.q. by `update`)
-            roll_value = (ds[lng_name] > 180).sum().item()
+            roll_value = (ds[lng_name] >= 180).sum().item()
             res = ds.assign_coords(
                 {lng_name: (((ds[lng_name] + 180) % 360) - 180)}
             ).roll(**{lng_name: roll_value}, roll_coords=True)
@@ -590,7 +692,7 @@ class Field(Variable, DomainMixin):
             return res
         if dset_neg_conv and sel_pos_conv:
             # from [-180,-180] to [0,360]
-            roll_value = (ds[lng_name] < 0).sum().item()
+            roll_value = (ds[lng_name] <= 0).sum().item()
             res = (
                 ds.assign_coords({lng_name: (ds[lng_name] % 360)})
                 .roll(**{lng_name: -roll_value}, roll_coords=True)
@@ -732,85 +834,108 @@ class Field(Variable, DomainMixin):
         """
         Perform resampling along the available `time` coordinate.
         Adjust appropriately time bounds.
+
         Parameters
         ----------
         operator : callable or str
-            Callable-object used for aggregation or string representation of a function.
-            Currently supported are methods of geokube.MethodType
+            Callable-object used for aggregation or string
+            representation of a function.  Currently supported are the
+            methods of ``geokube.MethodType``.
         frequency :  str
-            Expected resampling frequency
-        inplace : bool
-            Indicate if operations should be done inplace or a modified copy should be returned
+            Expected resampling frequency.
+
         Returns
         ----------
         field : Field
-            The field with values after resampling procedure if inplace==True, modified copy otherwise
+            The field with values after resampling procedure.
+
         Examples:
         ----------
-        Resample to day frequency taking the maximum over the elements in each day:
-        >>> resulting_field = field.resample(MethodType.FIRST, frequency='1D')
-        Resample to 2 month frequency taking the sum (omitting NaNs) over each 2 months
-        >>> resulting_field = field.resample("nansum", frequency='2M')
+        Resample to day frequency taking the maximum over the elements
+        in each day:
+        >>> res = field.resample("maximum", frequency='1D')
+
+        Resample to two-monts frequency taking the sum over each two
+        months:
+        >>> resulting_field = field.resample("sum", frequency='2M')
+
         """
-        time_axis = self.domain[Axis.TIME]
-        time = time_axis.name
-        func = None
-        if isinstance(operator, str):
-            operator_func = MethodType(operator)
-        if isinstance(operator_func, MethodType):
+        if callable(operator):
+            func = operator
+        else:
+            if isinstance(operator, str):
+                operator_func = MethodType(operator)
+            elif isinstance(operator, MethodType):
+                operator_func = operator
+            else:
+                raise ex.HCubeTypeError(
+                    "Operator must be `str`, `MethodType`, or `callable`. "
+                    f"Provided `{type(operator)}`",
+                    logger=Field._LOG,
+                )
+            if operator_func is MethodType.UNDEFINED:
+                methods = {
+                    method.value[0]
+                    for method in MethodType.__members__.values()
+                }
+                methods.discard('<undefined>')
+                raise ex.HCubeValueError(
+                    f"Provided operator '{operator}' was not found! Available "
+                    f"operators are: {sorted(methods)}!",
+                    logger=Field._LOG,
+                )
             func = (
                 operator_func.dask_operator
-                if is_dask_collection(self)
-                else operator_func.numpy_operator
-            )
-        elif callable(operator_func):
-            func = operator_func
-        else:
-            raise ex.HCubeTypeError(
-                f"Operator can be only one of: `str`, `MethodType`, `callable`. Provided `{type(operator)}`",
-                logger=Field._LOG,
-            )
-        if func is None:
-            raise ex.HCubeValueError(
-                f"Provided operator `{operator}` was not found! Check available operators or provide it the one yourself by pasing callable object!",
-                logger=Field._LOG,
-            )
+                if is_dask_collection(self) else
+                operator_func.numpy_operator
+            ) 
 
         # ################## Temporary solution for time bounds adjustmnent ######################
 
         # TODO: handle `formula_terms` bounds attribute
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
-        tb = time_axis.bounds
         ds = self.to_xarray(encoding=False)
-        if self.cell_methods and tb is not None:
+        if (time_bnds := self.time.bounds) is None:
+            bnds_name, bnds = f'{self.time.name}_bnds', None
+        else:
+            (bnds_name, bnds), = time_bnds.items()
+
+        if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
             resample_kwargs.update({"closed": "right"})
-            da = ds.resample(indexer={time: frequency}, **resample_kwargs)
-            new_bounds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
+            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            new_bnds = np.empty(
+                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bounds[i] = [tb.values[v].min(), tb.values[v].max()]
-            if tb is None:
+                new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
+            # TODO: Check if this is redundant
+            if bnds is None:
                 Field._LOG.warn("Time bounds not defined for the cell methods!")
                 warnings.warn("Time bounds not defined for the cell methods!")
         else:
-            da = ds.resample(indexer={time: frequency}, **resample_kwargs)
-            new_bounds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
+            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            new_bnds = np.empty(
+                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bounds[i] = [time_axis.values[v].min(), time_axis.values[v].max()]
-        da = da.reduce(func=func, dim=time, keep_attrs=True)
+                new_bnds[i] = [self.time.values[v].min(), self.time.values[v].max()]
+
+        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
         res = xr.Dataset(
-            da,
-            coords={f"{time}_bnds": ((time, "bnds"), new_bounds)},
+             da,
+             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
+        field = Field.from_xarray(res, ncvar=self.name)
+        field.time.bounds = new_bnds
+        field.domain.crs = self.domain.crs
+        field.domain._type = self.domain._type
+
         # TODO: adjust cell_methods after resampling!
 
         # #########################################################################################
-        return Field.from_xarray_dataset(res, field_name=self.variable.name)
+        return field
 
     @log_func_debug
     def to_netcdf(self, path):
