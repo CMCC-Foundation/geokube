@@ -758,6 +758,7 @@ class Field(Variable, DomainMixin):
         ...     target_domain=target_domain,
         ...     method='bilinear'
         ... )
+
         """
         if isinstance(target, Domain):
             target_domain = target
@@ -765,47 +766,58 @@ class Field(Variable, DomainMixin):
             target_domain = target.domain
         else:
             raise ex.HCubeTypeError(
-                "'target' must be an instance of Domain or Field", logger=Field._LOG
+                "'target' must be an instance of Domain or Field",
+                logger=Field._LOG
             )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
 
-        if reuse_weights and (weights_path is None or not os.path.exists(weights_path)):
+        if (
+            reuse_weights
+            and (weights_path is None or not os.path.exists(weights_path))
+        ):
             Field._LOG.warn("`weights_path` is None or file does not exist!")
             Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
 
-        # Input domain
-        lat_in = self.domain[Axis.LATITUDE]
-        lon_in = self.domain[Axis.LONGITUDE]
-        name_map_in = {lat_in.axis.name: "lat", lon_in.axis.name: "lon"}
+        names_in = {
+            self.latitude.ncvar: "lat",
+            self.longitude.ncvar: "lon"
+        }
+        names_out = {
+            target_domain.latitude.ncvar: "lat",
+            target_domain.longitude.ncvar: "lon"
+        }
 
-        # Output domain
-        lat_out = target_domain[Axis.LATITUDE]
-        lon_out = target_domain[Axis.LONGITUDE]
-        name_map_out = {lat_out.axis.name: "lat", lon_out.axis.name: "lon"}
-
-        conserv_methods = {RegridMethod.CONSERVATIVE, RegridMethod.CONSERVATIVE_NORMED}
-        if method in conserv_methods:
-            self.domain.compute_bounds(Axis.LATITUDE)
-            self.domain.compute_bounds(Axis.LONGITUDE)
-            name_map_in.update(
-                {lat_in.bounds.name: "lat_b", lon_in.bounds.name: "lon_b"}
-            )
-            target_domain.compute_bounds(lat_out.axis.name)
-            target_domain.compute_bounds(lon_out.axis.name)
-            name_map_out.update(
-                {lat_out.bounds.name: "lat_b", lon_out.bounds.name: "lon_b"}
-            )
+        if method in {
+            RegridMethod.CONSERVATIVE,
+            RegridMethod.CONSERVATIVE_NORMED
+        }:
+            # TODO: Update `Domain.compute_bounds` to make the conservative
+            # methods work.
+            self.domain.compute_bounds(AxisType.LATITUDE)
+            self.domain.compute_bounds(AxisType.LONGITUDE)
+            names_in.update({
+                next(iter(self.latitude.bounds.values())).name: "lat_b",
+                next(iter(self.longitude.bounds.values())).name: "lon_b"
+            })
+            target_domain.compute_bounds(target_domain.latitude.name)
+            target_domain.compute_bounds(target_domain.longitude.name)
+            names_out.update({
+                next(iter(target_domain.latitude.bounds.values())).name:
+                    "lat_b",
+                next(iter(target_domain.longitude.bounds.values())).name:
+                    "lon_b"
+            })
 
         # Regridding
         regrid_kwa = {
-            "ds_in": self.domain.to_xarray_dataset().rename(name_map_in),
-            "ds_out": target_domain.to_xarray_dataset().rename(name_map_out),
+            "ds_in": self.domain.to_xarray().to_dataset().rename(names_in),
+            "ds_out": target_domain.to_xarray().to_dataset().rename(names_out),
             "method": method.value,
             "unmapped_to_nan": True,
-            "filename": weights_path,
+            "filename": weights_path
         }
 
         try:
@@ -814,13 +826,25 @@ class Field(Variable, DomainMixin):
             regridder = xe.Regridder(**regrid_kwa)
         xr_ds = self.to_xarray(encoding=False)
         result = regridder(xr_ds, keep_attrs=True, skipna=False)
-        result = result.rename({"lat": lat_in.axis.name, "lon": lon_in.axis.name})
-        result[self.variable.name].encoding = xr_ds[self.variable.name].encoding
+        result = result.rename({
+            "lat": self.latitude.name,
+            "lon": self.longitude.name
+        })
+        result[self.name].encoding = xr_ds[self.name].encoding
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-        field_out = Field.from_xarray_dataset(result, field_name=self.variable.name)
-        # Take `crs`` from `target_domain` as in `result` there can be still the coordinate responsible for CRS
+        # return result
+        field_out = Field.from_xarray(
+            ds=result,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping
+        )
+        # Take `crs` from `target_domain` as in `result` there can be still the
+        # coordinate responsible for CRS
         field_out.domain._crs = target_domain.crs
+        field_out.domain._type = target_domain.type
         return field_out
 
     # TO CHECK
