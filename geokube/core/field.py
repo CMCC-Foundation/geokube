@@ -760,15 +760,14 @@ class Field(Variable, DomainMixin):
         ... )
 
         """
-        if isinstance(target, Domain):
-            target_domain = target
-        elif isinstance(target, Field):
-            target_domain = target.domain
-        else:
-            raise ex.HCubeTypeError(
-                "'target' must be an instance of Domain or Field",
-                logger=Field._LOG
-            )
+        if not isinstance(target, Domain):
+            if isinstance(target, Field):
+                target = target.domain
+            else:
+                raise ex.HCubeTypeError(
+                    "'target' must be an instance of Domain or Field",
+                    logger=Field._LOG
+                )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
@@ -781,14 +780,8 @@ class Field(Variable, DomainMixin):
             Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
 
-        names_in = {
-            self.latitude.ncvar: "lat",
-            self.longitude.ncvar: "lon"
-        }
-        names_out = {
-            target_domain.latitude.ncvar: "lat",
-            target_domain.longitude.ncvar: "lon"
-        }
+        names_in = {self.latitude.name: "lat", self.longitude.name: "lon"}
+        names_out = {target.latitude.name: "lat", target.longitude.name: "lon"}
 
         if method in {
             RegridMethod.CONSERVATIVE,
@@ -802,38 +795,32 @@ class Field(Variable, DomainMixin):
                 next(iter(self.latitude.bounds.values())).name: "lat_b",
                 next(iter(self.longitude.bounds.values())).name: "lon_b"
             })
-            target_domain.compute_bounds(target_domain.latitude.name)
-            target_domain.compute_bounds(target_domain.longitude.name)
+            target.compute_bounds(target.latitude.name)
+            target.compute_bounds(target.longitude.name)
             names_out.update({
-                next(iter(target_domain.latitude.bounds.values())).name:
-                    "lat_b",
-                next(iter(target_domain.longitude.bounds.values())).name:
-                    "lon_b"
+                next(iter(target.latitude.bounds.values())).name: "lat_b",
+                next(iter(target.longitude.bounds.values())).name: "lon_b"
             })
 
         # Regridding
+        in_ = self.to_xarray(encoding=False).rename(names_in)
+        out = target.to_xarray(encoding=False).to_dataset().rename(names_out)
         regrid_kwa = {
-            "ds_in": self.domain.to_xarray().to_dataset().rename(names_in),
-            "ds_out": target_domain.to_xarray().to_dataset().rename(names_out),
+            "ds_in": in_,
+            "ds_out": out,
             "method": method.value,
             "unmapped_to_nan": True,
             "filename": weights_path
         }
-
         try:
             regridder = xe.Regridder(**regrid_kwa, reuse_weights=reuse_weights)
         except PermissionError:
             regridder = xe.Regridder(**regrid_kwa)
-        xr_ds = self.to_xarray(encoding=False)
-        result = regridder(xr_ds, keep_attrs=True, skipna=False)
-        result = result.rename({
-            "lat": self.latitude.name,
-            "lon": self.longitude.name
-        })
-        result[self.name].encoding = xr_ds[self.name].encoding
+        result = regridder(in_, keep_attrs=True, skipna=False)
+        result = result.rename({v: k for k, v in names_in.items()})
+        result[self.name].encoding = in_[self.name].encoding
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-        # return result
         field_out = Field.from_xarray(
             ds=result,
             ncvar=self.name,
@@ -841,10 +828,9 @@ class Field(Variable, DomainMixin):
             id_pattern=self._id_pattern,
             mapping=self._mapping
         )
-        # Take `crs` from `target_domain` as in `result` there can be still the
-        # coordinate responsible for CRS
-        field_out.domain._crs = target_domain.crs
-        field_out.domain._type = target_domain.type
+        # Take `crs` and `type` from `target`.
+        field_out.domain._crs = target.crs
+        field_out.domain._type = target.type
         return field_out
 
     # TO CHECK
