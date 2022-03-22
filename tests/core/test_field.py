@@ -11,7 +11,9 @@ from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.datacube import DataCube
-from geokube.core.domain import Domain
+from geokube.core.domain import (
+    Domain, DomainType, GeodeticGrid, GeodeticPoints
+)
 from geokube.core.enums import LongitudeConvention, MethodType
 from geokube.core.field import Field
 from geokube.core.unit import Unit
@@ -1128,3 +1130,75 @@ def test_sel_latitude_with_rightnone_slice(era5_globe_netcdf):
     selected_latitude = tp.sel(latitude=slice(45, None)).latitude.values
     assert np.all(selected_latitude >= np.min(tp.latitude.values))
     assert np.all(selected_latitude <= 45)
+
+
+def test_interpolate_regular_to_regular_gridded(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
+    loc = {
+        'latitude': np.linspace(35, 48, num=20),
+        'longitude': np.linspace(2, 20, num=20)
+    }
+    domain = GeodeticGrid(**loc)
+    domain.type = DomainType.GRIDDED
+    res = field.interpolate(domain=domain, method='linear')
+    assert res.domain.crs == domain.crs
+    assert res.domain.type == domain.type
+    dims = {dim.type for dim in res.dims.flat}
+    assert AxisType.LATITUDE in dims
+    assert AxisType.LONGITUDE in dims
+    assert res.latitude.size == loc['latitude'].size
+    assert res.longitude.size == loc['longitude'].size
+
+
+def test_interpolate_regular_to_regular_point(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
+    loc = {
+        'latitude': np.linspace(35, 48, num=20),
+        'longitude': np.linspace(2, 20, num=20)
+    }
+    domain = GeodeticPoints(**loc)
+    res = field.interpolate(domain=domain, method='linear')
+    assert res.domain.crs == domain.crs
+    assert res.domain.type == domain.type
+    assert res.latitude.dims.size == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.size == loc['latitude'].size
+    assert res.longitude.dims.size == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.size == loc['longitude'].size
+
+
+def test_interpolate_rotated_pole_to_regular_gridded(era5_rotated_netcdf_wso):
+    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    loc = {
+        'latitude': np.linspace(35, 48, num=20),
+        'longitude': np.linspace(2, 20, num=20)
+    }
+    domain = GeodeticGrid(**loc)
+    domain.type = DomainType.GRIDDED
+    res = wso.interpolate(domain=domain, method='linear')
+    assert res.domain.crs == domain.crs
+    assert res.domain.type == domain.type
+    dims = {dim.type for dim in res.dims.flat}
+    assert AxisType.LATITUDE in dims
+    assert AxisType.LONGITUDE in dims
+    assert res.latitude.size == loc['latitude'].size
+    assert res.longitude.size == loc['longitude'].size
+
+
+def test_interpolate_rotated_pole_to_regular_point(era5_rotated_netcdf_wso):
+    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    loc = {
+        'latitude': np.linspace(35, 48, num=20),
+        'longitude': np.linspace(2, 20, num=20)
+    }
+    domain = GeodeticPoints(**loc)
+    res = wso.interpolate(domain=domain, method='linear')
+    assert res.domain.crs == domain.crs
+    assert res.domain.type == domain.type
+    assert res.latitude.dims.size == 1
+    assert res.latitude.dims[0].name == 'points'
+    assert res.latitude.size == loc['latitude'].size
+    assert res.longitude.dims.size == 1
+    assert res.longitude.dims[0].name == 'points'
+    assert res.longitude.size == loc['longitude'].size

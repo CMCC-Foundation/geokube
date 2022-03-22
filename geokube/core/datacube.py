@@ -201,6 +201,23 @@ class DataCube(DomainMixin):
         )
 
     @log_func_debug
+    def interpolate(
+        self,
+        domain: Domain,
+        method: str = "nearest"
+    ) -> "DataCube":
+        return DataCube(
+            fields=[
+                self._fields[k].interpolate(
+                    domain=domain, method=method
+                )
+                for k in self._fields.keys()
+            ],
+            properties=self.properties,
+            encoding=self.encoding,
+        )
+
+    @log_func_debug
     def resample(
         self,
         operator: Union[Callable, MethodType, str],

@@ -440,9 +440,10 @@ class Field(Variable, DomainMixin):
                     self.y.name: xr.DataArray(data=y, dims="points"),
                 }
             else:
-                lon_2d, lat_2d = np.meshgrid(lon, lat)
+                if lat.ndim == lon.ndim == 1:
+                    lon, lat = np.meshgrid(lon, lat)
                 pts = self.domain.crs.as_cartopy_crs().transform_points(
-                    src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
+                    src_crs=ccrs.PlateCarree(), x=lon, y=lat
                 )
                 x, y = pts[..., 0], pts[..., 1]
                 dims = (domain.latitude.name, domain.longitude.name)
@@ -474,7 +475,7 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-        field.domain.type = DomainType.POINTS
+        field.domain.type = domain.type
         return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
