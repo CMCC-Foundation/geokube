@@ -10,8 +10,8 @@ import numpy as np
 class MethodType(Enum):
     # From https://cfconventions.org/Data/cf-conventions/cf-conventions-1.7/build/ape.html
     POINT = ("point", [None])
-    MAX = ("maximum", [da.nanmax, np.nanmax])
-    MIN = ("minimum", [da.nanmin, np.nanmin])
+    MAX = ("max", [da.nanmax, np.nanmax])
+    MIN = ("min", [da.nanmin, np.nanmin])
     MEAN = ("mean", [da.nanmean, np.nanmean])
     SUM = ("sum", [da.nansum, np.nansum])
     VARIANCE = ("variance", [da.nanvar, np.nanvar])
