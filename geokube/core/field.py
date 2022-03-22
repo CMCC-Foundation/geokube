@@ -865,23 +865,23 @@ class Field(Variable, DomainMixin):
         else:
             if isinstance(operator, str):
                 operator_func = MethodType(operator)
-                if operator_func is MethodType.UNDEFINED:
-                    methods = {
-                        method.value[0]
-                        for method in MethodType.__members__.values()
-                    }
-                    methods.discard('<undefined>')
-                    raise ex.HCubeValueError(
-                        f"Provided operator '{operator}' was not found! "
-                        f"Available operators are: {sorted(methods)}!",
-                        logger=Field._LOG,
-                    )
             elif isinstance(operator, MethodType):
                 operator_func = operator
             else:
                 raise ex.HCubeTypeError(
                     "Operator must be `str`, `MethodType`, or `callable`. "
                     f"Provided `{type(operator)}`",
+                    logger=Field._LOG,
+                )
+            if operator_func is MethodType.UNDEFINED:
+                methods = {
+                    method.value[0]
+                    for method in MethodType.__members__.values()
+                }
+                methods.discard('<undefined>')
+                raise ex.HCubeValueError(
+                    f"Provided operator '{operator}' was not found! Available "
+                    f"operators are: {sorted(methods)}!",
                     logger=Field._LOG,
                 )
             func = (
