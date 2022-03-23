@@ -12,9 +12,8 @@ import xarray as xr
 import pandas as pd
 from xarray.core.options import OPTIONS
 
-from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .unit import Unit
@@ -45,9 +44,8 @@ class Variable(xr.Variable):
             or isinstance(data, Variable)
             or isinstance(data, Number)
         ):
-            raise ex.HCubeTypeError(
+            raise TypeError(
                 f"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`, but provided {type(data)}",
-                logger=Variable._LOG,
             )
         if isinstance(data, Number):
             data = np.array(data)
@@ -66,9 +64,8 @@ class Variable(xr.Variable):
                 dims = self._as_dimension_tuple(dims)
                 dims = np.array(dims, ndmin=1, dtype=Axis)
                 if len(dims) != data.ndim:
-                    raise ex.HCubeValueError(
+                    raise ValueError(
                         f"Provided data have {data.ndim} dimension(s) but {len(dims)} Dimension(s) provided in `dims` argument",
-                        logger=Variable._LOG,
                     )
 
                 self._dimensions = dims
@@ -101,14 +98,12 @@ class Variable(xr.Variable):
                 elif isinstance(d, Axis):
                     _dims.append(d)
                 else:
-                    raise ex.HCubeTypeError(
+                    raise TypeError(
                         f"Expected argument of collection item is one of the following types `str` or `geokube.Axis`, but provided {type(d)}",
-                        logger=Variable._LOG,
                     )
             return tuple(_dims)
-        raise ex.HCubeValueError(
+        raise ValueError(
             f"Expected argument is one of the following types `str`, `iterable of str`, `iterable of geokub.Axis`, or `iterable of str`, but provided {type(dims)}",
-            logger=Variable._LOG,
         )
 
     @property
@@ -165,7 +160,7 @@ class Variable(xr.Variable):
         self.units = unit
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def _get_name(
         cls,
         da: Union[xr.Dataset, xr.DataArray],
@@ -193,7 +188,7 @@ class Variable(xr.Variable):
         return template.substitute(**da.attrs)
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         da: xr.DataArray,
@@ -202,9 +197,8 @@ class Variable(xr.Variable):
         mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ):
         if not isinstance(da, xr.DataArray):
-            raise ex.HCubeTypeError(
+            raise TypeError(
                 f"Expected argument of the following type `xarray.DataArray`, but provided {type(da)}",
-                logger=Variable._LOG,
             )
         data = da.data.copy() if copy else da.data
         dims = []
@@ -241,7 +235,7 @@ class Variable(xr.Variable):
             encoding=encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Variable:
         nc_attrs = self.properties
         nc_encoding = self.encoding

@@ -19,9 +19,8 @@ import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
-from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .cell_methods import CellMethod
@@ -98,16 +97,14 @@ class Field(Variable, DomainMixin):
         self._cell_methods = cell_methods
         if ancillary is not None:
             if not isinstance(ancillary, dict):
-                raise ex.HCubeTypeError(
+                raise TypeError(
                     f"Expected type of `ancillary` argument is dict, but the provided one if {type(ancillary)}",
-                    logger=Field._LOG,
                 )
             res_anc = {}
             for k, v in ancillary.items():
                 if not isinstance(v, (np.ndarray, da.Array, Variable, Number)):
-                    raise ex.HCubeTypeError(
+                    raise TypeError(
                         f"Expected type of single ancillary variable is: `numpy.ndarray`, `dask.Array`, `geokube.Variable`, or `Number`, but the provided one if {type(v)}",
-                        logger=Field._LOG,
                     )
                 # TODO: what should be axis and dims for ancillary variables? SHould it be `Variable`?
                 res_anc[k] = Variable(data=v)
@@ -165,7 +162,7 @@ class Field(Variable, DomainMixin):
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical
-    @log_func_debug
+    @geokube_logging
     def geobbox(
         self,
         north: Number | None = None,
@@ -196,16 +193,15 @@ class Field(Variable, DomainMixin):
 
         Raises
         ------
-        HCubeKeyError
+        KeyError
             If no bound is provided.
 
         """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
-            raise ex.HCubeKeyError(
+            raise KeyError(
                 "At least on of the following must be defined: [north, south, west, east, top, bottom]!",
-                logger=Field._LOG,
             )
         return self._geobbox_idx(
             south=south,
@@ -283,7 +279,7 @@ class Field(Variable, DomainMixin):
         if top is not None or bottom is not None:
             try:
                 vert = field.vertical
-            except ex.HCubeKeyError:
+            except KeyError:
                 vert = None
             # TODO: Reconsider `not vert.shape`.
             if vert is None or not vert.shape:
@@ -609,7 +605,7 @@ class Field(Variable, DomainMixin):
 
     # consider only independent coordinates
     # TODO: we should use metpy approach (user can also specify - units)
-    @log_func_debug
+    @geokube_logging
     def sel(
         self,
         indexers: Mapping[Union[Axis, str], Any] = None,
@@ -649,16 +645,15 @@ class Field(Variable, DomainMixin):
             ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
         )
 
-    @log_func_debug
+    @geokube_logging
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
         if Axis("longitude") not in indexers:
             return ds
         if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
             # TODO: implement for dependent coordinate
-            raise ex.HCubeNotImplementedError(
+            raise NotImplementedError(
                 "Rolling longitude is currently supported only for independent coordinate!",
-                logger=Field._LOG,
             )
         first_el, last_el = (
             self.domain[Axis("longitude")].min(),
@@ -727,7 +722,7 @@ class Field(Variable, DomainMixin):
         )
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def regrid(
         self,
         target: Union[Domain, "Field"],
@@ -765,9 +760,7 @@ class Field(Variable, DomainMixin):
         elif isinstance(target, Field):
             target_domain = target.domain
         else:
-            raise ex.HCubeTypeError(
-                "'target' must be an instance of Domain or Field", logger=Field._LOG
-            )
+            raise TypeError("'target' must be an instance of Domain or Field")
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
@@ -825,7 +818,7 @@ class Field(Variable, DomainMixin):
         return field_out
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def resample(
         self,
         operator: Union[Callable, MethodType, str],
@@ -869,14 +862,12 @@ class Field(Variable, DomainMixin):
         elif callable(operator_func):
             func = operator_func
         else:
-            raise ex.HCubeTypeError(
+            raise TypeError(
                 f"Operator can be only one of: `str`, `MethodType`, `callable`. Provided `{type(operator)}`",
-                logger=Field._LOG,
             )
         if func is None:
-            raise ex.HCubeValueError(
+            raise ValueError(
                 f"Provided operator `{operator}` was not found! Check available operators or provide it the one yourself by pasing callable object!",
-                logger=Field._LOG,
             )
 
         # ################## Temporary solution for time bounds adjustmnent ######################
@@ -915,12 +906,12 @@ class Field(Variable, DomainMixin):
         # #########################################################################################
         return Field.from_xarray_dataset(res, field_name=self.variable.name)
 
-    @log_func_debug
+    @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def plot(
         self,
         features=None,
@@ -1087,7 +1078,7 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-    @log_func_debug
+    @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Dataset:
         data_vars = {}
         var_name = self.ncvar if encoding else self.name
@@ -1117,7 +1108,7 @@ class Field(Variable, DomainMixin):
         return xr.Dataset(data_vars=data_vars, coords=coords)
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         ds: xr.Dataset,
@@ -1127,9 +1118,8 @@ class Field(Variable, DomainMixin):
         copy=False,
     ):
         if not isinstance(ds, xr.Dataset):
-            raise ex.HCubeTypeError(
+            raise TypeError(
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
-                logger=cls._LOG,
             )
 
         da = ds[ncvar].copy(copy)  # TODO: TO CHECK

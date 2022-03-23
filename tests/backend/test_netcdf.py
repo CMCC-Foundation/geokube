@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from dask.delayed import Delayed
 
-import geokube.utils.exceptions as ex
+
 from geokube.core.field import Field
 from geokube.backend.netcdf import open_dataset, open_datacube
 

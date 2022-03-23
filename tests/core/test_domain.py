@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 import geokube.core.coord_system as crs
-import geokube.utils.exceptions as ex
+
 from geokube.core.axis import Axis, AxisType
 from geokube.core.bounds import Bounds1D, BoundsND
 from geokube.core.coordinate import Coordinate, CoordinateType

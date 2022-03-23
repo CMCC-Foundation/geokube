@@ -5,15 +5,13 @@ import pandas as pd
 import cf_units as cf
 
 import geokube.core.coord_system as crs
-import geokube.utils.exceptions as ex
+
 from geokube.backend.netcdf import open_datacube, open_dataset
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.datacube import DataCube
-from geokube.core.domain import (
-    Domain, DomainType, GeodeticGrid, GeodeticPoints
-)
+from geokube.core.domain import Domain, DomainType, GeodeticGrid, GeodeticPoints
 from geokube.core.enums import LongitudeConvention, MethodType
 from geokube.core.field import Field
 from geokube.core.unit import Unit
@@ -340,7 +338,7 @@ def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
 
     with pytest.raises(
-        ex.HCubeKeyError,
+        KeyError,
         match="Axis of type `AxisType.VERTICAL` does not exist in the domain!",
     ):
         tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
@@ -874,7 +872,7 @@ def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
 
 def test_sel_fail_on_missing_x_y(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    with pytest.raises(ex.HCubeKeyError, match=r"Axis of type*"):
+    with pytest.raises(KeyError, match=r"Axis of type*"):
         _ = vt.sel(depth=[1.2, 29], x=slice(60, 100), y=slice(130, 170))
 
 
@@ -1133,72 +1131,72 @@ def test_sel_latitude_with_rightnone_slice(era5_globe_netcdf):
 
 
 def test_interpolate_regular_to_regular_gridded(era5_netcdf):
-    field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
+    field = Field.from_xarray(era5_netcdf["d2m"].to_dataset(), ncvar="d2m")
     loc = {
-        'latitude': np.linspace(35, 48, num=20),
-        'longitude': np.linspace(2, 20, num=20)
+        "latitude": np.linspace(35, 48, num=20),
+        "longitude": np.linspace(2, 20, num=20),
     }
     domain = GeodeticGrid(**loc)
     domain.type = DomainType.GRIDDED
-    res = field.interpolate(domain=domain, method='linear')
+    res = field.interpolate(domain=domain, method="linear")
     assert res.domain.crs == domain.crs
     assert res.domain.type == domain.type
     dims = {dim.type for dim in res.dims.flat}
     assert AxisType.LATITUDE in dims
     assert AxisType.LONGITUDE in dims
-    assert res.latitude.size == loc['latitude'].size
-    assert res.longitude.size == loc['longitude'].size
+    assert res.latitude.size == loc["latitude"].size
+    assert res.longitude.size == loc["longitude"].size
 
 
 def test_interpolate_regular_to_regular_point(era5_netcdf):
-    field = Field.from_xarray(era5_netcdf['d2m'].to_dataset(), ncvar='d2m')
+    field = Field.from_xarray(era5_netcdf["d2m"].to_dataset(), ncvar="d2m")
     loc = {
-        'latitude': np.linspace(35, 48, num=20),
-        'longitude': np.linspace(2, 20, num=20)
+        "latitude": np.linspace(35, 48, num=20),
+        "longitude": np.linspace(2, 20, num=20),
     }
     domain = GeodeticPoints(**loc)
-    res = field.interpolate(domain=domain, method='linear')
+    res = field.interpolate(domain=domain, method="linear")
     assert res.domain.crs == domain.crs
     assert res.domain.type == domain.type
     assert res.latitude.dims.size == 1
-    assert res.latitude.dims[0].name == 'points'
-    assert res.latitude.size == loc['latitude'].size
+    assert res.latitude.dims[0].name == "points"
+    assert res.latitude.size == loc["latitude"].size
     assert res.longitude.dims.size == 1
-    assert res.longitude.dims[0].name == 'points'
-    assert res.longitude.size == loc['longitude'].size
+    assert res.longitude.dims[0].name == "points"
+    assert res.longitude.size == loc["longitude"].size
 
 
 def test_interpolate_rotated_pole_to_regular_gridded(era5_rotated_netcdf_wso):
-    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
     loc = {
-        'latitude': np.linspace(35, 48, num=20),
-        'longitude': np.linspace(2, 20, num=20)
+        "latitude": np.linspace(35, 48, num=20),
+        "longitude": np.linspace(2, 20, num=20),
     }
     domain = GeodeticGrid(**loc)
     domain.type = DomainType.GRIDDED
-    res = wso.interpolate(domain=domain, method='linear')
+    res = wso.interpolate(domain=domain, method="linear")
     assert res.domain.crs == domain.crs
     assert res.domain.type == domain.type
     dims = {dim.type for dim in res.dims.flat}
     assert AxisType.LATITUDE in dims
     assert AxisType.LONGITUDE in dims
-    assert res.latitude.size == loc['latitude'].size
-    assert res.longitude.size == loc['longitude'].size
+    assert res.latitude.size == loc["latitude"].size
+    assert res.longitude.size == loc["longitude"].size
 
 
 def test_interpolate_rotated_pole_to_regular_point(era5_rotated_netcdf_wso):
-    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
     loc = {
-        'latitude': np.linspace(35, 48, num=20),
-        'longitude': np.linspace(2, 20, num=20)
+        "latitude": np.linspace(35, 48, num=20),
+        "longitude": np.linspace(2, 20, num=20),
     }
     domain = GeodeticPoints(**loc)
-    res = wso.interpolate(domain=domain, method='linear')
+    res = wso.interpolate(domain=domain, method="linear")
     assert res.domain.crs == domain.crs
     assert res.domain.type == domain.type
     assert res.latitude.dims.size == 1
-    assert res.latitude.dims[0].name == 'points'
-    assert res.latitude.size == loc['latitude'].size
+    assert res.latitude.dims[0].name == "points"
+    assert res.latitude.size == loc["latitude"].size
     assert res.longitude.dims.size == 1
-    assert res.longitude.dims[0].name == 'points'
-    assert res.longitude.size == loc['longitude'].size
+    assert res.longitude.dims[0].name == "points"
+    assert res.longitude.size == loc["longitude"].size

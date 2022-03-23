@@ -1,6 +1,7 @@
 from typing import Union
 
-from ..utils import exceptions as ex
+
+from ..utils.decorators import geokube_logging
 from .axis import Axis, AxisType
 from .coordinate import Coordinate, CoordinateType
 from .enums import LatitudeConvention, LongitudeConvention
@@ -52,24 +53,22 @@ class DomainMixin:
     def is_longitude_independent(self):
         return self[AxisType.LONGITUDE].type is CoordinateType.INDEPENDENT
 
+    @geokube_logging
     def __getitem__(self, key: Union[AxisType, Axis, str]) -> Coordinate:
         if isinstance(key, str):
             return self.coords[key]
         elif isinstance(key, AxisType):
             if key not in self._axis_to_name:
-                raise ex.HCubeKeyError(
+                raise KeyError(
                     f"Axis of type `{key}` does not exist in the domain!",
-                    logger=self._LOG,
                 )
             return self.coords[self._axis_to_name.get(key)]
         elif isinstance(key, Axis):
             if key.type not in self._axis_to_name:
-                raise ex.HCubeKeyError(
+                raise KeyError(
                     f"Axis of type `{key}` does not exist in the domain!",
-                    logger=self._LOG,
                 )
             return self.coords[self._axis_to_name.get(key.type)]
-        raise ex.HCubeTypeError(
+        raise TypeError(
             f"Indexing coordinates for Domain is supported only for object of types [str, geokube.Axis, geokub.AxisType]. Provided type: {type(key)}",
-            logger=self._LOG,
         )

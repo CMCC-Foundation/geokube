@@ -1,6 +1,6 @@
 import pytest
 
-import geokube.utils.exceptions as ex
+
 from geokube.core.axis import Axis, AxisType
 from geokube.core.unit import Unit
 from tests.fixtures import *
@@ -32,19 +32,19 @@ def test_parsing():
 
 def test_init_fails():
     with pytest.raises(
-        ex.HCubeTypeError,
+        TypeError,
         match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
     ):
         _ = Axis("lon", axistype=10)
 
     with pytest.raises(
-        ex.HCubeTypeError,
+        TypeError,
         match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
     ):
         _ = Axis("lon", axistype={"lat"})
 
     with pytest.raises(
-        ex.HCubeTypeError,
+        TypeError,
         match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
     ):
         _ = Axis("lon", axistype=["lon"])

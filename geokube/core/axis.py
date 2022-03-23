@@ -7,7 +7,6 @@ from typing import Any, Hashable, List, Mapping, Optional, Union
 import xarray as xr
 
 from .unit import Unit
-from ..utils import exceptions as ex
 from ..utils.hcube_logger import HCubeLogger
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
@@ -100,9 +99,8 @@ class Axis:
                 elif isinstance(axistype, AxisType):
                     self._type = axistype
                 else:
-                    raise ex.HCubeTypeError(
+                    raise TypeError(
                         f"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided {type(axistype)}",
-                        logger=Axis._LOG,
                     )
 
     @property
@@ -163,7 +161,6 @@ class Axis:
         elif isinstance(obj, AxisType):
             return obj.axis_type_name
         else:
-            raise ex.HCubeTypeError(
+            raise TypeError(
                 f"`dims` can be a tuple or a list of [geokube.Axis, geokube.AxisType, str], but provided type is `{type(obj)}`",
-                logger=Axis._LOG,
             )

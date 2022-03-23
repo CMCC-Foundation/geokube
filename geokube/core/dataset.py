@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
 
-from ..utils import exceptions as ex
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis
 from .datacube import DataCube
@@ -48,9 +48,7 @@ class Dataset:
                 and attr != self.FIELD_COL
             ]
         else:
-            raise ex.HCubeTypeError(
-                "'hcubes' must be mapping or pandas DataFrame", logger=self._LOG
-            )
+            raise TypeError("'hcubes' must be mapping or pandas DataFrame")
 
         self.__data[self.FIELD_COL] = [
             None
@@ -169,6 +167,7 @@ class Dataset:
         data.index = np.arange(len(data))
         return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
 
+    @geokube_logging
     def filter(
         self, indexers: Optional[Mapping[str, str]] = None, **indexers_kwargs
     ) -> Dataset:
@@ -176,18 +175,16 @@ class Dataset:
             params = indexers_kwargs
         else:
             if intersect := sorted(indexers.keys() & indexers_kwargs.keys()):
-                raise ex.HCubeValueError(
+                raise ValueError(
                     "'indexers' and 'indexers_kwargs' have common parameters: "
                     f"{intersect}",
-                    logger=self._LOG,
                 )
             params = {**indexers, **indexers_kwargs}
 
         if not (idx := params.keys()) <= (attrs := set(self.__attrs)):
             # TODO: Make better message.
-            raise ex.HCubeValueError(
+            raise ValueError(
                 f"'filter' cannot use the argument(s): {sorted(idx - attrs)}",
-                logger=self._LOG,
             )
 
         mask = np.full(shape=len(self.__data), fill_value=True, dtype=np.bool_)
