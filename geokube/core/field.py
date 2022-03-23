@@ -820,21 +820,15 @@ class Field(Variable, DomainMixin):
         result = result.rename({v: k for k, v in names_in.items()})
         result[self.name].encoding = in_[self.name].encoding
         if not isinstance(target.crs, GeogCS):
-            # TODO: Check if `target.latitude` and `target.longitude` are
-            # redundant.
-            coords = (target.latitude, target.longitude, target.x, target.y)
             missing_coords = {
                 coord.name: out.coords[coord.name]
-                for coord in coords
+                for coord in (target.x, target.y)
                 if coord.name not in result.coords
             }
             result = result.assign_coords(coords=missing_coords)
-            coord_names = ' '.join(target.coords.keys())
-            result[self.name].encoding['coordinates'] = coord_names
-            # result[self.name].encoding['coordinates'] = 'latitude longitude'
+            result[self.name].encoding['coordinates'] = 'latitude longitude'
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-        # return result
         field_out = Field.from_xarray(
             ds=result,
             ncvar=self.name,
@@ -842,7 +836,6 @@ class Field(Variable, DomainMixin):
             id_pattern=self._id_pattern,
             mapping=self._mapping
         )
-        # Take `crs` and `type` from `target`.
         field_out.domain._crs = target.crs
         field_out.domain._type = target.type
         return field_out
