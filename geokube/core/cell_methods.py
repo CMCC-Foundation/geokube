@@ -108,7 +108,7 @@ class CellMethod:
         )
 
     def __str__(self) -> str:
-        res_str = self.method.value[0]
+        res_str = str(self.method)
         if self.axis is not None:
             res_str = ": ".join([self.axis, res_str])
         if self.where is not None:
