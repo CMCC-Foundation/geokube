@@ -792,13 +792,13 @@ class Field(Variable, DomainMixin):
             # methods work.
             self.domain.compute_bounds()
             names_in.update({
-                next(iter(self.latitude.bounds.values())).name: "lat_b",
-                next(iter(self.longitude.bounds.values())).name: "lon_b"
+                next(iter(self.latitude.bounds)): "lat_b",
+                next(iter(self.longitude.bounds)): "lon_b"
             })
             target.compute_bounds()
             names_out.update({
-                next(iter(target.latitude.bounds.values())).name: "lat_b",
-                next(iter(target.longitude.bounds.values())).name: "lon_b"
+                next(iter(target.latitude.bounds)): "lat_b",
+                next(iter(target.longitude.bounds)): "lon_b"
             })
 
         # Regridding
