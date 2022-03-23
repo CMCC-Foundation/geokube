@@ -783,27 +783,39 @@ class Field(Variable, DomainMixin):
 
         names_in = {self.latitude.name: "lat", self.longitude.name: "lon"}
         names_out = {target.latitude.name: "lat", target.longitude.name: "lon"}
+        coords_in = coords_out = None
 
         if method in {
             RegridMethod.CONSERVATIVE,
             RegridMethod.CONSERVATIVE_NORMED
         }:
-            # TODO: Update `Domain.compute_bounds` to make the conservative
-            # methods work.
             self.domain.compute_bounds()
-            names_in.update({
-                next(iter(self.latitude.bounds)): "lat_b",
-                next(iter(self.longitude.bounds)): "lon_b"
-            })
+            lat_b_name = next(iter(self.latitude.bounds))
+            lat_b = next(iter(self.latitude.bounds.values())).values
+            lat_b = Domain.convert_bounds_2d_to_1d(lat_b)
+            lon_b_name = next(iter(self.longitude.bounds))
+            lon_b = next(iter(self.longitude.bounds.values())).values
+            lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
+            names_in.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
+            coords_in = {'lat_b': lat_b, 'lon_b': lon_b}
+
             target.compute_bounds()
-            names_out.update({
-                next(iter(target.latitude.bounds)): "lat_b",
-                next(iter(target.longitude.bounds)): "lon_b"
-            })
+            lat_b_name = next(iter(target.latitude.bounds))
+            lat_b = next(iter(target.latitude.bounds.values())).values
+            lat_b = Domain.convert_bounds_2d_to_1d(lat_b)
+            lon_b_name = next(iter(target.longitude.bounds))
+            lon_b = next(iter(target.longitude.bounds.values())).values
+            lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
+            names_out.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
+            coords_out = {'lat_b': lat_b, 'lon_b': lon_b}
 
         # Regridding
         in_ = self.to_xarray(encoding=False).rename(names_in)
+        if coords_in:
+            in_ = in_.assign_coords(coords=coords_in)
         out = target.to_xarray(encoding=False).to_dataset().rename(names_out)
+        if coords_out:
+            out = out.assign_coords(coords=coords_out)
         regrid_kwa = {
             "ds_in": in_,
             "ds_out": out,
