@@ -27,6 +27,10 @@ from .variable import Variable
 _COORDS_TUPLE_CONTENT = ["dims", "data", "bounds", "units", "properties", "encoding"]
 
 
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
+
+
 class DomainType(Enum):
     GRIDDED = "gridded"
     POINTS = "points"
@@ -186,14 +190,27 @@ class Domain(DomainMixin):
         return {time_coord.name: inds}
 
     @log_func_debug
-    def compute_bounds(self, coord, force: bool = False) -> None:
-        # check if coord is Latitude or Longitude or raise an error
-        coord = self[coord]
-        if coord.ctype is not CoordinateType.INDEPENDENT:
-            raise ex.HCubeValueError(
-                f"Calculating bounds is supported only for independent coordinate, but requested coordinate has type: {coord.ctype}",
+    def compute_bounds(
+        self,
+        coordinate: str | None = None,
+        force: bool = False
+    ) -> None:
+        # Defining behavior if `coordinate` is different from `'latitude'` or
+        # `'longitude'`
+        if coordinate is None:
+            self.compute_bounds(coordinate='latitude', force=False)
+            self.compute_bounds(coordinate='longitude', force=False)
+            return
+        elif coordinate not in {'latitude', 'longitude'}:
+            raise ex.HCubeNotImplementedError(
+                "'coordinate' must be either 'latitude' or 'longitude', other "
+                "values are not currently supported",
                 logger=self._LOG,
             )
+
+        # Extracting the coordinate object
+        coord = self[coordinate]
+
         # Handling the case when bounds already exist, according to `force`
         if coord.bounds is not None:
             msg = f"{coord.name} bounds already exist"
@@ -204,13 +221,25 @@ class Domain(DomainMixin):
             warnings.warn(f"{msg} and are going to be recalculated")
             self._LOG.warn(f"{msg} and are going to be recalculated")
 
+        # Checking if the coordinate is independent
+        if coord.type is not CoordinateType.INDEPENDENT:
+            raise ex.HCubeNotImplementedError(
+                "'coordinate' must be independent to calculate its bounds, "
+                "dependent coordinates are not currently supported",
+                logger=self._LOG,
+            )
+
         # Handling the case when `crs` is `None` or not instance of `GeogCS`
         crs = self._crs
         if crs is None:
+            # TODO: Reconsider if this should be `ValueError` or some other
+            # type of exception, see:
+            # https://docs.python.org/3/library/exceptions.html#ValueError
             raise ex.HCubeValueError(
-                "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
+                "'crs' is None and cell bounds cannot be calculated",
+                logger=self._LOG
             )
-        if not isinstance(crs, (GeogCS, RegularLatLon)):
+        if not isinstance(crs, GeogCS):
             raise ex.HCubeNotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
                 "calculating cell corners",
@@ -218,7 +247,7 @@ class Domain(DomainMixin):
             )
 
         # Calculating bounds
-        val = coord.data
+        val = coord.values
         val_b = np.empty(shape=val.size + 1, dtype=np.float64)
         val_b[1:-1] = 0.5 * (val[:-1] + val[1:])
         half_step = 0.5 * (val.ptp() / (val.size - 1))
@@ -226,31 +255,21 @@ class Domain(DomainMixin):
         i, j = (0, -1) if val[0] <= val[-1] else (-1, 0)
         val_b[i] = val[i] - half_step
         val_b[j] = val[j] + half_step
+        # TODO: Consider if this is reduntant and if not is the logic correct.
         # Making sure that longitude and latitude values are not outside their
         # ranges
-        range_b = ()
-        if coord.atype == AxisType.LONGITUDE:
-            if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
-                range_b = (0.0, 360.0)
-            else:
-                range_b = (-180.0, 180.0)
-        elif coord.atype == AxisType.LATITUDE:
-            range_b = (-90.0, 90.0)
+        # if coord.axis_type is AxisType.LONGITUDE:
+        #     if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
+        #         range_b = (0.0, 360.0)
+        #     else:
+        #         range_b = (-180.0, 180.0)
+        # else:  # Case when coord.axis_type is AxisType.LATITUDE
+        #     range_b = (-90.0, 90.0)
+        # val_b[i] = val_b[i].clip(*range_b)
+        # val_b[j] = val_b[j].clip(*range_b)
 
-        if range_b:
-            val_b[i] = val_b[i].clip(*range_b)
-            val_b[j] = val_b[j].clip(*range_b)
-
-        # Bounds are stored as 1D array of size (coord_vals.shape + 1)
-        # It needs to be stored as array of shape (len(coord_vals), 2)
         # Setting `coordinate.bounds`
-        name = f"{coord.name}_bnds"
-        coord.bounds = Variable(
-            name=name,
-            data=Domain.convert_bounds_1d_to_2d(val_b),
-            units=coord.units,
-            dims=(coord.dims[0].name, "bounds"),
-        )
+        coord.bounds = Domain.convert_bounds_1d_to_2d(val_b)
 
     @staticmethod
     def convert_bounds_1d_to_2d(values):

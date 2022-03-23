@@ -789,14 +789,12 @@ class Field(Variable, DomainMixin):
         }:
             # TODO: Update `Domain.compute_bounds` to make the conservative
             # methods work.
-            self.domain.compute_bounds(AxisType.LATITUDE)
-            self.domain.compute_bounds(AxisType.LONGITUDE)
+            self.domain.compute_bounds()
             names_in.update({
                 next(iter(self.latitude.bounds.values())).name: "lat_b",
                 next(iter(self.longitude.bounds.values())).name: "lon_b"
             })
-            target.compute_bounds(target.latitude.name)
-            target.compute_bounds(target.longitude.name)
+            target.compute_bounds()
             names_out.update({
                 next(iter(target.latitude.bounds.values())).name: "lat_b",
                 next(iter(target.longitude.bounds.values())).name: "lon_b"
