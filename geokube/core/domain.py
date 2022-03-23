@@ -330,6 +330,11 @@ class Domain(DomainMixin):
         )
         if xr_coords is not None:
             for coord_name in xr_coords.split(" "):
+                if coord_name not in ds:
+                    warnings.warn(
+                        f"Coordinate {coord_name} does not exist in the dataset!"
+                    )
+                    continue
                 coord = Coordinate.from_xarray(
                     ds=ds, ncvar=coord_name, id_pattern=id_pattern, mapping=mapping
                 )

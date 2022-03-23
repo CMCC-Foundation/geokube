@@ -850,85 +850,108 @@ class Field(Variable, DomainMixin):
         """
         Perform resampling along the available `time` coordinate.
         Adjust appropriately time bounds.
+
         Parameters
         ----------
         operator : callable or str
-            Callable-object used for aggregation or string representation of a function.
-            Currently supported are methods of geokube.MethodType
+            Callable-object used for aggregation or string
+            representation of a function.  Currently supported are the
+            methods of ``geokube.MethodType``.
         frequency :  str
-            Expected resampling frequency
-        inplace : bool
-            Indicate if operations should be done inplace or a modified copy should be returned
+            Expected resampling frequency.
+
         Returns
         ----------
         field : Field
-            The field with values after resampling procedure if inplace==True, modified copy otherwise
+            The field with values after resampling procedure.
+
         Examples:
         ----------
-        Resample to day frequency taking the maximum over the elements in each day:
-        >>> resulting_field = field.resample(MethodType.FIRST, frequency='1D')
-        Resample to 2 month frequency taking the sum (omitting NaNs) over each 2 months
-        >>> resulting_field = field.resample("nansum", frequency='2M')
+        Resample to day frequency taking the maximum over the elements
+        in each day:
+        >>> res = field.resample("maximum", frequency='1D')
+
+        Resample to two-monts frequency taking the sum over each two
+        months:
+        >>> resulting_field = field.resample("sum", frequency='2M')
+
         """
-        time_axis = self.domain[Axis.TIME]
-        time = time_axis.name
-        func = None
-        if isinstance(operator, str):
-            operator_func = MethodType(operator)
-        if isinstance(operator_func, MethodType):
+        if callable(operator):
+            func = operator
+        else:
+            if isinstance(operator, str):
+                operator_func = MethodType(operator)
+            elif isinstance(operator, MethodType):
+                operator_func = operator
+            else:
+                raise ex.HCubeTypeError(
+                    "Operator must be `str`, `MethodType`, or `callable`. "
+                    f"Provided `{type(operator)}`",
+                    logger=Field._LOG,
+                )
+            if operator_func is MethodType.UNDEFINED:
+                methods = {
+                    method.value[0]
+                    for method in MethodType.__members__.values()
+                }
+                methods.discard('<undefined>')
+                raise ex.HCubeValueError(
+                    f"Provided operator '{operator}' was not found! Available "
+                    f"operators are: {sorted(methods)}!",
+                    logger=Field._LOG,
+                )
             func = (
                 operator_func.dask_operator
-                if is_dask_collection(self)
-                else operator_func.numpy_operator
-            )
-        elif callable(operator_func):
-            func = operator_func
-        else:
-            raise ex.HCubeTypeError(
-                f"Operator can be only one of: `str`, `MethodType`, `callable`. Provided `{type(operator)}`",
-                logger=Field._LOG,
-            )
-        if func is None:
-            raise ex.HCubeValueError(
-                f"Provided operator `{operator}` was not found! Check available operators or provide it the one yourself by pasing callable object!",
-                logger=Field._LOG,
-            )
+                if is_dask_collection(self) else
+                operator_func.numpy_operator
+            ) 
 
         # ################## Temporary solution for time bounds adjustmnent ######################
 
         # TODO: handle `formula_terms` bounds attribute
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
-        tb = time_axis.bounds
         ds = self.to_xarray(encoding=False)
-        if self.cell_methods and tb is not None:
+        if (time_bnds := self.time.bounds) is None:
+            bnds_name, bnds = f'{self.time.name}_bnds', None
+        else:
+            (bnds_name, bnds), = time_bnds.items()
+
+        if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
             resample_kwargs.update({"closed": "right"})
-            da = ds.resample(indexer={time: frequency}, **resample_kwargs)
-            new_bounds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
+            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            new_bnds = np.empty(
+                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bounds[i] = [tb.values[v].min(), tb.values[v].max()]
-            if tb is None:
+                new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
+            # TODO: Check if this is redundant
+            if bnds is None:
                 Field._LOG.warn("Time bounds not defined for the cell methods!")
                 warnings.warn("Time bounds not defined for the cell methods!")
         else:
-            da = ds.resample(indexer={time: frequency}, **resample_kwargs)
-            new_bounds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[m]")
+            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            new_bnds = np.empty(
+                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bounds[i] = [time_axis.values[v].min(), time_axis.values[v].max()]
-        da = da.reduce(func=func, dim=time, keep_attrs=True)
+                new_bnds[i] = [self.time.values[v].min(), self.time.values[v].max()]
+
+        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
         res = xr.Dataset(
-            da,
-            coords={f"{time}_bnds": ((time, "bnds"), new_bounds)},
+             da,
+             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
+        field = Field.from_xarray(res, ncvar=self.name)
+        field.time.bounds = new_bnds
+        field.domain.crs = self.domain.crs
+        field.domain._type = self.domain._type
+
         # TODO: adjust cell_methods after resampling!
 
         # #########################################################################################
-        return Field.from_xarray_dataset(res, field_name=self.variable.name)
+        return field
 
     @log_func_debug
     def to_netcdf(self, path):
