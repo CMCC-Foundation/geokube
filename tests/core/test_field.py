@@ -1200,3 +1200,40 @@ def test_interpolate_rotated_pole_to_regular_point(era5_rotated_netcdf_wso):
     assert res.longitude.dims.size == 1
     assert res.longitude.dims[0].name == "points"
     assert res.longitude.size == loc["longitude"].size
+
+
+def test_resample_without_original_bounds(era5_globe_netcdf):
+    tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    tp_r = tp.resample(operator="maximum", frequency="W")
+    assert tp.values.max() == tp_r.values.max()
+    diff = 7 * 24 * 60 * 60 * 1_000_000_000
+    diff_ = np.diff(tp_r.time.values)
+    assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
+    assert tp_r.time.bounds is not None
+    assert tp_r.time.bounds["time_bounds"].shape[0] == tp_r.time.shape[0]
+
+
+def test_resample_with_original_bounds(era5_rotated_netcdf_wso):
+    wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    wso_r = wso.resample(operator="sum", frequency="12H")
+    diff = 12 * 60 * 60 * 1_000_000_000
+    diff_ = np.diff(wso_r.time.values)
+    assert np.all(diff_ == np.full_like(diff_, fill_value=diff))
+    assert wso_r.time.bounds is not None
+    assert wso_r.time.bounds["time_bounds"].shape[0] == wso_r.time.shape[0]
+
+
+def test_adding_time_bounds(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf["d2m"].to_dataset(), ncvar="d2m")
+    assert field.time.bounds is None
+    time_bounds = np.empty(shape=(field.time.size, 2), dtype=field.time.dtype)
+    time_resolution = field.time.values[1] - field.time.values[0]
+    time_bounds[0, 0] = field.time.values[0] - time_resolution
+    time_bounds[1:, 0] = field.time.values[:-1]
+    time_bounds[:, 1] = field.time.values
+    field.time.bounds = time_bounds
+    assert isinstance(field.time.bounds, dict)
+    assert "time_bounds" in field.time.bounds
+    assert field.time.bounds["time_bounds"].shape == field.time.shape + (2,)
+    assert "bounds" in field.time.encoding
+    assert field.time.encoding["bounds"] == "time_bounds"
