@@ -8,7 +8,7 @@ import geokube.core.coord_system as crs
 import geokube.utils.exceptions as ex
 from geokube.backend.netcdf import open_datacube, open_dataset
 from geokube.core.axis import Axis, AxisType
-from geokube.core.coord_system import RegularLatLon
+from geokube.core.coord_system import GeogCS, RegularLatLon
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.datacube import DataCube
 from geokube.core.domain import (
@@ -1239,3 +1239,416 @@ def test_adding_time_bounds(era5_netcdf):
     assert field.time.bounds['time_bounds'].shape == field.time.shape + (2,)
     assert 'bounds' in field.time.encoding
     assert field.time.encoding['bounds'] == 'time_bounds'
+
+
+def test_regridding_regular_to_regular_conservative(era5_netcdf):
+    field_in = Field.from_xarray(era5_netcdf, ncvar='d2m')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='conservative',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    assert field_out.coords.keys() == {'time', 'latitude', 'longitude'}
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_regular_to_regular_bilinear(era5_netcdf):
+    field_in = Field.from_xarray(era5_netcdf, ncvar='d2m')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='bilinear',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    assert field_out.coords.keys() == {'time', 'latitude', 'longitude'}
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_regular_to_regular_nearest_s2d(era5_netcdf):
+    field_in = Field.from_xarray(era5_netcdf, ncvar='d2m')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='nearest_s2d',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    assert field_out.coords.keys() == {'time', 'latitude', 'longitude'}
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_regular_to_regular_nearest_d2s(era5_netcdf):
+    field_in = Field.from_xarray(era5_netcdf, ncvar='d2m')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='nearest_d2s',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    assert field_out.coords.keys() == {'time', 'latitude', 'longitude'}
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_regular_to_regular_patch(era5_netcdf):
+    field_in = Field.from_xarray(era5_netcdf, ncvar='d2m')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='patch',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    assert field_out.coords.keys() == {'time', 'latitude', 'longitude'}
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_rotated_pole_to_regular_bilinear(era5_rotated_netcdf_wso):
+    field_in = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='bilinear',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    dims = field_in.coords.keys() - {'grid_latitude', 'grid_longitude'}
+    assert field_out.coords.keys() == dims
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_rotated_pole_to_regular_nearest_s2d(
+    era5_rotated_netcdf_wso
+):
+    field_in = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='nearest_s2d',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    dims = field_in.coords.keys() - {'grid_latitude', 'grid_longitude'}
+    assert field_out.coords.keys() == dims
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_rotated_pole_to_regular_nearest_d2s(
+    era5_rotated_netcdf_wso
+):
+    field_in = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='nearest_d2s',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    dims = field_in.coords.keys() - {'grid_latitude', 'grid_longitude'}
+    assert field_out.coords.keys() == dims
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
+
+
+def test_regridding_rotated_pole_to_regular_patch(era5_rotated_netcdf_wso):
+    field_in = Field.from_xarray(era5_rotated_netcdf_wso, ncvar='W_SO')
+    lat_in, lon_in = field_in.latitude, field_in.longitude
+
+    lat_step = lon_step = 0.1
+    lat = np.arange(lat_in.min(), lat_in.max(), lat_step)
+    lon = np.arange(lon_in.min(), lon_in.max(), lon_step)
+    target = Domain(
+        coords=[
+            Coordinate(
+                data=lat,
+                axis=Axis(name='latitude', is_dim=True),
+                dims=('latitude',)
+            ),
+            Coordinate(
+                data=lon,
+                axis=Axis(name='longitude', is_dim=True),
+                dims=('longitude',)
+            )
+        ],
+        crs=GeogCS(6371229),
+        domaintype=DomainType.GRIDDED
+    )
+    field_out = field_in.regrid(
+        target=target,
+        method='patch',
+        weights_path=None,
+        reuse_weights=True,
+    )
+
+    assert field_out.domain.crs == target.crs
+    dims = field_in.coords.keys() - {'grid_latitude', 'grid_longitude'}
+    assert field_out.coords.keys() == dims
+    assert field_in.time.shape == field_out.time.shape
+    assert np.all(field_in.time.values == field_out.time.values)
+    assert target.latitude.shape == field_out.latitude.shape
+    assert np.allclose(target.latitude.values, field_out.latitude.values)
+    assert target.longitude.shape == field_out.longitude.shape
+    assert np.allclose(target.longitude.values, field_out.longitude.values)
+    assert np.allclose(
+        np.nanquantile(field_in.values, [0, 0.25, 0.5, 0.75, 1]),
+        np.nanquantile(field_out.values, [0, 0.25, 0.5, 0.75, 1]),
+        atol=1
+    )
