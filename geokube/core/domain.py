@@ -255,18 +255,17 @@ class Domain(DomainMixin):
         i, j = (0, -1) if val[0] <= val[-1] else (-1, 0)
         val_b[i] = val[i] - half_step
         val_b[j] = val[j] + half_step
-        # TODO: Consider if this is reduntant and if not is the logic correct.
         # Making sure that longitude and latitude values are not outside their
         # ranges
-        # if coord.axis_type is AxisType.LONGITUDE:
-        #     if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
-        #         range_b = (0.0, 360.0)
-        #     else:
-        #         range_b = (-180.0, 180.0)
-        # else:  # Case when coord.axis_type is AxisType.LATITUDE
-        #     range_b = (-90.0, 90.0)
-        # val_b[i] = val_b[i].clip(*range_b)
-        # val_b[j] = val_b[j].clip(*range_b)
+        if coord.axis_type is AxisType.LONGITUDE:
+            if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
+                range_b = (0.0, 360.0)
+            else:
+                range_b = (-180.0, 180.0)
+        else:  # Case when coord.axis_type is AxisType.LATITUDE
+            range_b = (-90.0, 90.0)
+        val_b[i] = val_b[i].clip(*range_b)
+        val_b[j] = val_b[j].clip(*range_b)
 
         # Setting `coordinate.bounds`
         coord.bounds = Domain.convert_bounds_1d_to_2d(val_b)
@@ -473,8 +472,8 @@ class GeodeticGrid(Domain):
             # TODO: TO BE FIXED
             super().__init__(
                 coords={
-                    "latitude": (latitude, "latitude", "latitude"),
-                    "longitude": (longitude, "longitude", "longitude"),
+                    "latitude": (latitude, "latitude"),
+                    "longitude": (longitude, "longitude"),
                 },
                 crs=GeogCS(6371229),
             )
