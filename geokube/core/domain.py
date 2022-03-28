@@ -258,7 +258,7 @@ class Domain(DomainMixin):
         # Making sure that longitude and latitude values are not outside their
         # ranges
         if coord.axis_type is AxisType.LONGITUDE:
-            if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
+            if coord.convention is LongitudeConvention.POSITIVE_WEST:
                 range_b = (0.0, 360.0)
             else:
                 range_b = (-180.0, 180.0)
