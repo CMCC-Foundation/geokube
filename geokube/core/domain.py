@@ -221,7 +221,7 @@ class Domain(DomainMixin):
             warnings.warn(f"{msg} and are going to be recalculated")
             self._LOG.warn(f"{msg} and are going to be recalculated")
 
-        # Checking if the coordinate is independent
+        # Cases for dependent or scalar coordinates are not handled
         if coord.type is not CoordinateType.INDEPENDENT:
             raise ex.HCubeNotImplementedError(
                 "'coordinate' must be independent to calculate its bounds, "
