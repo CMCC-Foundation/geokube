@@ -1,5 +1,7 @@
 from typing import Union
 
+import numpy as np
+
 from ..utils import exceptions as ex
 from .axis import Axis, AxisType
 from .coordinate import Coordinate, CoordinateType
@@ -36,8 +38,20 @@ class DomainMixin:
 
     @property
     def longitude_convention(self) -> LongitudeConvention:
-        if AxisType.LONGITUDE in self._Axis_to_name:
-            return self[AxisType.LONGITUDE].convention
+        if (
+            np.all(self.longitude.values >= 0.0)
+            and np.all(self.longitude.values <= 360.0)
+        ):
+            return LongitudeConvention.POSITIVE_WEST
+        if (
+            np.all(self.longitude.values >= -180.0)
+            and np.all(self.longitude.values <= 180.0)
+        ):
+            return LongitudeConvention.NEGATIVE_WEST
+        raise ex.HCubeValueError(
+            "Wrong longitude values",
+            logger=self._LOG,
+        )
 
     @property
     def latitude_convention(self) -> LatitudeConvention:

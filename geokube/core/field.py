@@ -25,7 +25,7 @@ from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .cell_methods import CellMethod
-from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
+from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
 from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
@@ -759,69 +759,96 @@ class Field(Variable, DomainMixin):
         ...     target_domain=target_domain,
         ...     method='bilinear'
         ... )
+
         """
-        if isinstance(target, Domain):
-            target_domain = target
-        elif isinstance(target, Field):
-            target_domain = target.domain
-        else:
-            raise ex.HCubeTypeError(
-                "'target' must be an instance of Domain or Field", logger=Field._LOG
-            )
+        if not isinstance(target, Domain):
+            if isinstance(target, Field):
+                target = target.domain
+            else:
+                raise ex.HCubeTypeError(
+                    "'target' must be an instance of Domain or Field",
+                    logger=Field._LOG
+                )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
 
-        if reuse_weights and (weights_path is None or not os.path.exists(weights_path)):
+        if (
+            reuse_weights
+            and (weights_path is None or not os.path.exists(weights_path))
+        ):
             Field._LOG.warn("`weights_path` is None or file does not exist!")
             Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
 
-        # Input domain
-        lat_in = self.domain[Axis.LATITUDE]
-        lon_in = self.domain[Axis.LONGITUDE]
-        name_map_in = {lat_in.axis.name: "lat", lon_in.axis.name: "lon"}
+        names_in = {self.latitude.name: "lat", self.longitude.name: "lon"}
+        names_out = {target.latitude.name: "lat", target.longitude.name: "lon"}
+        coords_in = coords_out = None
 
-        # Output domain
-        lat_out = target_domain[Axis.LATITUDE]
-        lon_out = target_domain[Axis.LONGITUDE]
-        name_map_out = {lat_out.axis.name: "lat", lon_out.axis.name: "lon"}
+        if method in {
+            RegridMethod.CONSERVATIVE,
+            RegridMethod.CONSERVATIVE_NORMED
+        }:
+            self.domain.compute_bounds()
+            lat_b_name = next(iter(self.latitude.bounds))
+            lat_b = next(iter(self.latitude.bounds.values())).values
+            lat_b = Domain.convert_bounds_2d_to_1d(lat_b)
+            lon_b_name = next(iter(self.longitude.bounds))
+            lon_b = next(iter(self.longitude.bounds.values())).values
+            lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
+            names_in.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
+            coords_in = {'lat_b': lat_b, 'lon_b': lon_b}
 
-        conserv_methods = {RegridMethod.CONSERVATIVE, RegridMethod.CONSERVATIVE_NORMED}
-        if method in conserv_methods:
-            self.domain.compute_bounds(Axis.LATITUDE)
-            self.domain.compute_bounds(Axis.LONGITUDE)
-            name_map_in.update(
-                {lat_in.bounds.name: "lat_b", lon_in.bounds.name: "lon_b"}
-            )
-            target_domain.compute_bounds(lat_out.axis.name)
-            target_domain.compute_bounds(lon_out.axis.name)
-            name_map_out.update(
-                {lat_out.bounds.name: "lat_b", lon_out.bounds.name: "lon_b"}
-            )
+            target.compute_bounds()
+            lat_b_name = next(iter(target.latitude.bounds))
+            lat_b = next(iter(target.latitude.bounds.values())).values
+            lat_b = Domain.convert_bounds_2d_to_1d(lat_b)
+            lon_b_name = next(iter(target.longitude.bounds))
+            lon_b = next(iter(target.longitude.bounds.values())).values
+            lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
+            names_out.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
+            coords_out = {'lat_b': lat_b, 'lon_b': lon_b}
 
         # Regridding
+        in_ = self.to_xarray(encoding=False).rename(names_in)
+        if coords_in:
+            in_ = in_.assign_coords(coords=coords_in)
+        out = target.to_xarray(encoding=False).to_dataset().rename(names_out)
+        if coords_out:
+            out = out.assign_coords(coords=coords_out)
         regrid_kwa = {
-            "ds_in": self.domain.to_xarray_dataset().rename(name_map_in),
-            "ds_out": target_domain.to_xarray_dataset().rename(name_map_out),
+            "ds_in": in_,
+            "ds_out": out,
             "method": method.value,
             "unmapped_to_nan": True,
-            "filename": weights_path,
+            "filename": weights_path
         }
-
         try:
             regridder = xe.Regridder(**regrid_kwa, reuse_weights=reuse_weights)
         except PermissionError:
             regridder = xe.Regridder(**regrid_kwa)
-        xr_ds = self.to_xarray(encoding=False)
-        result = regridder(xr_ds, keep_attrs=True, skipna=False)
-        result = result.rename({"lat": lat_in.axis.name, "lon": lon_in.axis.name})
-        result[self.variable.name].encoding = xr_ds[self.variable.name].encoding
+        result = regridder(in_, keep_attrs=True, skipna=False)
+        result = result.rename({v: k for k, v in names_in.items()})
+        result[self.name].encoding = in_[self.name].encoding
+        if not isinstance(target.crs, GeogCS):
+            missing_coords = {
+                coord.name: out.coords[coord.name]
+                for coord in (target.x, target.y)
+                if coord.name not in result.coords
+            }
+            result = result.assign_coords(coords=missing_coords)
+            result[self.name].encoding['coordinates'] = 'latitude longitude'
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-        field_out = Field.from_xarray_dataset(result, field_name=self.variable.name)
-        # Take `crs`` from `target_domain` as in `result` there can be still the coordinate responsible for CRS
-        field_out.domain._crs = target_domain.crs
+        field_out = Field.from_xarray(
+            ds=result,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping
+        )
+        field_out.domain._crs = target.crs
+        field_out.domain._type = target.type
         return field_out
 
     # TO CHECK

@@ -265,13 +265,13 @@ class Coordinate(Variable, Axis):
     @property
     # TODO:  check! I think this works only if lat/lon are independent!
     def convention(self) -> Optional[Union[LatitudeConvention, LongitudeConvention]]:
-        if self._axis.type is AxisType.LATITUDE:
+        if self.axis_type is AxisType.LATITUDE:
             return (
                 LatitudeConvention.POSITIVE_TOP
                 if self.first() > self.last()
                 else LatitudeConvention.NEGATIVE_TOP
             )
-        if self._axis.type is AxisType.LONGITUDE:
+        if self.axis_type is AxisType.LONGITUDE:
             return (
                 LongitudeConvention.POSITIVE_WEST
                 if self.min() >= 0
