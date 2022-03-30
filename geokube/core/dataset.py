@@ -158,8 +158,10 @@ class Dataset:
         return self.__data[self.DATACUBE_COL].tolist()
 
     def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
+        # NOTE: :self.__cube_idx - 1 to skip column containing files
+        # List of files is not hashable and it can be extremely large
         return {
-            row[: self.__cube_idx]: row[self.__cube_idx]
+            row[: self.__cube_idx - 1]: row[self.__cube_idx]
             for row in self.__data.itertuples(index=False, name=None)
         }
 
