@@ -980,7 +980,7 @@ class Field(Variable, DomainMixin):
         projection=None,
         figsize=None,
         robust=None,
-        **kwargs,
+        **kwargs
     ):
         # Resolving Cartopy features and gridlines:
         if features:
@@ -994,38 +994,40 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
-        crs = self._domain.crs
         dims = set()
-        time = self._domain[Axis.TIME]
-        if time is not None:
+        try:
+            time = self.time
             dims.add(time.name)
-        vert = self._domain[Axis.VERTICAL]
-        if vert is not None:
+        except ex.HCubeKeyError:
+            time = None
+        try:
+            vert = self.vertical
             dims.add(vert.name)
-        lat = self._domain[Axis.LATITUDE]
-        if lat is not None:
+        except ex.HCubeKeyError:
+            vert = None
+        try:
+            lat = self.latitude
             dims.add(lat.name)
-            kwargs.setdefault("y", lat.name)
-        lon = self._domain[Axis.LONGITUDE]
-        if lon is not None:
+            if lat.is_dim:
+                kwargs.setdefault('y', lat.name)
+        except ex.HCubeKeyError:
+            lat = None
+        try:
+            lon = self.longitude
             dims.add(lon.name)
-            kwargs.setdefault("x", lon.name)
-        n_dims = len(dims)
+            if lon.is_dim:
+                kwargs.setdefault('x', lon.name)
+        except ex.HCubeKeyError:
+            lon = None
+        crs = self._domain.crs
         transform = crs.as_cartopy_projection() if crs is not None else None
         plate = ccrs.PlateCarree
 
-        if n_dims in {3, 4}:
-            # n_cols = None
-            if time is not None and time.name in dims and time.values.size > 1:
+        if len(dims) in {3, 4}:
+            if time is not None and time.name in dims and time.size > 1:
                 kwargs.setdefault("col", time.name)
-                # if time.size == 4:
-                #     n_cols = 2
-                # if time.size >= 5:
-                #     n_cols = 3
-            if vert is not None and vert.name in dims and vert.values.size > 1:
+            if vert is not None and vert.name in dims and vert.size > 1:
                 kwargs.setdefault("row", vert.name)
-            # elif all(('col' in kwargs, n_cols, not has_cartopy_items)):
-            #     kwargs.setdefault('col_wrap', n_cols)
 
         # Resolving subplot keyword arguments including `projection`:
         subplot_kwa = {} if subplot_kwargs is None else {**subplot_kwargs}
@@ -1057,9 +1059,12 @@ class Field(Variable, DomainMixin):
                 kwargs[name] = arg
 
         # Creating plot:
-        darr = self.to_xarray()
-        if isinstance(darr, xr.Dataset):
-            darr = darr[self.name]
+        darr = self.to_xarray(encoding=False)[self.name]
+        # HACK: Next four lines added as a temporary solution for subsetting.
+        if (idx := kwargs.pop('subset_values', None)):
+            darr = darr.sel(indexers=idx)
+        if (idx := kwargs.pop('subset_indices', None)):
+            darr = darr.isel(indexers=idx)
         plot = darr.plot(**kwargs)
 
         # Adding and modifying axis elements:
@@ -1084,7 +1089,9 @@ class Field(Variable, DomainMixin):
             if (
                 (projection is None or isinstance(projection, plate))
                 and lat is not None
+                and kwargs.get('y') == lat.name
                 and lon is not None
+                and kwargs.get('x') == lon.name
                 and not gridline_labels
             ):
                 coords = darr.coords
