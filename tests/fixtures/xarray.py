@@ -14,6 +14,14 @@ def dataset():
 
 
 @pytest.fixture
+def dataset_single_att():
+    yield open_dataset(
+        "tests//resources//*-single-levels-reanalysis_*",
+        pattern="tests//resources//{dataset}-single-levels-reanalysis_{}.nc",
+    )
+
+
+@pytest.fixture
 def dataset_idpattern():
     yield open_dataset(
         "tests//resources//era5-single-levels-reanalysis_*",

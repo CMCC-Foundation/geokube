@@ -766,17 +766,13 @@ class Field(Variable, DomainMixin):
                 target = target.domain
             else:
                 raise ex.HCubeTypeError(
-                    "'target' must be an instance of Domain or Field",
-                    logger=Field._LOG
+                    "'target' must be an instance of Domain or Field", logger=Field._LOG
                 )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
 
-        if (
-            reuse_weights
-            and (weights_path is None or not os.path.exists(weights_path))
-        ):
+        if reuse_weights and (weights_path is None or not os.path.exists(weights_path)):
             Field._LOG.warn("`weights_path` is None or file does not exist!")
             Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
@@ -785,10 +781,7 @@ class Field(Variable, DomainMixin):
         names_out = {target.latitude.name: "lat", target.longitude.name: "lon"}
         coords_in = coords_out = None
 
-        if method in {
-            RegridMethod.CONSERVATIVE,
-            RegridMethod.CONSERVATIVE_NORMED
-        }:
+        if method in {RegridMethod.CONSERVATIVE, RegridMethod.CONSERVATIVE_NORMED}:
             self.domain.compute_bounds()
             lat_b_name = next(iter(self.latitude.bounds))
             lat_b = next(iter(self.latitude.bounds.values())).values
@@ -797,7 +790,7 @@ class Field(Variable, DomainMixin):
             lon_b = next(iter(self.longitude.bounds.values())).values
             lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
             names_in.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
-            coords_in = {'lat_b': lat_b, 'lon_b': lon_b}
+            coords_in = {"lat_b": lat_b, "lon_b": lon_b}
 
             target.compute_bounds()
             lat_b_name = next(iter(target.latitude.bounds))
@@ -807,7 +800,7 @@ class Field(Variable, DomainMixin):
             lon_b = next(iter(target.longitude.bounds.values())).values
             lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
             names_out.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
-            coords_out = {'lat_b': lat_b, 'lon_b': lon_b}
+            coords_out = {"lat_b": lat_b, "lon_b": lon_b}
 
         # Regridding
         in_ = self.to_xarray(encoding=False).rename(names_in)
@@ -821,7 +814,7 @@ class Field(Variable, DomainMixin):
             "ds_out": out,
             "method": method.value,
             "unmapped_to_nan": True,
-            "filename": weights_path
+            "filename": weights_path,
         }
         try:
             regridder = xe.Regridder(**regrid_kwa, reuse_weights=reuse_weights)
@@ -837,7 +830,7 @@ class Field(Variable, DomainMixin):
                 if coord.name not in result.coords
             }
             result = result.assign_coords(coords=missing_coords)
-            result[self.name].encoding['coordinates'] = 'latitude longitude'
+            result[self.name].encoding["coordinates"] = "latitude longitude"
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
         field_out = Field.from_xarray(
@@ -845,7 +838,7 @@ class Field(Variable, DomainMixin):
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
-            mapping=self._mapping
+            mapping=self._mapping,
         )
         field_out.domain._crs = target.crs
         field_out.domain._type = target.type
@@ -903,10 +896,9 @@ class Field(Variable, DomainMixin):
                 )
             if operator_func is MethodType.UNDEFINED:
                 methods = {
-                    method.value[0]
-                    for method in MethodType.__members__.values()
+                    method.value[0] for method in MethodType.__members__.values()
                 }
-                methods.discard('<undefined>')
+                methods.discard("<undefined>")
                 raise ex.HCubeValueError(
                     f"Provided operator '{operator}' was not found! Available "
                     f"operators are: {sorted(methods)}!",
@@ -914,9 +906,9 @@ class Field(Variable, DomainMixin):
                 )
             func = (
                 operator_func.dask_operator
-                if is_dask_collection(self) else
-                operator_func.numpy_operator
-            ) 
+                if is_dask_collection(self)
+                else operator_func.numpy_operator
+            )
 
         # ################## Temporary solution for time bounds adjustmnent ######################
 
@@ -924,9 +916,9 @@ class Field(Variable, DomainMixin):
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
         ds = self.to_xarray(encoding=False)
         if (time_bnds := self.time.bounds) is None:
-            bnds_name, bnds = f'{self.time.name}_bnds', None
+            bnds_name, bnds = f"{self.time.name}_bnds", None
         else:
-            (bnds_name, bnds), = time_bnds.items()
+            ((bnds_name, bnds),) = time_bnds.items()
 
         if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
@@ -952,8 +944,8 @@ class Field(Variable, DomainMixin):
 
         da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
         res = xr.Dataset(
-             da,
-             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
+            da,
+            coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
         field = Field.from_xarray(res, ncvar=self.name)
         field.time.bounds = new_bnds
