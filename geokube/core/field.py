@@ -1060,11 +1060,6 @@ class Field(Variable, DomainMixin):
 
         # Creating plot:
         darr = self.to_xarray(encoding=False)[self.name]
-        # HACK: Next four lines added as a temporary solution for subsetting.
-        if (idx := kwargs.pop('subset_values', None)):
-            darr = darr.sel(indexers=idx)
-        if (idx := kwargs.pop('subset_indices', None)):
-            darr = darr.isel(indexers=idx)
         plot = darr.plot(**kwargs)
 
         # Adding and modifying axis elements:
