@@ -1068,8 +1068,33 @@ class Field(Variable, DomainMixin):
                 kwargs[name] = arg
 
         # Creating plot:
-        darr = self.to_xarray(encoding=False)[self.name]
-        plot = darr.plot(**kwargs)
+        dset = self.to_xarray(encoding=False)
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            data = dset[self.name]
+            plot = data.plot(**kwargs)
+        elif self._domain._type is DomainType.POINTS:
+            data = xr.Dataset(
+                data_vars={
+                    self.name: dset[self.name],
+                    'lat': dset.coords['latitude'],
+                    'lon': dset.coords['longitude']
+                }
+            )
+            kwargs.update(
+                {'x': 'lon', 'y': 'lat', 'hue': self.name, 'zorder': np.inf}
+            )
+            plot = data.plot.scatter(**kwargs)
+        else:
+            raise NotImplementedError(
+                "'domain.type' of must be 'DomainType.GRIDDED' or "
+                "'DomainType.POINTS'"
+            )
 
         # Adding and modifying axis elements:
         # axes = np.array(getattr(plot, 'axes', plot), copy=False, ndmin=1)
@@ -1096,7 +1121,7 @@ class Field(Variable, DomainMixin):
                 and lon is not None
                 and not gridline_labels
             ):
-                coords = darr.coords
+                coords = data.coords
 
                 lat_coord = coords[lat.name]
                 lat_attrs = lat_coord.attrs
