@@ -1028,6 +1028,8 @@ class Field(Variable, DomainMixin):
             # HACK: This is used in the cases where obtaining Cartopy
             # projections is not implemented.
             transform = None
+            kwargs.setdefault('x', lon.name)
+            kwargs.setdefault('y', lat.name)
         plate = ccrs.PlateCarree
 
         if len(dims) in {3, 4}:
