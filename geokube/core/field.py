@@ -1084,9 +1084,7 @@ class Field(Variable, DomainMixin):
             if (
                 (projection is None or isinstance(projection, plate))
                 and lat is not None
-                and kwargs.get('y') == lat.name
                 and lon is not None
-                and kwargs.get('x') == lon.name
                 and not gridline_labels
             ):
                 coords = darr.coords
