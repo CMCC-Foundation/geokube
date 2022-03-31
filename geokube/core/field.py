@@ -1020,7 +1020,14 @@ class Field(Variable, DomainMixin):
         except ex.HCubeKeyError:
             lon = None
         crs = self._domain.crs
-        transform = crs.as_cartopy_projection() if crs is not None else None
+        try:
+            transform = (
+                crs.as_cartopy_projection() if crs is not None else None
+            )
+        except NotImplementedError:
+            # HACK: This is used in the cases where obtaining Cartopy
+            # projections is not implemented.
+            transform = None
         plate = ccrs.PlateCarree
 
         if len(dims) in {3, 4}:
