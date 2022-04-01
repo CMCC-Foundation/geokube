@@ -8,7 +8,9 @@ import pandas as pd
 
 
 def _rev_format_to_glob_pattern(val: str):
-    return os.sep.join(map(lambda s: re.sub("{.*}", "*", s), val.split(os.sep)))
+    return os.sep.join(
+        map(lambda s: re.sub("{.*}", "*", s), val.split(os.sep))
+    )
 
 
 def convert_cftimes_to_numpy(obj):

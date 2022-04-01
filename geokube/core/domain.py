@@ -18,13 +18,26 @@ from ..utils import util_methods
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
-from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, RegularLatLon, parse_crs
+from .coord_system import (
+    CoordSystem,
+    CurvilinearGrid,
+    GeogCS,
+    RegularLatLon,
+    parse_crs,
+)
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
 
-_COORDS_TUPLE_CONTENT = ["dims", "data", "bounds", "units", "properties", "encoding"]
+_COORDS_TUPLE_CONTENT = [
+    "dims",
+    "data",
+    "bounds",
+    "units",
+    "properties",
+    "encoding",
+]
 
 
 # pylint: disable=missing-class-docstring
@@ -51,7 +64,9 @@ class Domain(DomainMixin):
     def __init__(
         self,
         coords: Union[
-            Mapping[Hashable, Tuple[np.ndarray, ...]], Iterable[Coordinate], Domain
+            Mapping[Hashable, Tuple[np.ndarray, ...]],
+            Iterable[Coordinate],
+            Domain,
         ],
         crs: CoordSystem,
         domaintype: Optional[DomainType] = None,
@@ -71,7 +86,9 @@ class Domain(DomainMixin):
 
         self._crs = crs
         self._type = domaintype
-        self._axis_to_name = {c.axis_type: c.name for c in self._coords.values()}
+        self._axis_to_name = {
+            c.axis_type: c.name for c in self._coords.values()
+        }
 
     @classmethod
     def _as_coordinate(cls, coord, name) -> Coordinate:
@@ -80,7 +97,9 @@ class Domain(DomainMixin):
         elif isinstance(coord, tuple):
             # tupl -> (data, dims, axis)
             l = dict(enumerate(coord))
-            return Coordinate(data=coord[0], dims=l.get(1, name), axis=l.get(2, name))
+            return Coordinate(
+                data=coord[0], dims=l.get(1, name), axis=l.get(2, name)
+            )
         else:
             return Coordinate(data=coord, axis=name)
 
@@ -127,10 +146,14 @@ class Domain(DomainMixin):
             return False
         for ck in self._coords.keys():
             if self._coords[ck].axis_type is AxisType.TIME:
-                if not np.all(self._coords[ck].values == other._coords[ck].values):
+                if not np.all(
+                    self._coords[ck].values == other._coords[ck].values
+                ):
                     return False
             else:
-                if not np.allclose(self._coords[ck].values, other._coords[ck].values):
+                if not np.allclose(
+                    self._coords[ck].values, other._coords[ck].values
+                ):
                     return False
         return True
 
@@ -146,7 +169,9 @@ class Domain(DomainMixin):
     def __contains__(self, key: Union[str, Axis, AxisType]) -> bool:
         if isinstance(key, Axis):
             return key.type in self._axis_to_name
-        return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
+        return (key in self._coords) or (
+            AxisType.parse(key) in self._axis_to_name
+        )
 
     def __next__(self):
         for k, v in self._coords.items():
@@ -169,7 +194,8 @@ class Domain(DomainMixin):
                 dt = getattr(_ds, key).values
                 XX = ft.reduce(
                     lambda x, y: x | (dt == y),
-                    [False] + list(np.array(_time_indexer[key], dtype=int, ndmin=1)),
+                    [False]
+                    + list(np.array(_time_indexer[key], dtype=int, ndmin=1)),
                 )
                 return XX
             return True
@@ -234,7 +260,8 @@ class Domain(DomainMixin):
             # type of exception, see:
             # https://docs.python.org/3/library/exceptions.html#ValueError
             raise ex.HCubeValueError(
-                "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
+                "'crs' is None and cell bounds cannot be calculated",
+                logger=self._LOG,
             )
         if not isinstance(crs, GeogCS):
             raise ex.HCubeNotImplementedError(
@@ -317,7 +344,10 @@ class Domain(DomainMixin):
             if dim_name in da.coords:
                 coords.add(
                     Coordinate.from_xarray(
-                        ds=ds, ncvar=dim_name, id_pattern=id_pattern, mapping=mapping
+                        ds=ds,
+                        ncvar=dim_name,
+                        id_pattern=id_pattern,
+                        mapping=mapping,
                     )
                 )
 
@@ -332,7 +362,10 @@ class Domain(DomainMixin):
                     )
                     continue
                 coord = Coordinate.from_xarray(
-                    ds=ds, ncvar=coord_name, id_pattern=id_pattern, mapping=mapping
+                    ds=ds,
+                    ncvar=coord_name,
+                    id_pattern=id_pattern,
+                    mapping=mapping,
                 )
                 if coord in coords:
                     warnings.warn(
@@ -350,7 +383,9 @@ class Domain(DomainMixin):
         return Domain(coords=coords, crs=crs)
 
     @log_func_debug
-    def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
+    def to_xarray(
+        self, encoding=True
+    ) -> xr.core.coordinates.DatasetCoordinates:
         grid = {}
         grid = xr.Dataset().coords
         for coord in self._coords.values():
@@ -359,11 +394,15 @@ class Domain(DomainMixin):
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-            grid.update({"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)})
+            grid.update(
+                {"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)}
+            )
         return grid
 
     @classmethod
-    def _make_domain_from_coords_dict_dims_and_crs(cls, coords, dims, crs=None):
+    def _make_domain_from_coords_dict_dims_and_crs(
+        cls, coords, dims, crs=None
+    ):
         """Return a domain based on coords dict, dims, and coordinate reference system.
 
         coords can be in the form {"latitude": lat_value} or in the form where the value

@@ -119,7 +119,11 @@ class Axis:
 
     @property
     def ncvar(self):
-        return self._encoding.get("name", self.name) if self._encoding else self.name
+        return (
+            self._encoding.get("name", self.name)
+            if self._encoding
+            else self.name
+        )
 
     @property
     def encoding(self):
@@ -131,7 +135,9 @@ class Axis:
 
     def __hash__(self):
         enc_keys = (
-            tuple(self._encoding.keys()) if self._encoding is not None else tuple()
+            tuple(self._encoding.keys())
+            if self._encoding is not None
+            else tuple()
         )
         return hash((self._name, self._type, enc_keys, self._is_dim))
 
