@@ -980,7 +980,7 @@ class Field(Variable, DomainMixin):
         projection=None,
         figsize=None,
         robust=None,
-        **kwargs,
+        **kwargs
     ):
         # Resolving Cartopy features and gridlines:
         if features:
@@ -994,38 +994,49 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
-        crs = self._domain.crs
         dims = set()
-        time = self._domain[Axis.TIME]
-        if time is not None:
+        try:
+            time = self.time
             dims.add(time.name)
-        vert = self._domain[Axis.VERTICAL]
-        if vert is not None:
+        except ex.HCubeKeyError:
+            time = None
+        try:
+            vert = self.vertical
             dims.add(vert.name)
-        lat = self._domain[Axis.LATITUDE]
-        if lat is not None:
+        except ex.HCubeKeyError:
+            vert = None
+        try:
+            lat = self.latitude
             dims.add(lat.name)
-            kwargs.setdefault("y", lat.name)
-        lon = self._domain[Axis.LONGITUDE]
-        if lon is not None:
+            if lat.is_dim:
+                kwargs.setdefault('y', lat.name)
+        except ex.HCubeKeyError:
+            lat = None
+        try:
+            lon = self.longitude
             dims.add(lon.name)
-            kwargs.setdefault("x", lon.name)
-        n_dims = len(dims)
-        transform = crs.as_cartopy_projection() if crs is not None else None
+            if lon.is_dim:
+                kwargs.setdefault('x', lon.name)
+        except ex.HCubeKeyError:
+            lon = None
+        crs = self._domain.crs
+        try:
+            transform = (
+                crs.as_cartopy_projection() if crs is not None else None
+            )
+        except NotImplementedError:
+            # HACK: This is used in the cases where obtaining Cartopy
+            # projections is not implemented.
+            transform = None
+            kwargs.setdefault('x', lon.name)
+            kwargs.setdefault('y', lat.name)
         plate = ccrs.PlateCarree
 
-        if n_dims in {3, 4}:
-            # n_cols = None
-            if time is not None and time.name in dims and time.values.size > 1:
+        if len(dims) in {3, 4}:
+            if time is not None and time.name in dims and time.size > 1:
                 kwargs.setdefault("col", time.name)
-                # if time.size == 4:
-                #     n_cols = 2
-                # if time.size >= 5:
-                #     n_cols = 3
-            if vert is not None and vert.name in dims and vert.values.size > 1:
+            if vert is not None and vert.name in dims and vert.size > 1:
                 kwargs.setdefault("row", vert.name)
-            # elif all(('col' in kwargs, n_cols, not has_cartopy_items)):
-            #     kwargs.setdefault('col_wrap', n_cols)
 
         # Resolving subplot keyword arguments including `projection`:
         subplot_kwa = {} if subplot_kwargs is None else {**subplot_kwargs}
@@ -1057,10 +1068,33 @@ class Field(Variable, DomainMixin):
                 kwargs[name] = arg
 
         # Creating plot:
-        darr = self.to_xarray()
-        if isinstance(darr, xr.Dataset):
-            darr = darr[self.name]
-        plot = darr.plot(**kwargs)
+        dset = self.to_xarray(encoding=False)
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            data = dset[self.name]
+            plot = data.plot(**kwargs)
+        elif self._domain._type is DomainType.POINTS:
+            data = xr.Dataset(
+                data_vars={
+                    self.name: dset[self.name],
+                    'lat': dset.coords['latitude'],
+                    'lon': dset.coords['longitude']
+                }
+            )
+            kwargs.update(
+                {'x': 'lon', 'y': 'lat', 'hue': self.name, 'zorder': np.inf}
+            )
+            plot = data.plot.scatter(**kwargs)
+        else:
+            raise NotImplementedError(
+                "'domain.type' of must be 'DomainType.GRIDDED' or "
+                "'DomainType.POINTS'"
+            )
 
         # Adding and modifying axis elements:
         # axes = np.array(getattr(plot, 'axes', plot), copy=False, ndmin=1)
@@ -1087,7 +1121,7 @@ class Field(Variable, DomainMixin):
                 and lon is not None
                 and not gridline_labels
             ):
-                coords = darr.coords
+                coords = data.coords
 
                 lat_coord = coords[lat.name]
                 lat_attrs = lat_coord.attrs
