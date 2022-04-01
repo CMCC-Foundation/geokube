@@ -130,7 +130,7 @@ def list_to_slice_or_array(val_list):
             return val_list
         arr = np.array(list(val_list))
         if len(np.unique(df := np.diff(arr))) == 1:
-            return slice(arr[0], arr[-1], df[0])
+            return slice(arr[0], arr[-1] + df[0], df[0])
         return arr
     return val_list
 

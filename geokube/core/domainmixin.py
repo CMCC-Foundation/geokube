@@ -38,14 +38,12 @@ class DomainMixin:
 
     @property
     def longitude_convention(self) -> LongitudeConvention:
-        if (
-            np.all(self.longitude.values >= 0.0)
-            and np.all(self.longitude.values <= 360.0)
+        if np.all(self.longitude.values >= 0.0) and np.all(
+            self.longitude.values <= 360.0
         ):
             return LongitudeConvention.POSITIVE_WEST
-        if (
-            np.all(self.longitude.values >= -180.0)
-            and np.all(self.longitude.values <= 180.0)
+        if np.all(self.longitude.values >= -180.0) and np.all(
+            self.longitude.values <= 180.0
         ):
             return LongitudeConvention.NEGATIVE_WEST
         raise ex.HCubeValueError(
