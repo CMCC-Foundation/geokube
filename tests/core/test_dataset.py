@@ -24,21 +24,6 @@ def test_select_fields_by_ncvar(dataset_idpattern):
     tp = dataset_idpattern["tp"]
     assert len(tp) == 1
 
-
-def test_to_dict(dataset, dataset_single_att):
-    dict_dset = dataset.to_dict()
-    assert len(dict_dset.keys()) == 4
-    keys = dict_dset.keys()
-    assert ("era5", "2_mdt") in keys
-    assert ("era5", "total_precipitation") in keys
-    assert ("other-era5", "2_mdt") in keys
-    assert ("other-era5", "total_precipitation") in keys
-    dict_dset = dataset_single_att.to_dict()
-    keys = dict_dset.keys()
-    assert len(dict_dset.keys()) == 2
-    assert ("era5",) in keys
-    assert ("other-era5",) in keys
-
 def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
     import json
     _ = json.dumps(dataset.to_dict())
