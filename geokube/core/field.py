@@ -7,7 +7,16 @@ import warnings
 from html import escape
 from itertools import chain
 from numbers import Number
-from typing import Any, Callable, Hashable, List, Mapping, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
@@ -70,7 +79,10 @@ class Field(Variable, DomainMixin):
                 Domain,
                 Mapping[str, Union[Number, np.ndarray, da.Array]],
                 Mapping[
-                    str, Tuple[Tuple[str, ...], Union[Number, np.ndarray, da.Array]]
+                    str,
+                    Tuple[
+                        Tuple[str, ...], Union[Number, np.ndarray, da.Array]
+                    ],
                 ],
             ]
         ] = None,
@@ -79,11 +91,17 @@ class Field(Variable, DomainMixin):
         properties: Optional[Mapping[Hashable, str]] = None,
         encoding: Optional[Mapping[Hashable, str]] = None,
         cell_methods: Optional[CellMethod] = None,
-        ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
+        ancillary: Optional[
+            Mapping[Hashable, Union[np.ndarray, Variable]]
+        ] = None,
     ) -> None:
 
         super().__init__(
-            data=data, units=units, dims=dims, properties=properties, encoding=encoding
+            data=data,
+            units=units,
+            dims=dims,
+            properties=properties,
+            encoding=encoding,
         )
         self._ancillary = None
         self._name = name
@@ -451,7 +469,9 @@ class Field(Variable, DomainMixin):
                     data_vars={self.x.name: (dims, x), self.y.name: (dims, y)},
                     coords=domain.to_xarray(encoding=False),
                 )
-                dset = dset.drop(labels=(self.latitude.name, self.longitude.name))
+                dset = dset.drop(
+                    labels=(self.latitude.name, self.longitude.name)
+                )
                 interp_coords = {
                     self.x.name: grid[self.x.name],
                     self.y.name: grid[self.y.name],
@@ -507,7 +527,9 @@ class Field(Variable, DomainMixin):
             }
 
         return Field.from_xarray(
-            ds=self.to_xarray(encoding=False).sel(indexers=idx, method="nearest"),
+            ds=self.to_xarray(encoding=False).sel(
+                indexers=idx, method="nearest"
+            ),
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
@@ -523,7 +545,8 @@ class Field(Variable, DomainMixin):
         n = lats.size
         if lons.size != n:
             raise ValueError(
-                "'latitude' and 'longitude' must have the same number of " "items"
+                "'latitude' and 'longitude' must have the same number of "
+                "items"
             )
 
         # Vertical
@@ -619,7 +642,9 @@ class Field(Variable, DomainMixin):
         drop: bool = False,  # TODO: check if should be always True or False in out case
         **indexers_kwargs: Any,
     ) -> "Field":
-        indexers = xr.core.utils.either_dict_or_kwargs(indexers, indexers_kwargs, "sel")
+        indexers = xr.core.utils.either_dict_or_kwargs(
+            indexers, indexers_kwargs, "sel"
+        )
         # TODO:
         indexers = self.domain.map_indexers(indexers)
         # TODO: indexers from this place should be always of type -> Mapping[Axis, Any]
@@ -630,7 +655,7 @@ class Field(Variable, DomainMixin):
         if (
             time_ind := indexers.get(Axis("time"))
         ) is not None and util_methods.is_time_combo(time_ind):
-            # time is always independent coordinate
+            # NOTE: time is always independent coordinate
             ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
             del indexers[Axis("time")]
 
@@ -646,7 +671,10 @@ class Field(Variable, DomainMixin):
         lost_dims = ds_dims - set(ds.dims)
         Field._update_coordinates(ds[self.name], lost_dims)
         return Field.from_xarray(
-            ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
+            ds,
+            ncvar=self.name,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
         )
 
     @log_func_debug
@@ -654,7 +682,10 @@ class Field(Variable, DomainMixin):
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
         if Axis("longitude") not in indexers:
             return ds
-        if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
+        if (
+            self.domain[Axis("longitude")].type
+            is not CoordinateType.INDEPENDENT
+        ):
             # TODO: implement for dependent coordinate
             raise ex.HCubeNotImplementedError(
                 "Rolling longitude is currently supported only for independent coordinate!",
@@ -766,13 +797,16 @@ class Field(Variable, DomainMixin):
                 target = target.domain
             else:
                 raise ex.HCubeTypeError(
-                    "'target' must be an instance of Domain or Field", logger=Field._LOG
+                    "'target' must be an instance of Domain or Field",
+                    logger=Field._LOG,
                 )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
 
-        if reuse_weights and (weights_path is None or not os.path.exists(weights_path)):
+        if reuse_weights and (
+            weights_path is None or not os.path.exists(weights_path)
+        ):
             Field._LOG.warn("`weights_path` is None or file does not exist!")
             Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
@@ -781,7 +815,10 @@ class Field(Variable, DomainMixin):
         names_out = {target.latitude.name: "lat", target.longitude.name: "lon"}
         coords_in = coords_out = None
 
-        if method in {RegridMethod.CONSERVATIVE, RegridMethod.CONSERVATIVE_NORMED}:
+        if method in {
+            RegridMethod.CONSERVATIVE,
+            RegridMethod.CONSERVATIVE_NORMED,
+        }:
             self.domain.compute_bounds()
             lat_b_name = next(iter(self.latitude.bounds))
             lat_b = next(iter(self.latitude.bounds.values())).values
@@ -896,7 +933,8 @@ class Field(Variable, DomainMixin):
                 )
             if operator_func is MethodType.UNDEFINED:
                 methods = {
-                    method.value[0] for method in MethodType.__members__.values()
+                    method.value[0]
+                    for method in MethodType.__members__.values()
                 }
                 methods.discard("<undefined>")
                 raise ex.HCubeValueError(
@@ -924,7 +962,9 @@ class Field(Variable, DomainMixin):
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
             resample_kwargs.update({"closed": "right"})
-            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            da = ds.resample(
+                indexer={self.time.name: frequency}, **resample_kwargs
+            )
             new_bnds = np.empty(
                 shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
@@ -932,15 +972,22 @@ class Field(Variable, DomainMixin):
                 new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
             # TODO: Check if this is redundant
             if bnds is None:
-                Field._LOG.warn("Time bounds not defined for the cell methods!")
+                Field._LOG.warn(
+                    "Time bounds not defined for the cell methods!"
+                )
                 warnings.warn("Time bounds not defined for the cell methods!")
         else:
-            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            da = ds.resample(
+                indexer={self.time.name: frequency}, **resample_kwargs
+            )
             new_bnds = np.empty(
                 shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bnds[i] = [self.time.values[v].min(), self.time.values[v].max()]
+                new_bnds[i] = [
+                    self.time.values[v].min(),
+                    self.time.values[v].max(),
+                ]
 
         da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
         res = xr.Dataset(
@@ -986,38 +1033,49 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
-        crs = self._domain.crs
         dims = set()
-        time = self._domain[Axis.TIME]
-        if time is not None:
+        try:
+            time = self.time
             dims.add(time.name)
-        vert = self._domain[Axis.VERTICAL]
-        if vert is not None:
+        except ex.HCubeKeyError:
+            time = None
+        try:
+            vert = self.vertical
             dims.add(vert.name)
-        lat = self._domain[Axis.LATITUDE]
-        if lat is not None:
+        except ex.HCubeKeyError:
+            vert = None
+        try:
+            lat = self.latitude
             dims.add(lat.name)
-            kwargs.setdefault("y", lat.name)
-        lon = self._domain[Axis.LONGITUDE]
-        if lon is not None:
+            if lat.is_dim:
+                kwargs.setdefault("y", lat.name)
+        except ex.HCubeKeyError:
+            lat = None
+        try:
+            lon = self.longitude
             dims.add(lon.name)
+            if lon.is_dim:
+                kwargs.setdefault("x", lon.name)
+        except ex.HCubeKeyError:
+            lon = None
+        crs = self._domain.crs
+        try:
+            transform = (
+                crs.as_cartopy_projection() if crs is not None else None
+            )
+        except NotImplementedError:
+            # HACK: This is used in the cases where obtaining Cartopy
+            # projections is not implemented.
+            transform = None
             kwargs.setdefault("x", lon.name)
-        n_dims = len(dims)
-        transform = crs.as_cartopy_projection() if crs is not None else None
+            kwargs.setdefault("y", lat.name)
         plate = ccrs.PlateCarree
 
-        if n_dims in {3, 4}:
-            # n_cols = None
-            if time is not None and time.name in dims and time.values.size > 1:
+        if len(dims) in {3, 4}:
+            if time is not None and time.name in dims and time.size > 1:
                 kwargs.setdefault("col", time.name)
-                # if time.size == 4:
-                #     n_cols = 2
-                # if time.size >= 5:
-                #     n_cols = 3
-            if vert is not None and vert.name in dims and vert.values.size > 1:
+            if vert is not None and vert.name in dims and vert.size > 1:
                 kwargs.setdefault("row", vert.name)
-            # elif all(('col' in kwargs, n_cols, not has_cartopy_items)):
-            #     kwargs.setdefault('col_wrap', n_cols)
 
         # Resolving subplot keyword arguments including `projection`:
         subplot_kwa = {} if subplot_kwargs is None else {**subplot_kwargs}
@@ -1049,10 +1107,33 @@ class Field(Variable, DomainMixin):
                 kwargs[name] = arg
 
         # Creating plot:
-        darr = self.to_xarray()
-        if isinstance(darr, xr.Dataset):
-            darr = darr[self.name]
-        plot = darr.plot(**kwargs)
+        dset = self.to_xarray(encoding=False)
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            data = dset[self.name]
+            plot = data.plot(**kwargs)
+        elif self._domain._type is DomainType.POINTS:
+            data = xr.Dataset(
+                data_vars={
+                    self.name: dset[self.name],
+                    "lat": dset.coords["latitude"],
+                    "lon": dset.coords["longitude"],
+                }
+            )
+            kwargs.update(
+                {"x": "lon", "y": "lat", "hue": self.name, "zorder": np.inf}
+            )
+            plot = data.plot.scatter(**kwargs)
+        else:
+            raise NotImplementedError(
+                "'domain.type' of must be 'DomainType.GRIDDED' or "
+                "'DomainType.POINTS'"
+            )
 
         # Adding and modifying axis elements:
         # axes = np.array(getattr(plot, 'axes', plot), copy=False, ndmin=1)
@@ -1079,7 +1160,7 @@ class Field(Variable, DomainMixin):
                 and lon is not None
                 and not gridline_labels
             ):
-                coords = darr.coords
+                coords = data.coords
 
                 lat_coord = coords[lat.name]
                 lat_attrs = lat_coord.attrs
@@ -1134,15 +1215,21 @@ class Field(Variable, DomainMixin):
         data_vars = {}
         var_name = self.ncvar if encoding else self.name
 
-        data_vars[var_name] = super().to_xarray(encoding)  # use Variable to_array
+        data_vars[var_name] = super().to_xarray(
+            encoding
+        )  # use Variable to_array
 
         coords = self.domain.aux_coords
 
         if coords:
             if encoding:
-                coords_names = " ".join([self.domain.coords[x].ncvar for x in coords])
+                coords_names = " ".join(
+                    [self.domain.coords[x].ncvar for x in coords]
+                )
             else:
-                coords_names = " ".join([self.domain.coords[x].name for x in coords])
+                coords_names = " ".join(
+                    [self.domain.coords[x].name for x in coords]
+                )
             data_vars[var_name].encoding["coordinates"] = coords_names
 
         coords = self.domain.to_xarray(encoding)
@@ -1205,7 +1292,9 @@ class Field(Variable, DomainMixin):
         if coords is None or len(coords) == 0:
             return
         if "coordinates" in da.attrs:
-            da.attrs["coordinates"] = " ".join(chain([da.attrs["coordinates"]], coords))
+            da.attrs["coordinates"] = " ".join(
+                chain([da.attrs["coordinates"]], coords)
+            )
         elif "coordinates" in da.encoding:
             da.encoding["coordinates"] = " ".join(
                 chain([da.encoding["coordinates"]], coords)

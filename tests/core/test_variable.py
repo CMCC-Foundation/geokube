@@ -161,7 +161,9 @@ def test_init_proper_attr_set_with_encoding_for_axes():
 
 
 def test_from_xarray_with_id_pattern(era5_netcdf):
-    v = Variable.from_xarray(era5_netcdf["tp"], id_pattern="prefix:{units}_{long_name}")
+    v = Variable.from_xarray(
+        era5_netcdf["tp"], id_pattern="prefix:{units}_{long_name}"
+    )
 
     d1 = v.dims[0]
     assert d1.type is AxisType.TIME
@@ -196,9 +198,12 @@ def test_from_xarray_with_id_pattern(era5_netcdf):
 
 def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf_wso):
     v = Variable.from_xarray(
-        era5_rotated_netcdf_wso["W_SO"], mapping={"soil1": {"name": "my_depth"}}
+        era5_rotated_netcdf_wso["W_SO"],
+        mapping={"soil1": {"name": "my_depth"}},
     )
-    assert set(v.dim_ncvars) == (set(era5_rotated_netcdf_wso.dims.keys()) - {"bnds"})
+    assert set(v.dim_ncvars) == (
+        set(era5_rotated_netcdf_wso.dims.keys()) - {"bnds"}
+    )
     mask = ~np.isnan(v._data)
     assert np.allclose(
         np.array(v._data)[mask],
@@ -210,6 +215,11 @@ def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf_wso):
     assert r1.attrs == era5_rotated_netcdf_wso["W_SO"].attrs
 
     r2 = v.to_xarray(encoding=False)
-    assert set(r2.dims) == {"my_depth", "time", "grid_latitude", "grid_longitude"}
+    assert set(r2.dims) == {
+        "my_depth",
+        "time",
+        "grid_latitude",
+        "grid_longitude",
+    }
     assert r2.encoding == era5_rotated_netcdf_wso["W_SO"].encoding
     assert r2.attrs == era5_rotated_netcdf_wso["W_SO"].attrs

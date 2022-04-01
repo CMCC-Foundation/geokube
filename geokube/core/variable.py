@@ -4,7 +4,16 @@ import warnings
 from html import escape
 from numbers import Number
 from string import Formatter, Template
-from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Hashable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import dask.array as da
 import numpy as np
@@ -81,7 +90,9 @@ class Variable(xr.Variable):
                 fastpath=True,
             )
             self._units = (
-                Unit(units) if isinstance(units, str) or units is None else units
+                Unit(units)
+                if isinstance(units, str) or units is None
+                else units
             )
 
     def _as_dimension_tuple(self, dims) -> Tuple[Axis, ...]:
@@ -97,7 +108,9 @@ class Variable(xr.Variable):
                 if isinstance(d, str):
                     _dims.append(Axis(name=d, is_dim=True))
                 elif isinstance(d, AxisType):
-                    _dims.append(Axis(name=d.axis_type_name, axistype=d, is_dim=True))
+                    _dims.append(
+                        Axis(name=d.axis_type_name, axistype=d, is_dim=True)
+                    )
                 elif isinstance(d, Axis):
                     _dims.append(d)
                 else:
@@ -151,7 +164,9 @@ class Variable(xr.Variable):
             Variable._LOG.warn(
                 "Converting units is supported only for np.ndarray inner data type. Data will be loaded into the memory!"
             )
-            self.data = np.array(self.data)  # TODO: inplace for cf.Unit doesn't work!
+            self.data = np.array(
+                self.data
+            )  # TODO: inplace for cf.Unit doesn't work!
         res = self.units.convert(self.data, unit, inplace)
         if not inplace:
             return Variable(

@@ -39,12 +39,16 @@ class Coordinate(Variable, Axis):
         axis: Union[str, Axis],
         dims: Optional[Tuple[Axis]] = None,
         units: Optional[Union[Unit, str]] = None,
-        bounds: Optional[Union[Bounds, np.ndarray, da.Array, xr.Variable]] = None,
+        bounds: Optional[
+            Union[Bounds, np.ndarray, da.Array, xr.Variable]
+        ] = None,
         properties: Optional[Mapping[Hashable, str]] = None,
         encoding: Optional[Mapping[Hashable, str]] = None,
     ):
         if data is None:
-            raise ex.HCubeValueError("`data` cannot be `None`", logger=Coordinate._LOG)
+            raise ex.HCubeValueError(
+                "`data` cannot be `None`", logger=Coordinate._LOG
+            )
         if not isinstance(axis, (Axis, str)):
             raise ex.HCubeTypeError(
                 f"Expected argument is one of the following types `geokube.Axis` or `str`, but provided {type(data)}",
@@ -128,16 +132,22 @@ class Coordinate(Variable, Axis):
                 if isinstance(v, pd.core.indexes.datetimes.DatetimeIndex):
                     v = np.array(v)
                 if isinstance(v, Bounds):
-                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    bound_class = Coordinate._get_bounds_cls(
+                        v.shape, variable_shape
+                    )
                     _bounds[k] = v
                 if isinstance(v, Variable):
-                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    bound_class = Coordinate._get_bounds_cls(
+                        v.shape, variable_shape
+                    )
                     _bounds[k] = bound_class(data=v)
                 elif isinstance(v, (np.ndarray, da.Array)):
                     # in this case when only a numpy array is passed
                     # we assume 2-D numpy array with shape(coord.dim, 2)
                     #
-                    bound_class = Coordinate._get_bounds_cls(v.shape, variable_shape)
+                    bound_class = Coordinate._get_bounds_cls(
+                        v.shape, variable_shape
+                    )
                     _bounds[k] = bound_class(
                         data=v,
                         units=units,
@@ -149,13 +159,19 @@ class Coordinate(Variable, Axis):
                         logger=Coordinate._LOG,
                     )
         elif isinstance(bounds, Bounds):
-            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            bound_class = Coordinate._get_bounds_cls(
+                bounds.shape, variable_shape
+            )
             _bounds = {f"{name}_bounds": bounds}
         elif isinstance(bounds, Variable):
-            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            bound_class = Coordinate._get_bounds_cls(
+                bounds.shape, variable_shape
+            )
             _bounds = {f"{name}_bounds": bound_class(bounds)}
         elif isinstance(bounds, (np.ndarray, da.Array)):
-            bound_class = Coordinate._get_bounds_cls(bounds.shape, variable_shape)
+            bound_class = Coordinate._get_bounds_cls(
+                bounds.shape, variable_shape
+            )
             _bounds = {
                 f"{name}_bounds": bound_class(
                     data=bounds,
@@ -179,7 +195,11 @@ class Coordinate(Variable, Axis):
             and provided_bnds_shape[0] == provided_data_shape[0]
         ):
             return True
-        if provided_data_shape == () and ndim == 0 and provided_bnds_shape[0] == 2:
+        if (
+            provided_data_shape == ()
+            and ndim == 0
+            and provided_bnds_shape[0] == 2
+        ):
             # The case where there is a scalar coordinate with bounds, e.g.
             # after single value selection
             return True
@@ -264,7 +284,9 @@ class Coordinate(Variable, Axis):
 
     @property
     # TODO:  check! I think this works only if lat/lon are independent!
-    def convention(self) -> Optional[Union[LatitudeConvention, LongitudeConvention]]:
+    def convention(
+        self,
+    ) -> Optional[Union[LatitudeConvention, LongitudeConvention]]:
         if self.axis_type is AxisType.LATITUDE:
             return (
                 LatitudeConvention.POSITIVE_TOP
@@ -279,17 +301,21 @@ class Coordinate(Variable, Axis):
             )
 
     @log_func_debug
-    def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
+    def to_xarray(
+        self, encoding=True
+    ) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
         # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
         res_name = self.ncvar if encoding else self.name
         dim_names = self.dim_ncvars if encoding else self.dim_names
-        da = xr.DataArray(var, name=res_name, coords={res_name: var}, dims=dim_names)[
-            res_name
-        ]
+        da = xr.DataArray(
+            var, name=res_name, coords={res_name: var}, dims=dim_names
+        )[res_name]
         if self.has_bounds:
             bounds = {
-                k: xr.DataArray(Variable.to_xarray(b, encoding=encoding), name=k)
+                k: xr.DataArray(
+                    Variable.to_xarray(b, encoding=encoding), name=k
+                )
                 for k, b in self.bounds.items()
             }
             da.encoding["bounds"] = " ".join(bounds.keys())
@@ -333,7 +359,10 @@ class Coordinate(Variable, Axis):
             bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
             bounds = {
                 bnds_name: Variable.from_xarray(
-                    ds[bnds_ncvar], id_pattern=id_pattern, copy=copy, mapping=mapping
+                    ds[bnds_ncvar],
+                    id_pattern=id_pattern,
+                    copy=copy,
+                    mapping=mapping,
                 )
             }
             if (

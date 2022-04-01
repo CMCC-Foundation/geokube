@@ -124,7 +124,9 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
         exclude_d1="standard_name",
     )
     compare_dicts(
-        res["time"].encoding, era5_globe_netcdf["time"].encoding, exclude_d1="name"
+        res["time"].encoding,
+        era5_globe_netcdf["time"].encoding,
+        exclude_d1="name",
     )
     assert res["time"].encoding["name"] == "time"
     assert domain.crs == crs.RegularLatLon()
@@ -275,7 +277,9 @@ def test_regular_lat_lon_domain_with_bounds_and_properties_from_dict():
     assert domain[Axis("Time")].properties["some_prop"] == "prop_val"
 
 
-def test_skip_redundand_coord_from_coordinates_string_in_encoding(era5_globe_netcdf):
+def test_skip_redundand_coord_from_coordinates_string_in_encoding(
+    era5_globe_netcdf,
+):
     era5_globe_netcdf["tp"].encoding["coordinates"] = "time latitude"
     with pytest.warns(
         UserWarning,
@@ -284,7 +288,9 @@ def test_skip_redundand_coord_from_coordinates_string_in_encoding(era5_globe_net
         Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
 
 
-def test_skip_redundand_coord_from_coordinates_string_in_attrs(era5_globe_netcdf):
+def test_skip_redundand_coord_from_coordinates_string_in_attrs(
+    era5_globe_netcdf,
+):
     era5_globe_netcdf["tp"].attrs["coordinates"] = "time latitude"
     with pytest.warns(
         UserWarning,

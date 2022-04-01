@@ -9,7 +9,8 @@ def nonclose_assert(f):
     def decorated_function(self, *args, **kwargs):
         if hasattr(self, "_is_closed") and self._is_closed:
             raise RuntimeError(
-                "This object is already closed. Reinitialize it to do " "computations!"
+                "This object is already closed. Reinitialize it to do "
+                "computations!"
             )
         return f(self, *args, **kwargs)
 
