@@ -38,3 +38,8 @@ def test_to_dict(dataset, dataset_single_att):
     assert len(dict_dset.keys()) == 2
     assert ("era5",) in keys
     assert ("other-era5",) in keys
+
+def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
+    import json
+    _ = json.dumps(dataset.to_dict())
+    _ = json.dumps(dataset_single_att.to_dict())
