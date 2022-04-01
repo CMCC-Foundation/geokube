@@ -191,17 +191,15 @@ class Domain(DomainMixin):
 
     @log_func_debug
     def compute_bounds(
-        self,
-        coordinate: str | None = None,
-        force: bool = False
+        self, coordinate: str | None = None, force: bool = False
     ) -> None:
         # Defining behavior if `coordinate` is different from `'latitude'` or
         # `'longitude'`
         if coordinate is None:
-            self.compute_bounds(coordinate='latitude', force=False)
-            self.compute_bounds(coordinate='longitude', force=False)
+            self.compute_bounds(coordinate="latitude", force=False)
+            self.compute_bounds(coordinate="longitude", force=False)
             return
-        elif coordinate not in {'latitude', 'longitude'}:
+        elif coordinate not in {"latitude", "longitude"}:
             raise ex.HCubeNotImplementedError(
                 "'coordinate' must be either 'latitude' or 'longitude', other "
                 "values are not currently supported",
@@ -236,8 +234,7 @@ class Domain(DomainMixin):
             # type of exception, see:
             # https://docs.python.org/3/library/exceptions.html#ValueError
             raise ex.HCubeValueError(
-                "'crs' is None and cell bounds cannot be calculated",
-                logger=self._LOG
+                "'crs' is None and cell bounds cannot be calculated", logger=self._LOG
             )
         if not isinstance(crs, GeogCS):
             raise ex.HCubeNotImplementedError(

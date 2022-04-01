@@ -256,7 +256,7 @@ class Coordinate(Variable, Axis):
             axis=(Axis)(self),
         )
         if self._bounds is not None:
-            self.encoding['bounds'] = next(iter(self.bounds))
+            self.encoding["bounds"] = next(iter(self.bounds))
 
     @property
     def has_bounds(self) -> bool:
