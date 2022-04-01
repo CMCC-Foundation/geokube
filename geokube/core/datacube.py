@@ -40,7 +40,13 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 #
 class DataCube(DomainMixin):
 
-    __slots__ = ("_fields", "_domain", "_properties", "_encoding", "_ncvar_to_name")
+    __slots__ = (
+        "_fields",
+        "_domain",
+        "_properties",
+        "_encoding",
+        "_ncvar_to_name",
+    )
 
     _LOG = HCubeLogger(name="DataCube")
 
@@ -93,12 +99,17 @@ class DataCube(DomainMixin):
         )
 
     def __getitem__(
-        self, key: Union[Iterable[str], Iterable[Tuple[str, str]], str, Tuple[str, str]]
+        self,
+        key: Union[
+            Iterable[str], Iterable[Tuple[str, str]], str, Tuple[str, str]
+        ],
     ):
         if isinstance(key, str) and (
             (key in self._fields) or key in self._ncvar_to_name
         ):
-            return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
+            return self._fields.get(
+                key, self._fields.get(self._ncvar_to_name.get(key))
+            )
         elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(
                 fields=[self[k] for k in key],
@@ -201,7 +212,9 @@ class DataCube(DomainMixin):
         )
 
     @log_func_debug
-    def interpolate(self, domain: Domain, method: str = "nearest") -> "DataCube":
+    def interpolate(
+        self, domain: Domain, method: str = "nearest"
+    ) -> "DataCube":
         return DataCube(
             fields=[
                 self._fields[k].interpolate(domain=domain, method=method)
@@ -277,14 +290,22 @@ class DataCube(DomainMixin):
         #
         for dv in ds.data_vars:
             fields.append(
-                Field.from_xarray(ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping)
+                Field.from_xarray(
+                    ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
+                )
             )
-        return DataCube(fields=fields, properties=ds.attrs, encoding=ds.encoding)
+        return DataCube(
+            fields=fields, properties=ds.attrs, encoding=ds.encoding
+        )
 
     @log_func_debug
     def to_xarray(self, encoding=True):
-        xarray_fields = [f.to_xarray(encoding=encoding) for f in self.fields.values()]
-        dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
+        xarray_fields = [
+            f.to_xarray(encoding=encoding) for f in self.fields.values()
+        ]
+        dset = xr.merge(
+            xarray_fields, join="outer", combine_attrs="no_conflicts"
+        )
         dset.attrs = self.properties
         dset.encoding = self.encoding
         return dset

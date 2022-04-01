@@ -67,7 +67,9 @@ class CellMethod:
                 par_close_index,
             ]
         )
-        if np.isnan(min_idx):  # Result of nanmin where all items are NaN results in NaN
+        if np.isnan(
+            min_idx
+        ):  # Result of nanmin where all items are NaN results in NaN
             # If there is not `where` or something in (), then takes all string to parse to `method` and `axis`
             axis, method = val.split(": ")
         else:
@@ -92,9 +94,13 @@ class CellMethod:
         if not np.isnan(interval_start_idx):
             # The case like `time : max (interval: 1hr comment: aaa)`
             # or `time : max (interval: 1hr)`
-            interval_ends = int(np.nanmin([comment_start_idx, par_close_index]))
+            interval_ends = int(
+                np.nanmin([comment_start_idx, par_close_index])
+            )
             if not np.isnan(interval_ends):
-                interval_val = val[interval_start_idx + 10 : interval_ends].strip()
+                interval_val = val[
+                    interval_start_idx + 10 : interval_ends
+                ].strip()
             else:
                 interval_val = val[interval_start_idx + 10 :].strip()
         if not np.isnan(comment_start_idx):
@@ -115,7 +121,10 @@ class CellMethod:
             res_str = " ".join([res_str, f"where {self.where}"])
         if (self.interval is not None) and (self.comment is not None):
             res_str = " ".join(
-                [res_str, f"(interval: {self.interval} comment: {self.comment})"]
+                [
+                    res_str,
+                    f"(interval: {self.interval} comment: {self.comment})",
+                ]
             )
         else:
             if self.interval is not None:

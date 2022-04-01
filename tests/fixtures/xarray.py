@@ -39,7 +39,9 @@ def rotated_pole_datacube(era5_rotated_netcdf):
 @pytest.fixture
 def era5_point_domain():
     return xr.open_mfdataset(
-        "tests//resources//point_domain*.nc", chunks="auto", decode_coords="all"
+        "tests//resources//point_domain*.nc",
+        chunks="auto",
+        decode_coords="all",
     )
 
 
@@ -62,14 +64,18 @@ def era5_globe_netcdf():
 @pytest.fixture
 def era5_rotated_netcdf_tmin2m():
     yield xr.open_mfdataset(
-        "tests//resources//rlat-rlon-tmin2m.nc", chunks="auto", decode_coords="all"
+        "tests//resources//rlat-rlon-tmin2m.nc",
+        chunks="auto",
+        decode_coords="all",
     )
 
 
 @pytest.fixture
 def era5_rotated_netcdf_wso():
     yield xr.open_mfdataset(
-        "tests//resources//rlat-rlon-wso.nc", chunks="auto", decode_coords="all"
+        "tests//resources//rlat-rlon-wso.nc",
+        chunks="auto",
+        decode_coords="all",
     )
 
 
@@ -98,7 +104,9 @@ def era5_rotated_netcdf_soil_bnds(era5_rotated_netcdf_wso):
 @pytest.fixture
 def nemo_ocean_16():
     dset = xr.open_mfdataset(
-        "tests//resources//nemo_ocean_16.nc", chunks="auto", decode_coords="all"
+        "tests//resources//nemo_ocean_16.nc",
+        chunks="auto",
+        decode_coords="all",
     )
     # NOTE: there are two time-related coordinates.
     # It is not supported yet to have multiple coordinates of the same AxisType

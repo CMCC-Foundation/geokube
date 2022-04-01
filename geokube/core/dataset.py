@@ -49,7 +49,8 @@ class Dataset:
             ]
         else:
             raise ex.HCubeTypeError(
-                "'hcubes' must be mapping or pandas DataFrame", logger=self._LOG
+                "'hcubes' must be mapping or pandas DataFrame",
+                logger=self._LOG,
             )
 
         self.__data[self.FIELD_COL] = [
@@ -72,7 +73,9 @@ class Dataset:
             else Dataset._get_eligible_fields_for_datacube(hcube, key)
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
-        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        dset = Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
         return dset._drop_empty()
 
     def __len__(self):
@@ -80,7 +83,9 @@ class Dataset:
 
     @staticmethod
     def _get_eligible_fields_for_datacube(hcube, key: set):
-        return hcube[(key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())]
+        return hcube[
+            (key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())
+        ]
 
     def geobbox(
         self,
@@ -103,7 +108,9 @@ class Dataset:
                 bottom=bottom,
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def locations(
         self,
@@ -118,7 +125,9 @@ class Dataset:
                 latitude=latitude, longitude=longitude, vertical=vertical
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def sel(
         self,
@@ -140,7 +149,9 @@ class Dataset:
                 **indexers_kwargs,
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def update_metadata(self, metadata: dict):
         self.__metadata.update(metadata)
@@ -167,7 +178,9 @@ class Dataset:
         mask = self.__data[self.FIELD_COL].astype(dtype=np.bool_)
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
-        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
 
     def filter(
         self, indexers: Optional[Mapping[str, str]] = None, **indexers_kwargs
@@ -196,7 +209,9 @@ class Dataset:
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
 
-        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
 
     def apply(
         self,
@@ -210,7 +225,9 @@ class Dataset:
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
         data.index = np.arange(len(data))
-        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        dset = Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
         return dset._drop_empty() if drop_empty else dset
 
     def persist(self, path=None):
@@ -227,7 +244,9 @@ class Dataset:
             path, os.path.basename(dataframe_item[self.FILES_COL][0])
         )
         persisted = (
-            dataframe_item[self.DATACUBE_COL].to_xarray().to_netcdf(path_to_store)
+            dataframe_item[self.DATACUBE_COL]
+            .to_xarray()
+            .to_netcdf(path_to_store)
         )
         if isinstance(persisted, Delayed):
             persisted.compute()

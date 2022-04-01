@@ -66,7 +66,9 @@ def first_n_items(array, n_desired):
         return []
 
     if n_desired < array.size:
-        indexer = _get_indexer_at_least_n_items(array.shape, n_desired, from_end=False)
+        indexer = _get_indexer_at_least_n_items(
+            array.shape, n_desired, from_end=False
+        )
         array = array[indexer]
     return np.asarray(array).flat[:n_desired]
 
@@ -81,7 +83,9 @@ def last_n_items(array, n_desired):
         return []
 
     if n_desired < array.size:
-        indexer = _get_indexer_at_least_n_items(array.shape, n_desired, from_end=True)
+        indexer = _get_indexer_at_least_n_items(
+            array.shape, n_desired, from_end=True
+        )
         array = array[indexer]
     return np.asarray(array).flat[-n_desired:]
 
@@ -153,7 +157,9 @@ def format_items(x):
     timedelta_format = "datetime"
     if np.issubdtype(x.dtype, np.timedelta64):
         x = np.asarray(x, dtype="timedelta64[ns]")
-        day_part = x[~pd.isnull(x)].astype("timedelta64[D]").astype("timedelta64[ns]")
+        day_part = (
+            x[~pd.isnull(x)].astype("timedelta64[D]").astype("timedelta64[ns]")
+        )
         time_needed = x[~pd.isnull(x)] != day_part
         day_needed = day_part != np.timedelta64(0, "ns")
         if np.logical_not(day_needed).all():
@@ -177,7 +183,9 @@ def format_array_flat(array, max_width: int):
     relevant_front_items = format_items(
         first_n_items(array, (max_possibly_relevant + 1) // 2)
     )
-    relevant_back_items = format_items(last_n_items(array, max_possibly_relevant // 2))
+    relevant_back_items = format_items(
+        last_n_items(array, max_possibly_relevant // 2)
+    )
     # interleave relevant front and back items:
     #     [a, b, c] and [y, z] -> [a, z, b, y, c]
     relevant_items = sum(
@@ -271,13 +279,19 @@ def inline_variable_array_repr(var, max_width):
 
 
 def summarize_variable(
-    name: Hashable, var, col_width: int, marker: str = " ", max_width: int = None
+    name: Hashable,
+    var,
+    col_width: int,
+    marker: str = " ",
+    max_width: int = None,
 ):
     """Summarize a variable in one line, e.g., for the Dataset.__repr__."""
     if max_width is None:
         max_width_options = OPTIONS["display_width"]
         if not isinstance(max_width_options, int):
-            raise TypeError(f"`max_width` value of `{max_width}` is not a valid int")
+            raise TypeError(
+                f"`max_width` value of `{max_width}` is not a valid int"
+            )
         else:
             max_width = max_width_options
     first_col = pretty_print(f"  {marker} {name} ", col_width)
@@ -372,7 +386,12 @@ def _calculate_col_width(col_items):
 
 
 def _mapping_repr(
-    mapping, title, summarizer, expand_option_name, col_width=None, max_rows=None
+    mapping,
+    title,
+    summarizer,
+    expand_option_name,
+    col_width=None,
+    max_rows=None,
 ):
     if col_width is None:
         col_width = _calculate_col_width(mapping)
@@ -385,15 +404,20 @@ def _mapping_repr(
             summary = [f"{summary[0]} ({max_rows}/{len_mapping})"]
             first_rows = max_rows // 2 + max_rows % 2
             keys = list(mapping.keys())
-            summary += [summarizer(k, mapping[k], col_width) for k in keys[:first_rows]]
+            summary += [
+                summarizer(k, mapping[k], col_width) for k in keys[:first_rows]
+            ]
             if max_rows > 1:
                 last_rows = max_rows // 2
                 summary += [pretty_print("    ...", col_width) + " ..."]
                 summary += [
-                    summarizer(k, mapping[k], col_width) for k in keys[-last_rows:]
+                    summarizer(k, mapping[k], col_width)
+                    for k in keys[-last_rows:]
                 ]
         else:
-            summary += [summarizer(k, v, col_width) for k, v in mapping.items()]
+            summary += [
+                summarizer(k, v, col_width) for k, v in mapping.items()
+            ]
     else:
         summary += [EMPTY_REPR]
     return "\n".join(summary)
@@ -466,7 +490,9 @@ def limit_lines(string: str, *, limit: int):
     """
     lines = string.splitlines()
     if len(lines) > limit:
-        string = "\n".join(chain(lines[: limit // 2], ["..."], lines[-limit // 2 :]))
+        string = "\n".join(
+            chain(lines[: limit // 2], ["..."], lines[-limit // 2 :])
+        )
     return string
 
 
@@ -475,7 +501,11 @@ def short_numpy_repr(array):
 
     # default to lower precision so a full (abbreviated) line can fit on
     # one line with the default display_width
-    options = {"precision": 6, "linewidth": OPTIONS["display_width"], "threshold": 200}
+    options = {
+        "precision": 6,
+        "linewidth": OPTIONS["display_width"],
+        "threshold": 200,
+    }
     if array.ndim < 3:
         edgeitems = 3
     elif array.ndim == 3:
@@ -517,10 +547,14 @@ def array_repr(arr):
     ):
         data_repr = short_data_repr(arr)
     else:
-        data_repr = inline_variable_array_repr(arr.variable, OPTIONS["display_width"])
+        data_repr = inline_variable_array_repr(
+            arr.variable, OPTIONS["display_width"]
+        )
 
     summary = [
-        "<geokube.{} {}({})>".format(type(arr).__name__, name_str, dim_summary(arr)),
+        "<geokube.{} {}({})>".format(
+            type(arr).__name__, name_str, dim_summary(arr)
+        ),
         data_repr,
     ]
 
@@ -548,13 +582,17 @@ def dataset_repr(ds):
     summary.append("{}({})".format(dims_start, dim_summary(ds)))
 
     if ds.coords:
-        summary.append(coords_repr(ds.coords, col_width=col_width, max_rows=max_rows))
+        summary.append(
+            coords_repr(ds.coords, col_width=col_width, max_rows=max_rows)
+        )
 
     unindexed_dims_str = unindexed_dims_repr(ds.dims, ds.coords)
     if unindexed_dims_str:
         summary.append(unindexed_dims_str)
 
-    summary.append(data_vars_repr(ds.data_vars, col_width=col_width, max_rows=max_rows))
+    summary.append(
+        data_vars_repr(ds.data_vars, col_width=col_width, max_rows=max_rows)
+    )
 
     if ds.attrs:
         summary.append(attrs_repr(ds.attrs, max_rows=max_rows))
@@ -571,7 +609,9 @@ def diff_dim_summary(a, b):
         return ""
 
 
-def _diff_mapping_repr(a_mapping, b_mapping, compat, title, summarizer, col_width=None):
+def _diff_mapping_repr(
+    a_mapping, b_mapping, compat, title, summarizer, col_width=None
+):
     def extra_items_repr(extra_keys, mapping, ab_side):
         extra_repr = [summarizer(k, mapping[k], col_width) for k in extra_keys]
         if extra_repr:
@@ -606,7 +646,8 @@ def _diff_mapping_repr(a_mapping, b_mapping, compat, title, summarizer, col_widt
 
         if not compatible:
             temp = [
-                summarizer(k, vars[k], col_width) for vars in (a_mapping, b_mapping)
+                summarizer(k, vars[k], col_width)
+                for vars in (a_mapping, b_mapping)
             ]
 
             if compat == "identical" and is_variable:
@@ -623,7 +664,9 @@ def _diff_mapping_repr(a_mapping, b_mapping, compat, title, summarizer, col_widt
                     for var_s, attr_s in zip(temp, attrs_summary)
                 ]
 
-            diff_items += [ab_side + s[1:] for ab_side, s in zip(("L", "R"), temp)]
+            diff_items += [
+                ab_side + s[1:] for ab_side, s in zip(("L", "R"), temp)
+            ]
 
     if diff_items:
         summary += [f"Differing {title.lower()}:"] + diff_items
@@ -676,7 +719,9 @@ def diff_array_repr(a, b, compat):
         equiv = array_equiv
 
     if not equiv(a.data, b.data):
-        temp = [wrap_indent(short_numpy_repr(obj), start="    ") for obj in (a, b)]
+        temp = [
+            wrap_indent(short_numpy_repr(obj), start="    ") for obj in (a, b)
+        ]
         diff_data_repr = [
             ab_side + "\n" + ab_data_repr
             for ab_side, ab_data_repr in zip(("L", "R"), temp)
@@ -707,9 +752,13 @@ def diff_dataset_repr(a, b, compat):
     )
 
     summary.append(diff_dim_summary(a, b))
-    summary.append(diff_coords_repr(a.coords, b.coords, compat, col_width=col_width))
     summary.append(
-        diff_data_vars_repr(a.data_vars, b.data_vars, compat, col_width=col_width)
+        diff_coords_repr(a.coords, b.coords, compat, col_width=col_width)
+    )
+    summary.append(
+        diff_data_vars_repr(
+            a.data_vars, b.data_vars, compat, col_width=col_width
+        )
     )
 
     if compat == "identical":
