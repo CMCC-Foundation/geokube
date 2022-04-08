@@ -24,7 +24,7 @@ setuptools.setup(
         "cf_units",
         "dask",
         "distributed",
-        "intake",
+        "intake>=0.6.5",
         "xarray",
         "pytest-cov",
         "pytest",
