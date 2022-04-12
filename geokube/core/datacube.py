@@ -313,3 +313,12 @@ class DataCube(DomainMixin):
     @log_func_debug
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
+
+    @log_func_debug
+    def to_dict(self) -> dict:
+        # NOTE: it should return concise dict representation without returning each lat/lon/time value
+        dset = self.to_xarray(encoding=True)
+        return {
+            "variables": list(dset.data_vars.keys()),
+            "coordinates": list(dset.coords.keys())
+        }

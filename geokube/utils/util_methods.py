@@ -11,6 +11,12 @@ from dask import is_dask_collection
 
 from ..core.axis import Axis
 
+def to_dict_if_possible(object):
+    if (to_dict := getattr(object, "to_dict", None)) is not None:
+        return to_dict() if callable(to_dict) else object
+    return object
+    
+
 
 def are_dims_compliant(provided_shape, expected_shape):
     return provided_shape == expected_shape

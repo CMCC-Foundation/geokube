@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
 
+from ..utils import util_methods
 from ..utils import exceptions as ex
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis
@@ -169,10 +170,9 @@ class Dataset:
         return self.__data[self.DATACUBE_COL].tolist()
 
     def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
-        return {
-            row[: self.__cube_idx]: row[self.__cube_idx]
-            for row in self.__data.itertuples(index=False, name=None)
-        }
+        # NOTE: List of files is not hashable and it can be extremely large
+        res = self.__data.drop(labels=Dataset.FILES_COL, inplace=False, axis=1).applymap(util_methods.to_dict_if_possible).to_dict("records")
+        return res
 
     def _drop_empty(self) -> Dataset:
         mask = self.__data[self.FIELD_COL].astype(dtype=np.bool_)

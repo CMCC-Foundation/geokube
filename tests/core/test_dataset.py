@@ -23,3 +23,8 @@ def test_select_fields_by_ncvar(dataset_idpattern):
     assert len(d2m) == 1
     tp = dataset_idpattern["tp"]
     assert len(tp) == 1
+
+def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
+    import json
+    _ = json.dumps(dataset.to_dict())
+    _ = json.dumps(dataset_single_att.to_dict())
