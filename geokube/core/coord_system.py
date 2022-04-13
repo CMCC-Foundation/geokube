@@ -1373,7 +1373,9 @@ class CurvilinearGrid(CoordSystem):
         raise NotImplementedError()
 
 
-def parse_crs(da: xr.DataArray,) -> Optional["CoordSystem"]:
+def parse_crs(
+    da: xr.DataArray,
+) -> Optional["CoordSystem"]:
     """
     Creates an instance of CoordSystem subclass, one from those defined in this file where grid_mapping_name suits the one requested.
 

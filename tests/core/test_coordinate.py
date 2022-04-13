@@ -333,7 +333,9 @@ def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
 
     assert ("bounds" in coord.encoding) or ("bounds" in coord.attrs)
     compare_dicts(
-        coord.encoding, era5_rotated_netcdf.soil1.encoding, exclude_d1="name",
+        coord.encoding,
+        era5_rotated_netcdf.soil1.encoding,
+        exclude_d1="name",
     )
 
 
@@ -349,7 +351,9 @@ def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
         era5_rotated_netcdf.soil1.encoding.keys()
     )
     compare_dicts(
-        coord.encoding, era5_rotated_netcdf.soil1.encoding, exclude_d1="name",
+        coord.encoding,
+        era5_rotated_netcdf.soil1.encoding,
+        exclude_d1="name",
     )
 
 

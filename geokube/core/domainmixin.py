@@ -47,7 +47,8 @@ class DomainMixin:
         ):
             return LongitudeConvention.NEGATIVE_WEST
         raise ex.HCubeValueError(
-            "Wrong longitude values", logger=self._LOG,
+            "Wrong longitude values",
+            logger=self._LOG,
         )
 
     @property

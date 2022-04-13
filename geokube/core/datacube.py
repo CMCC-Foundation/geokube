@@ -169,7 +169,10 @@ class DataCube(DomainMixin):
 
     @log_func_debug
     def locations(
-        self, latitude, longitude, vertical: Optional[List[Number]] = None,
+        self,
+        latitude,
+        longitude,
+        vertical: Optional[List[Number]] = None,
     ):
         return DataCube(
             fields=[
@@ -240,7 +243,9 @@ class DataCube(DomainMixin):
         )
 
     @log_func_debug
-    def to_regular(self,) -> "DataCube":
+    def to_regular(
+        self,
+    ) -> "DataCube":
         return DataCube(
             fields=[self._fields[k].to_regular() for k in self._fields.keys()],
             properties=self.properties,
@@ -315,5 +320,5 @@ class DataCube(DomainMixin):
         dset = self.to_xarray(encoding=True)
         return {
             "variables": list(dset.data_vars.keys()),
-            "coordinates": list(dset.coords.keys()),
+            "coordinates": list(dset.coords.keys())
         }

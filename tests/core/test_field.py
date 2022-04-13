@@ -78,7 +78,11 @@ def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
     assert xr_res["air_temperature"].encoding["grid_mapping"] == "crs"
     assert set(
         xr_res["air_temperature"].encoding["coordinates"].split(" ")
-    ) == {"height", "latitude", "longitude",}
+    ) == {
+        "height",
+        "latitude",
+        "longitude",
+    }
     assert "cell_methods" in xr_res["air_temperature"].attrs
     assert (
         xr_res["air_temperature"].attrs["cell_methods"]
@@ -1484,7 +1488,10 @@ def test_regridding_regular_to_regular_patch(era5_netcdf):
         domaintype=DomainType.GRIDDED,
     )
     field_out = field_in.regrid(
-        target=target, method="patch", weights_path=None, reuse_weights=True,
+        target=target,
+        method="patch",
+        weights_path=None,
+        reuse_weights=True,
     )
 
     assert field_out.domain.crs == target.crs
@@ -1668,7 +1675,10 @@ def test_regridding_rotated_pole_to_regular_patch(era5_rotated_netcdf_wso):
         domaintype=DomainType.GRIDDED,
     )
     field_out = field_in.regrid(
-        target=target, method="patch", weights_path=None, reuse_weights=True,
+        target=target,
+        method="patch",
+        weights_path=None,
+        reuse_weights=True,
     )
 
     assert field_out.domain.crs == target.crs
