@@ -1033,10 +1033,11 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
-        time = self.coords.get("time")
-        vert = self.coords.get("vert")
-        lat = self.coords.get("latitude")
-        lon = self.coords.get("longitude")
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
         dims = set()
         if time is not None:
             dims.add(time.name)
