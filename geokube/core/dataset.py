@@ -114,10 +114,7 @@ class Dataset:
         )
 
     def locations(
-        self,
-        latitude,
-        longitude,
-        vertical: Optional[List[Number]] = None,
+        self, latitude, longitude, vertical: Optional[List[Number]] = None,
     ):
         # this returns a new Dataset where each Datacube is subsetted according to the coordinates
         _copy = self.__data.copy()
@@ -171,7 +168,11 @@ class Dataset:
 
     def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
         # NOTE: List of files is not hashable and it can be extremely large
-        res = self.__data.drop(labels=Dataset.FILES_COL, inplace=False, axis=1).applymap(util_methods.to_dict_if_possible).to_dict("records")
+        res = (
+            self.__data.drop(labels=Dataset.FILES_COL, inplace=False, axis=1)
+            .applymap(util_methods.to_dict_if_possible)
+            .to_dict("records")
+        )
         return res
 
     def _drop_empty(self) -> Dataset:

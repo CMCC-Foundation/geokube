@@ -306,8 +306,7 @@ class Domain(DomainMixin):
 
     @classmethod
     def guess_crs(
-        cls,
-        da: Union[xr.Dataset, xr.DataArray, Mapping[str, Coordinate]],
+        cls, da: Union[xr.Dataset, xr.DataArray, Mapping[str, Coordinate]],
     ):
         # TODO: implement more logic
         if isinstance(da, (xr.Dataset, xr.DataArray)):

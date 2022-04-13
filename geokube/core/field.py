@@ -991,8 +991,7 @@ class Field(Variable, DomainMixin):
 
         da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
         res = xr.Dataset(
-            da,
-            coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
+            da, coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
         field = Field.from_xarray(res, ncvar=self.name)
         field.time.bounds = new_bnds
