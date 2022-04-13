@@ -1042,12 +1042,10 @@ class Field(Variable, DomainMixin):
         if vert is not None:
             dims.add(vert.name)
         if lat is not None:
-            lat = self.latitude
             dims.add(lat.name)
             if lat.is_dim:
                 kwargs.setdefault("y", lat.name)
         if lon is not None:
-            lon = self.longitude
             dims.add(lon.name)
             if lon.is_dim:
                 kwargs.setdefault("x", lon.name)
