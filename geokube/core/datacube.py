@@ -320,5 +320,5 @@ class DataCube(DomainMixin):
         dset = self.to_xarray(encoding=True)
         return {
             "variables": list(dset.data_vars.keys()),
-            "coordinates": list(dset.coords.keys())
+            "coordinates": list(dset.coords.keys()),
         }

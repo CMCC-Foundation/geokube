@@ -10,6 +10,7 @@ import xarray as xr
 from ..utils import exceptions as ex
 from ..utils.decorators import log_func_debug
 from ..utils.hcube_logger import HCubeLogger
+from ..utils.attrs_encoding import CFAttributes
 from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
@@ -23,9 +24,9 @@ class CoordinateType(Enum):
     INDEPENDENT = "independent"  # equivalent to CF DIMENSION Coordinate
 
 
-# coordinate is a dimension or axis with data and units
-# coordinate name is dimension/axis name
-# coordinate axis type is dimension/axis type
+# NOTE: coordinate is a dimension or axis with data and units
+# NOTE: coordinate name is dimension/axis name
+# NOTE: coordinate axis type is dimension/axis type
 
 
 class Coordinate(Variable, Axis):
@@ -115,10 +116,16 @@ class Coordinate(Variable, Axis):
         return not self == other
 
     def _update_properties_and_encoding(self):
-        if "standard_name" not in self.properties:
-            self.properties["standard_name"] = self.axis_type.axis_type_name
-        if "name" not in self.encoding:
-            self.encoding["name"] = self.ncvar
+        if CFAttributes.STANDARD_NAME.value not in self.properties:
+            self.properties[
+                CFAttributes.STANDARD_NAME.value
+            ] = self.axis_type.axis_type_name
+        if CFAttributes.NETCDF_NAME.value not in self.encoding:
+            self.encoding[CFAttributes.NETCDF_NAME.value] = self.ncvar
+        # NOTE: _FillValue is not applicable for Coordinate
+        # as it shouldn't contain missing data
+        self.encoding.pop(CFAttributes.FILL_VALUE.value, None)
+        self.properties.pop(CFAttributes.FILL_VALUE.value, None)
 
     @classmethod
     @log_func_debug
