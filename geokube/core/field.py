@@ -1033,31 +1033,24 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
         dims = set()
-        try:
-            time = self.time
+        if time is not None:
             dims.add(time.name)
-        except ex.HCubeKeyError:
-            time = None
-        try:
-            vert = self.vertical
+        if vert is not None:
             dims.add(vert.name)
-        except ex.HCubeKeyError:
-            vert = None
-        try:
-            lat = self.latitude
+        if lat is not None:
             dims.add(lat.name)
             if lat.is_dim:
                 kwargs.setdefault("y", lat.name)
-        except ex.HCubeKeyError:
-            lat = None
-        try:
-            lon = self.longitude
+        if lon is not None:
             dims.add(lon.name)
             if lon.is_dim:
                 kwargs.setdefault("x", lon.name)
-        except ex.HCubeKeyError:
-            lon = None
         crs = self._domain.crs
         try:
             transform = (
