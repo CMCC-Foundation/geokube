@@ -1045,7 +1045,7 @@ class Field(Variable, DomainMixin):
             plot = data.plot.line(**kwargs)
             if "row" not in kwargs and "col" not in kwargs:
                 for line in plot:
-                    line.axes.set_title('Point Time Series')
+                    line.axes.set_title("Point Time Series")
             return plot
 
         # Resolving Cartopy features and gridlines:
