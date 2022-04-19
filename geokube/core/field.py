@@ -1019,8 +1019,35 @@ class Field(Variable, DomainMixin):
         projection=None,
         figsize=None,
         robust=None,
+        point_time_series=True,
         **kwargs,
     ):
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        # Resolving time series because they do not require most of processing
+        # other plot types do:
+        if (
+            point_time_series
+            and self._domain._type is DomainType.POINTS
+            and time is not None
+            and time.size > 1
+        ):
+            kwargs["x"] = time.name
+            if vert is not None and vert.is_dim and vert.size > 1:
+                kwargs.setdefault("row", vert.name)
+            if figsize is not None:
+                kwargs["figsize"] = figsize
+            data = self.to_xarray(encoding=False)[self.name]
+            plot = data.plot.line(**kwargs)
+            if "row" not in kwargs and "col" not in kwargs:
+                for line in plot:
+                    line.axes.set_title("Point Time Series")
+            return plot
+
         # Resolving Cartopy features and gridlines:
         if features:
             features = [_CARTOPY_FEATURES[feature] for feature in features]
@@ -1033,11 +1060,6 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
-        axis_names = self.domain._axis_to_name
-        time = self.coords.get(axis_names.get(AxisType.TIME))
-        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
-        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
-        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
         dims = set()
         if time is not None:
             dims.add(time.name)
