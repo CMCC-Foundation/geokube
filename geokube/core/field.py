@@ -989,7 +989,13 @@ class Field(Variable, DomainMixin):
                     self.time.values[v].max(),
                 ]
 
-        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
+        # NOTE: `reduce` spans result for all intermediate values
+        # if 1st and 3rd day os selected and 1D freq is used
+        # then `reduce` results in time axis for 1st, 2nd, and 3rd
+        # passing for missing dates `NaN`s
+        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True).dropna(
+            dim=self.time.name
+        )
         res = xr.Dataset(
             da,
             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},

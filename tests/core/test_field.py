@@ -790,6 +790,7 @@ def test_timecombo_single_day(era5_netcdf):
     assert np.all(dset.time.dt.year == 2020)
 
 
+# TODO: verify!
 @pytest.mark.skip(
     "Should lat and lon depend on points if crs is RegularLatLon?"
 )
@@ -812,6 +813,7 @@ def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
     assert "latitude" in coords
 
 
+# TODO: verify!
 @pytest.mark.skip(
     f"Lat depends on `points` but is single-element and should be SCALAR not DEPENDENT"
 )
@@ -1701,3 +1703,22 @@ def test_sel_by_time_combo_only_day(era5_netcdf):
     field = Field.from_xarray(era5_netcdf, ncvar="tp")
     field = field.sel(time={"day": 10})
     assert len(field.time) == 24
+
+
+def test_resample_if_gap_in_time_axis(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    field = field.sel(time={"day": [10, 15], "hour": [10, 16]})
+    val1 = (
+        field.to_xarray(False)
+        .tp.isel(time=field.time.to_xarray(False).time.dt.day.values == 10)
+        .sum(dim=field.time.name)
+    )
+    val2 = (
+        field.to_xarray(False)
+        .tp.isel(time=field.time.to_xarray(False).time.dt.day.values == 15)
+        .sum(dim=field.time.name)
+    )
+    result = field.resample(frequency="1D", operator="sum")
+    assert len(result.time) == 2
+    assert np.allclose(result.to_xarray(False).tp.values[0, ...], val1)
+    assert np.allclose(result.to_xarray(False).tp.values[1, ...], val2)
