@@ -1264,6 +1264,10 @@ class Field(Variable, DomainMixin):
             for a in self.ancillary:
                 data_vars[a] = a.to_xarray(encoding)
 
+        # NOTE: a workaround for keeping domaintype
+        # Issue: https://github.com/geokube/geokube/issues/147
+        if (domain_type := self.domain.type) is not None:
+            data_vars[var_name].attrs["__geo_domtype"] = domain_type
         return xr.Dataset(data_vars=data_vars, coords=coords)
 
     @classmethod

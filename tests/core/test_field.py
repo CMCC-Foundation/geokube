@@ -1722,3 +1722,19 @@ def test_resample_if_gap_in_time_axis(era5_netcdf):
     assert len(result.time) == 2
     assert np.allclose(result.to_xarray(False).tp.values[0, ...], val1)
     assert np.allclose(result.to_xarray(False).tp.values[1, ...], val2)
+
+
+@pytest.mark.skip("Currently domaintype is set only in `locations` method")
+def test_field_domain_type_regular_lat_lon(
+    era5_netcdf,
+):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    assert field.domain.type is DomainType.GRIDDED
+
+
+def test_keeping_field_domain_type_in_to_xarray_and_from_xarray(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    field = field.locations(latitude=10, longitude=20)
+    assert field.domain.type is DomainType.POINTS
+    field = field.sel(time={"day": 10})
+    assert field.domain.type is DomainType.POINTS
