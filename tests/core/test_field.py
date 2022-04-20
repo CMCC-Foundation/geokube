@@ -1701,3 +1701,16 @@ def test_sel_by_time_combo_only_day(era5_netcdf):
     field = Field.from_xarray(era5_netcdf, ncvar="tp")
     field = field.sel(time={"day": 10})
     assert len(field.time) == 24
+
+
+def test_auxiliary_coords_after_resampling(era5_rotated_netcdf_tmin2m):
+    field = Field.from_xarray(era5_rotated_netcdf_tmin2m, ncvar="TMIN_2M")
+    assert "latitude" in field.domain.coords
+    assert field.domain.coords["latitude"].type is CoordinateType.DEPENDENT
+    assert "longitude" in field.domain.coords
+    assert field.domain.coords["longitude"].type is CoordinateType.DEPENDENT
+    field = field.resample(frequency="1D", operator="min")
+    assert "latitude" in field.domain.coords
+    assert field.domain.coords["latitude"].type is CoordinateType.DEPENDENT
+    assert "longitude" in field.domain.coords
+    assert field.domain.coords["longitude"].type is CoordinateType.DEPENDENT
