@@ -1044,6 +1044,8 @@ class Field(Variable, DomainMixin):
             if figsize is not None:
                 kwargs["figsize"] = figsize
             data = self.to_xarray(encoding=False)[self.name]
+            if "crs" in data.coords:
+                data = data.drop("crs")
             plot = data.plot.line(**kwargs)
             if "row" not in kwargs and "col" not in kwargs:
                 for line in plot:
@@ -1125,6 +1127,8 @@ class Field(Variable, DomainMixin):
 
         # Creating plot:
         dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
         # HACK: This should be only:
         # `if self._domain._type is DomainType.GRIDDED:`
         # Checking against `None` is provided temporary for testing.
