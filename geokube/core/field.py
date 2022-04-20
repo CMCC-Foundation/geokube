@@ -996,6 +996,8 @@ class Field(Variable, DomainMixin):
         da = da.reduce(func=func, dim=self.time.name, keep_attrs=True).dropna(
             dim=self.time.name
         )
+        # NOTE: `reduce` removes all `encoding` properties
+        da[self.name].encoding = ds[self.name].encoding
         res = xr.Dataset(
             da,
             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
@@ -1241,7 +1243,6 @@ class Field(Variable, DomainMixin):
         )  # use Variable to_array
 
         coords = self.domain.aux_coords
-
         if coords:
             if encoding:
                 coords_names = " ".join(

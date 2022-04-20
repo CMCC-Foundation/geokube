@@ -1724,6 +1724,19 @@ def test_resample_if_gap_in_time_axis(era5_netcdf):
     assert np.allclose(result.to_xarray(False).tp.values[1, ...], val2)
 
 
+def test_auxiliary_coords_after_resampling(era5_rotated_netcdf_tmin2m):
+    field = Field.from_xarray(era5_rotated_netcdf_tmin2m, ncvar="TMIN_2M")
+    assert "latitude" in field.domain.coords
+    assert field.domain.coords["latitude"].type is CoordinateType.DEPENDENT
+    assert "longitude" in field.domain.coords
+    assert field.domain.coords["longitude"].type is CoordinateType.DEPENDENT
+    field = field.resample(frequency="1D", operator="min")
+    assert "latitude" in field.domain.coords
+    assert field.domain.coords["latitude"].type is CoordinateType.DEPENDENT
+    assert "longitude" in field.domain.coords
+    assert field.domain.coords["longitude"].type is CoordinateType.DEPENDENT
+
+
 @pytest.mark.skip("Currently domaintype is set only in `locations` method")
 def test_field_domain_type_regular_lat_lon(
     era5_netcdf,
