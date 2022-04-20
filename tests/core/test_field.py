@@ -1701,3 +1701,19 @@ def test_sel_by_time_combo_only_day(era5_netcdf):
     field = Field.from_xarray(era5_netcdf, ncvar="tp")
     field = field.sel(time={"day": 10})
     assert len(field.time) == 24
+
+
+@pytest.mark.skip("Currently domaintype is set only in `locations` method")
+def test_field_domain_type_regular_lat_lon(
+    era5_netcdf,
+):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    assert field.domain.type is DomainType.GRIDDED
+
+
+def test_keeping_field_domain_type_in_to_xarray_and_from_xarray(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    field = field.locations(latitude=10, longitude=20)
+    assert field.domain.type is DomainType.POINTS
+    field = field.sel(time={"day": 10})
+    assert field.domain.type is DomainType.POINTS
