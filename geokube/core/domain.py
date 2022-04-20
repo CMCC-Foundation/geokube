@@ -380,6 +380,12 @@ class Domain(DomainMixin):
         else:
             crs = Domain.guess_crs(da)
 
+        # NOTE: a workaround for keeping domaintype
+        # Issue: https://github.com/geokube/geokube/issues/147
+        if (domain_type := ds[ncvar].attrs.get("__geo_domtype")) is not None:
+            return Domain(
+                coords=coords, crs=crs, domaintype=DomainType(domain_type)
+            )
         return Domain(coords=coords, crs=crs)
 
     @log_func_debug
