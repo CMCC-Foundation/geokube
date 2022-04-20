@@ -310,3 +310,9 @@ def test_skip_coordinate_from_coordinates_string_if_not_present_in_dataset(
         match=r"Coordinate not_exsiting does not exist in the dataset!",
     ):
         Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+
+def test_using_geo_domtype_attribute_for_domain_type(era5_globe_netcdf):
+    era5_globe_netcdf["tp"].attrs["__geo_domtype"] = "gridded"
+    domain = Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
+    assert domain.type is DomainType.GRIDDED

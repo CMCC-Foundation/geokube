@@ -1714,3 +1714,18 @@ def test_auxiliary_coords_after_resampling(era5_rotated_netcdf_tmin2m):
     assert field.domain.coords["latitude"].type is CoordinateType.DEPENDENT
     assert "longitude" in field.domain.coords
     assert field.domain.coords["longitude"].type is CoordinateType.DEPENDENT
+
+@pytest.mark.skip("Currently domaintype is set only in `locations` method")
+def test_field_domain_type_regular_lat_lon(
+    era5_netcdf,
+):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    assert field.domain.type is DomainType.GRIDDED
+
+
+def test_keeping_field_domain_type_in_to_xarray_and_from_xarray(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    field = field.locations(latitude=10, longitude=20)
+    assert field.domain.type is DomainType.POINTS
+    field = field.sel(time={"day": 10})
+    assert field.domain.type is DomainType.POINTS
