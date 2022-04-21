@@ -1751,3 +1751,11 @@ def test_keeping_field_domain_type_in_to_xarray_and_from_xarray(era5_netcdf):
     assert field.domain.type is DomainType.POINTS
     field = field.sel(time={"day": 10})
     assert field.domain.type is DomainType.POINTS
+
+
+def test_field_serialization_success_with_domtype_attr(era5_netcdf):
+    field = Field.from_xarray(era5_netcdf, ncvar="tp")
+    field = field.locations(latitude=10, longitude=20)
+    assert field.domain.type is DomainType.POINTS
+    field.to_netcdf(RES_PATH)
+    clear_test_res()
