@@ -1065,9 +1065,14 @@ class Field(Variable, DomainMixin):
                         line.axes.set_title("Point Time Series")
                 return plot
             if aspect == "profile":
-                if vert.attrs.get("positive") == "down":
-                    vert.values = -vert.values[::-1]
                 data = self.to_xarray(encoding=False)[self.name]
+                if vert.attrs.get("positive") == "down":
+                    data = data.reindex(
+                        indexers={vert.name: data.coords[vert.name][::-1]},
+                        copy=False
+                    )
+                    data.coords[vert.name] = -data.coords[vert.name]
+                    # vert.values = -vert.values[::-1]
                 kwargs["y"] = vert.name
                 if n_time > 1 or time.name in data.dims:
                     kwargs.setdefault("col", time.name)
