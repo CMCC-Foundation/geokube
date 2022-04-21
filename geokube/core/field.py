@@ -1069,7 +1069,7 @@ class Field(Variable, DomainMixin):
                 if vert.attrs.get("positive") == "down":
                     data = data.reindex(
                         indexers={vert.name: data.coords[vert.name][::-1]},
-                        copy=False
+                        copy=False,
                     )
                     data.coords[vert.name] = -data.coords[vert.name]
                     # vert.values = -vert.values[::-1]
