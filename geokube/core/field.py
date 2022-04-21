@@ -1021,7 +1021,7 @@ class Field(Variable, DomainMixin):
         projection=None,
         figsize=None,
         robust=None,
-        point_time_series=True,
+        aspect=None,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1030,27 +1030,56 @@ class Field(Variable, DomainMixin):
         lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
         lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
 
-        # Resolving time series because they do not require most of processing
-        # other plot types do:
-        if (
-            point_time_series
-            and self._domain._type is DomainType.POINTS
-            and time is not None
-            and time.size > 1
-        ):
-            kwargs["x"] = time.name
-            if vert is not None and vert.is_dim and vert.size > 1:
-                kwargs.setdefault("row", vert.name)
+        # Resolving time series and layers because they do not require most of
+        # processing other plot types do:
+        if self._domain._type is DomainType.POINTS:
             if figsize is not None:
                 kwargs["figsize"] = figsize
-            data = self.to_xarray(encoding=False)[self.name]
-            if "crs" in data.coords:
-                data = data.drop("crs")
-            plot = data.plot.line(**kwargs)
-            if "row" not in kwargs and "col" not in kwargs:
-                for line in plot:
-                    line.axes.set_title("Point Time Series")
-            return plot
+            n_pts = lat.size
+            n_time = time.size if (time is not None and time.is_dim) else 0
+            n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            if aspect is None:
+                # Integers determine the priority in the case of equal sizes:
+                # greater number means higher priority.
+                aspect = max(
+                    (n_time, 1, 'time_series'),
+                    (n_vert, 2, 'profile'),
+                    (n_pts, 3, 'points')
+                )[2]
+            if aspect not in {'time_series', 'profile', 'points'}:
+                raise ex.HCubeValueError(
+                    "'aspect' must be 'time_series', 'profile', 'points', or "
+                    "None",
+                    logger=Field._LOG
+                )
+            if aspect == 'time_series':
+                kwargs["x"] = time.name
+                title = "Point Time Series"
+                if n_vert > 1:
+                    kwargs.setdefault("row", vert.name)
+                data = self.to_xarray(encoding=False)[self.name]
+                if "crs" in data.coords:
+                    data = data.drop("crs")
+                plot = data.plot.line(**kwargs)
+                if "row" not in kwargs and "col" not in kwargs:
+                    for line in plot:
+                        line.axes.set_title(title)
+                return plot
+            if aspect == 'profile':
+                if vert.attrs.get("positive") == "down":
+                    vert.values = -vert.values[::-1]
+                kwargs["y"] = vert.name
+                title = "Point Layers"
+                if n_time > 1:
+                    kwargs.setdefault("col", time.name)
+                data = self.to_xarray(encoding=False)[self.name]
+                if "crs" in data.coords:
+                    data = data.drop("crs")
+                plot = data.plot.line(**kwargs)
+                if "row" not in kwargs and "col" not in kwargs:
+                    for line in plot:
+                        line.axes.set_title(title)
+                return plot
 
         # Resolving Cartopy features and gridlines:
         if features:
