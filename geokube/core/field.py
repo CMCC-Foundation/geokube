@@ -1053,32 +1053,30 @@ class Field(Variable, DomainMixin):
                     logger=Field._LOG,
                 )
             if aspect == "time_series":
-                kwargs["x"] = time.name
-                title = "Point Time Series"
-                if n_vert > 1:
-                    kwargs.setdefault("row", vert.name)
                 data = self.to_xarray(encoding=False)[self.name]
+                kwargs["x"] = time.name
+                if n_vert > 1 or vert.name in data.dims:
+                    kwargs.setdefault("row", vert.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
                 plot = data.plot.line(**kwargs)
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
-                        line.axes.set_title(title)
+                        line.axes.set_title("Point Time Series")
                 return plot
             if aspect == "profile":
                 if vert.attrs.get("positive") == "down":
                     vert.values = -vert.values[::-1]
-                kwargs["y"] = vert.name
-                title = "Point Layers"
-                if n_time > 1:
-                    kwargs.setdefault("col", time.name)
                 data = self.to_xarray(encoding=False)[self.name]
+                kwargs["y"] = vert.name
+                if n_time > 1 or time.name in data.dims:
+                    kwargs.setdefault("col", time.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
                 plot = data.plot.line(**kwargs)
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
-                        line.axes.set_title(title)
+                        line.axes.set_title("Point Layers")
                 return plot
 
         # Resolving Cartopy features and gridlines:
