@@ -107,3 +107,8 @@ def test_axis_hash():
     assert Axis("depth") in d
     assert d[Axis("lat")] == [1, 2, 3]
     assert d[Axis("depth")] == [-1, -2, -3]
+
+
+def test_vertical_axis_pattern():
+    assert Axis("dept").type is AxisType.VERTICAL
+    assert Axis("depth").type is AxisType.VERTICAL
