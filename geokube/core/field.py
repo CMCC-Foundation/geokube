@@ -1042,17 +1042,17 @@ class Field(Variable, DomainMixin):
                 # Integers determine the priority in the case of equal sizes:
                 # greater number means higher priority.
                 aspect = max(
-                    (n_time, 1, 'time_series'),
-                    (n_vert, 2, 'profile'),
-                    (n_pts, 3, 'points')
+                    (n_time, 1, "time_series"),
+                    (n_vert, 2, "profile"),
+                    (n_pts, 3, "points"),
                 )[2]
-            if aspect not in {'time_series', 'profile', 'points'}:
+            if aspect not in {"time_series", "profile", "points"}:
                 raise ex.HCubeValueError(
                     "'aspect' must be 'time_series', 'profile', 'points', or "
                     "None",
-                    logger=Field._LOG
+                    logger=Field._LOG,
                 )
-            if aspect == 'time_series':
+            if aspect == "time_series":
                 kwargs["x"] = time.name
                 title = "Point Time Series"
                 if n_vert > 1:
@@ -1065,7 +1065,7 @@ class Field(Variable, DomainMixin):
                     for line in plot:
                         line.axes.set_title(title)
                 return plot
-            if aspect == 'profile':
+            if aspect == "profile":
                 if vert.attrs.get("positive") == "down":
                     vert.values = -vert.values[::-1]
                 kwargs["y"] = vert.name
