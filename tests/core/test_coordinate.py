@@ -335,7 +335,7 @@ def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
         exclude_d1=["name", "_FillValue"],
         exclude_d2="_FillValue",
     )
-    assert not coord.encoding["_FillValue"]
+    assert coord.encoding["_FillValue"] is None
 
 
 def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
@@ -352,7 +352,7 @@ def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
         exclude_d1=["name", "_FillValue"],
         exclude_d2="_FillValue",
     )
-    assert not coord.encoding["_FillValue"]
+    assert coord.encoding["_FillValue"] is None
 
 
 def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):

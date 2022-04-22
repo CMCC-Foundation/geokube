@@ -132,7 +132,7 @@ class Coordinate(Variable, Axis):
         # it needs to be set to False for netcdf4 engine
         # see https://github.com/pydata/xarray/issues/1598
         if hasattr(obj, "encoding"):
-            obj.encoding[CFAttributes.FILL_VALUE.value] = False
+            obj.encoding[CFAttributes.FILL_VALUE.value] = None
 
     @classmethod
     @log_func_debug
@@ -319,7 +319,7 @@ class Coordinate(Variable, Axis):
         self, encoding=True
     ) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
-        # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
+        Coordinate._handle_fill_value_encoding(var)
         res_name = self.ncvar if encoding else self.name
         dim_names = self.dim_ncvars if encoding else self.dim_names
         da = xr.DataArray(
@@ -335,7 +335,6 @@ class Coordinate(Variable, Axis):
             da.encoding["bounds"] = " ".join(bounds.keys())
         else:
             bounds = {}
-        Coordinate._handle_fill_value_encoding(da)
         return xr.Dataset(coords={da.name: da, **bounds})
 
     @classmethod
