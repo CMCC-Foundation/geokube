@@ -97,9 +97,10 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     compare_dicts(
         res["latitude"].encoding,
         era5_globe_netcdf["latitude"].encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
         exclude_d2="_FillValue",
     )
+    assert not res["latitude"].encoding["_FillValue"]
     assert res["latitude"].encoding["name"] == "latitude"
     assert "longitude" in domain
     assert "longitude" in res
@@ -107,9 +108,10 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     compare_dicts(
         res["longitude"].encoding,
         era5_globe_netcdf["longitude"].encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
         exclude_d2="_FillValue",
     )
+    assert not res["latitude"].encoding["_FillValue"]
     compare_dicts(
         res["longitude"].attrs,
         era5_globe_netcdf["longitude"].attrs,
@@ -128,8 +130,9 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     compare_dicts(
         res["time"].encoding,
         era5_globe_netcdf["time"].encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
     )
+    assert not res["time"].encoding["_FillValue"]
     assert res["time"].encoding["name"] == "time"
     assert domain.crs == crs.RegularLatLon()
     assert "crs" in res
