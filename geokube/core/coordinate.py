@@ -124,8 +124,10 @@ class Coordinate(Variable, Axis):
             self.encoding[CFAttributes.NETCDF_NAME.value] = self.ncvar
         # NOTE: _FillValue is not applicable for Coordinate
         # as it shouldn't contain missing data
-        self.encoding.pop(CFAttributes.FILL_VALUE.value, None)
-        self.properties.pop(CFAttributes.FILL_VALUE.value, None)
+        # To avoid implicit addition of _FillValue encoding
+        # it needs to be set to False for netcdf4 engine
+        # see https://github.com/pydata/xarray/issues/1598
+        self.encoding[CFAttributes.FILL_VALUE.value] = False
 
     @classmethod
     @log_func_debug
