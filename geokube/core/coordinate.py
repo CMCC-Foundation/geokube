@@ -122,10 +122,17 @@ class Coordinate(Variable, Axis):
             ] = self.axis_type.axis_type_name
         if CFAttributes.NETCDF_NAME.value not in self.encoding:
             self.encoding[CFAttributes.NETCDF_NAME.value] = self.ncvar
+        Coordinate._handle_fill_value_encoding(self)
+
+    @classmethod
+    def _handle_fill_value_encoding(cls, obj):
         # NOTE: _FillValue is not applicable for Coordinate
         # as it shouldn't contain missing data
-        self.encoding.pop(CFAttributes.FILL_VALUE.value, None)
-        self.properties.pop(CFAttributes.FILL_VALUE.value, None)
+        # To avoid implicit addition of _FillValue encoding
+        # it needs to be set to False for netcdf4 engine
+        # see https://github.com/pydata/xarray/issues/1598
+        if hasattr(obj, "encoding"):
+            obj.encoding[CFAttributes.FILL_VALUE.value] = None
 
     @classmethod
     @log_func_debug
@@ -312,7 +319,7 @@ class Coordinate(Variable, Axis):
         self, encoding=True
     ) -> xr.core.coordinates.DatasetCoordinates:
         var = Variable.to_xarray(self, encoding=encoding)
-        # _ = var.attrs.pop("bounds", var.encoding.pop("bounds", None))
+        Coordinate._handle_fill_value_encoding(var)
         res_name = self.ncvar if encoding else self.name
         dim_names = self.dim_ncvars if encoding else self.dim_names
         da = xr.DataArray(

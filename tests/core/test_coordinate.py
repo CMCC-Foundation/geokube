@@ -332,9 +332,10 @@ def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
     compare_dicts(
         coord.encoding,
         era5_rotated_netcdf.soil1.encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
         exclude_d2="_FillValue",
     )
+    assert coord.encoding["_FillValue"] is None
 
 
 def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
@@ -348,9 +349,10 @@ def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
     compare_dicts(
         coord.encoding,
         era5_rotated_netcdf.soil1.encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
         exclude_d2="_FillValue",
     )
+    assert coord.encoding["_FillValue"] is None
 
 
 def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):
@@ -363,7 +365,7 @@ def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):
     assert "grid_longitude" in coord.dims
     assert np.all(era5_rotated_netcdf.lat.values == coord.latitude.values)
     assert coord.attrs == era5_rotated_netcdf.lat.attrs
-    assert set(coord.encoding) - {"name"} == set(
+    assert set(coord.encoding) - {"name", "_FillValue"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
@@ -377,7 +379,7 @@ def test_to_xarray_rotated_pole_without_encoding_2(era5_rotated_netcdf):
     assert "rlon" in coord.dims
     assert np.all(era5_rotated_netcdf.lat.values == coord.lat.values)
     assert coord.attrs == era5_rotated_netcdf.lat.attrs
-    assert set(coord.encoding) - {"name"} == set(
+    assert set(coord.encoding) - {"name", "_FillValue"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
