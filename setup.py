@@ -21,7 +21,7 @@ setuptools.setup(
     url="https://github.com/geokube/geokube",
     packages=setuptools.find_packages(),
     install_requires=[
-        "black",
+        "black==22.3.0",
         "cf_units",
         "dask",
         "distributed",
