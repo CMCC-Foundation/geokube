@@ -12,18 +12,28 @@ from dask import is_dask_collection
 from ..core.axis import Axis
 
 
+def to_dict_if_possible(object):
+    if (to_dict := getattr(object, "to_dict", None)) is not None:
+        return to_dict() if callable(to_dict) else object
+    return object
+
+
 def are_dims_compliant(provided_shape, expected_shape):
     return provided_shape == expected_shape
 
 
 def trim_key(mapping: dict, exclude: list):
-    return {k: v for k, v in mapping.items() if k not in np.array(exclude, ndmin=1)}
+    return {
+        k: v for k, v in mapping.items() if k not in np.array(exclude, ndmin=1)
+    }
 
 
 def cast_attr_to_valid(
     attrs: Mapping[Hashable, Any]
 ) -> Mapping[Hashable, Union[str, Number, np.ndarray, list, tuple]]:
-    return {k: str(v) if isinstance(v, np.dtype) else v for k, v in attrs.items()}
+    return {
+        k: str(v) if isinstance(v, np.dtype) else v for k, v in attrs.items()
+    }
 
 
 def clear_attributes(d: Union[xr.Dataset, xr.DataArray], attrs):
@@ -62,7 +72,8 @@ def assert_exactly_one_arg(**kwargs):
     for v in kwargs.values():
         if provided and v is not None:
             raise ValueError(
-                f"Those arguments cannot be passed at ones: {list(kwargs.keys())}"
+                "Those arguments cannot be passed at ones:"
+                f" {list(kwargs.keys())}"
             )
         if not provided and v is not None:
             provided = True
@@ -130,7 +141,7 @@ def list_to_slice_or_array(val_list):
             return val_list
         arr = np.array(list(val_list))
         if len(np.unique(df := np.diff(arr))) == 1:
-            return slice(arr[0], arr[-1], df[0])
+            return slice(arr[0], arr[-1] + df[0], df[0])
         return arr
     return val_list
 

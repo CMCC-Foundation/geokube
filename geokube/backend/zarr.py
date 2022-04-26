@@ -10,7 +10,6 @@ import zarr
 from intake.source.utils import reverse_format
 from zarr.storage import ContainsArrayError
 
-
 from geokube import LOGGER_NAME
 from geokube.backend.base import BaseOpener
 from geokube.core.container import Container
@@ -50,7 +49,8 @@ class _ZarrOpenManager(BaseOpener):
 
         logger = logging.getLogger(LOGGER_NAME)
         logger.debug(
-            "Connecting to S3 storage at address: http://51.159.24.124:9000 ..."
+            "Connecting to S3 storage at address:"
+            " http://51.159.24.124:9000 ..."
         )
         fs = s3fs.S3FileSystem(
             anon=True,
@@ -63,7 +63,9 @@ class _ZarrOpenManager(BaseOpener):
         unique_addresses = np.unique(
             [os.path.dirname(k) for k in s3map.keys() if not k.startswith(".")]
         )
-        logger.debug(f"Taking unique keys of S3Map...Found: {len(unique_addresses)}")
+        logger.debug(
+            f"Taking unique keys of S3Map...Found: {len(unique_addresses)}"
+        )
         bag = db.from_sequence(
             unique_addresses, npartitions=open_kwargs.get("npartitions", 30)
         )
@@ -77,12 +79,18 @@ class _ZarrOpenManager(BaseOpener):
         ).compute()
         results = [_ for _ in results if _ is not None]
         if not len(results):
-            logger.error(f"No data found for root: {root}  and pattern: {pattern}!")
-            raise ValueError(f"No data found for root: {root}  and pattern: {pattern}!")
+            logger.error(
+                f"No data found for root: {root}  and pattern: {pattern}!"
+            )
+            raise ValueError(
+                f"No data found for root: {root}  and pattern: {pattern}!"
+            )
         cubes, fields = zip(*results)
         cubes = pd.Series(cubes)
         fields = pd.DataFrame(fields)
-        dataset_name, product_type, fields = self._extract_dataset_metadata(fields)
+        dataset_name, product_type, fields = self._extract_dataset_metadata(
+            fields
+        )
         if not len(fields.columns):
             fields = None
         return Container(

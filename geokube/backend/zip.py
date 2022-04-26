@@ -2,7 +2,6 @@ import logging
 import os
 from typing import Any, Mapping, NoReturn, Optional
 
-
 from geokube import LOGGER_NAME
 from geokube.backend.base import BaseOpener
 from geokube.core.container import Container
@@ -46,6 +45,8 @@ class _ZipOpenManager(BaseOpener):
         import shutil
 
         logger = logging.getLogger(LOGGER_NAME)
-        logger.info(f"Attempt to clear temporary directory: {unzip_target} ...")
+        logger.info(
+            f"Attempt to clear temporary directory: {unzip_target} ..."
+        )
         shutil.rmtree(unzip_target, ignore_errors=True)
         logger.info("Removing finished successfully")

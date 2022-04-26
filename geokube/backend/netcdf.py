@@ -58,7 +58,9 @@ def open_datacube(
     if "decode_coords" not in kwargs:
         kwargs.update(decode_coords="all")
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, **kwargs), id_pattern=id_pattern, mapping=mapping
+        xr.open_mfdataset(path, **kwargs),
+        id_pattern=id_pattern,
+        mapping=mapping,
     )
     if metadata_caching:
         _write_cache(ds, metadata_cache_path)
@@ -95,9 +97,13 @@ def open_dataset(
     mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     metadata_caching: bool = False,
     metadata_cache_path: str = None,
-    ds_attr_mapping: Mapping[Hashable, Any] = None,  # dataset attributes mapping - TBA
+    ds_attr_mapping: Mapping[
+        Hashable, Any
+    ] = None,  # dataset attributes mapping - TBA
     # { 'attr_name1': { 'id': ..., 'description': ... }, ...}
-    ncvars_mapping: Mapping[Hashable, Any] = None,  # netcdf variables mapping - TBA
+    ncvars_mapping: Mapping[
+        Hashable, Any
+    ] = None,  # netcdf variables mapping - TBA
     # { 'ncvar_name1': {'id': ..., 'description': }, ...}
     delay_read_cubes: bool = False,  # when True the method will not create datacubes when opening a dataset; this is useful
     # when the number of rows is really high and the number of files per row is low
@@ -112,16 +118,21 @@ def open_dataset(
     if metadata_caching:
         if metadata_cache_path is None:
             raise ValueError(
-                "If `metadata_caching` set to True, `metadata_cache_path` argument needs to be provided!",
+                "If `metadata_caching` set to True, `metadata_cache_path`"
+                " argument needs to be provided!"
             )
         cached_ds = _read_cache(metadata_cache_path)
         if cached_ds is not None:
             cached_files = list(cached_ds.reset_index()[FILES_COL])
-            cached_files = [item for sublist in cached_files for item in sublist]
+            cached_files = [
+                item for sublist in cached_files for item in sublist
+            ]
             files = glob.glob(path)  # all files
             not_cached_files = list(set(files) - set(cached_files))
             if len(not_cached_files) == 0:  # there are no new files
-                return geokube.core.dataset.Dataset(hcubes=cached_ds.reset_index())
+                return geokube.core.dataset.Dataset(
+                    hcubes=cached_ds.reset_index()
+                )
 
             # there are new files we need to update the cache
             # we consider the case we only add files
@@ -134,7 +145,10 @@ def open_dataset(
                 # if index exists update the datacube  (merge __FILES column and open_datacube)
                 # if index does not exist add a new row
                 if i in cached_ds.index:
-                    new_files = [*cached_ds[FILES_COL][i], *not_cached_ds[FILES_COL][i]]
+                    new_files = [
+                        *cached_ds[FILES_COL][i],
+                        *not_cached_ds[FILES_COL][i],
+                    ]
                     if delay_read_cubes:
                         cube = dask.delayed(open_datacube)(
                             path=new_files,
@@ -149,7 +163,10 @@ def open_dataset(
                             mapping=mapping,
                             **kwargs,
                         )
-                    cached_ds.loc[i] = {FILES_COL: new_files, DATACUBE_COL: cube}
+                    cached_ds.loc[i] = {
+                        FILES_COL: new_files,
+                        DATACUBE_COL: cube,
+                    }
                 elif i in not_cached_ds.index:
                     not_cached_files = not_cached_ds[FILES_COL][i]
                     if delay_read_cubes:

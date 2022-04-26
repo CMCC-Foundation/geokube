@@ -3,7 +3,6 @@ import pandas as pd
 import pytest
 
 import geokube.core.coord_system as crs
-
 from geokube.core.axis import Axis, AxisType
 from geokube.core.bounds import Bounds1D, BoundsND
 from geokube.core.coordinate import Coordinate, CoordinateType
@@ -97,8 +96,10 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     compare_dicts(
         res["latitude"].encoding,
         era5_globe_netcdf["latitude"].encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
+        exclude_d2="_FillValue",
     )
+    assert res["latitude"].encoding["_FillValue"] is None
     assert res["latitude"].encoding["name"] == "latitude"
     assert "longitude" in domain
     assert "longitude" in res
@@ -106,8 +107,10 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     compare_dicts(
         res["longitude"].encoding,
         era5_globe_netcdf["longitude"].encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
+        exclude_d2="_FillValue",
     )
+    assert res["latitude"].encoding["_FillValue"] is None
     compare_dicts(
         res["longitude"].attrs,
         era5_globe_netcdf["longitude"].attrs,
@@ -124,8 +127,11 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
         exclude_d1="standard_name",
     )
     compare_dicts(
-        res["time"].encoding, era5_globe_netcdf["time"].encoding, exclude_d1="name"
+        res["time"].encoding,
+        era5_globe_netcdf["time"].encoding,
+        exclude_d1=["name", "_FillValue"],
     )
+    assert res["time"].encoding["_FillValue"] is None
     assert res["time"].encoding["name"] == "time"
     assert domain.crs == crs.RegularLatLon()
     assert "crs" in res
@@ -275,7 +281,9 @@ def test_regular_lat_lon_domain_with_bounds_and_properties_from_dict():
     assert domain[Axis("Time")].properties["some_prop"] == "prop_val"
 
 
-def test_skip_redundand_coord_from_coordinates_string_in_encoding(era5_globe_netcdf):
+def test_skip_redundand_coord_from_coordinates_string_in_encoding(
+    era5_globe_netcdf,
+):
     era5_globe_netcdf["tp"].encoding["coordinates"] = "time latitude"
     with pytest.warns(
         UserWarning,
@@ -284,7 +292,9 @@ def test_skip_redundand_coord_from_coordinates_string_in_encoding(era5_globe_net
         Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
 
 
-def test_skip_redundand_coord_from_coordinates_string_in_attrs(era5_globe_netcdf):
+def test_skip_redundand_coord_from_coordinates_string_in_attrs(
+    era5_globe_netcdf,
+):
     era5_globe_netcdf["tp"].attrs["coordinates"] = "time latitude"
     with pytest.warns(
         UserWarning,
@@ -302,3 +312,9 @@ def test_skip_coordinate_from_coordinates_string_if_not_present_in_dataset(
         match=r"Coordinate not_exsiting does not exist in the dataset!",
     ):
         Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
+
+
+def test_using_geo_domtype_attribute_for_domain_type(era5_globe_netcdf):
+    era5_globe_netcdf["tp"].attrs["__geo_domtype"] = "gridded"
+    domain = Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
+    assert domain.type is DomainType.GRIDDED

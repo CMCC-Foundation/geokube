@@ -13,7 +13,7 @@ from ..utils.hcube_logger import HCubeLogger
 coordinate_criteria_regular_expression = {
     "y": r"(y|rlat|grid_lat.*)",
     "x": r"(x|rlon|grid_lon.*)",
-    "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric|pres|isotherm|model_level_number)[a-z_]*[0-9]*",
+    "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|dept(h)?|isobaric|pres|isotherm|model_level_number)[a-z_]*[0-9]*",
     "timedelta": r"time_delta",
     "time": r"(time[0-9]*|T)",
     "latitude": r"(x?lat[a-z0-9]*|nav_lat)",
@@ -100,7 +100,9 @@ class Axis:
                     self._type = axistype
                 else:
                     raise TypeError(
-                        f"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided {type(axistype)}",
+                        "Expected argument is one of the following types"
+                        " `str`, `geokube.AxisType`, but provided"
+                        f" {type(axistype)}"
                     )
 
     @property
@@ -117,7 +119,11 @@ class Axis:
 
     @property
     def ncvar(self):
-        return self._encoding.get("name", self.name) if self._encoding else self.name
+        return (
+            self._encoding.get("name", self.name)
+            if self._encoding
+            else self.name
+        )
 
     @property
     def encoding(self):
@@ -129,7 +135,9 @@ class Axis:
 
     def __hash__(self):
         enc_keys = (
-            tuple(self._encoding.keys()) if self._encoding is not None else tuple()
+            tuple(self._encoding.keys())
+            if self._encoding is not None
+            else tuple()
         )
         return hash((self._name, self._type, enc_keys, self._is_dim))
 
@@ -147,7 +155,10 @@ class Axis:
         return not (self == other)
 
     def __repr__(self) -> str:
-        return f"<Axis(name={self.name}, type:{self.type}, encoding={self._encoding}>"
+        return (
+            f"<Axis(name={self.name}, type:{self.type},"
+            f" encoding={self._encoding}>"
+        )
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
@@ -162,5 +173,6 @@ class Axis:
             return obj.axis_type_name
         else:
             raise TypeError(
-                f"`dims` can be a tuple or a list of [geokube.Axis, geokube.AxisType, str], but provided type is `{type(obj)}`",
+                "`dims` can be a tuple or a list of [geokube.Axis,"
+                f" geokube.AxisType, str], but provided type is `{type(obj)}`"
             )

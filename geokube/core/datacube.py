@@ -39,7 +39,13 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 #
 class DataCube(DomainMixin):
 
-    __slots__ = ("_fields", "_domain", "_properties", "_encoding", "_ncvar_to_name")
+    __slots__ = (
+        "_fields",
+        "_domain",
+        "_properties",
+        "_encoding",
+        "_ncvar_to_name",
+    )
 
     _LOG = HCubeLogger(name="DataCube")
 
@@ -93,12 +99,17 @@ class DataCube(DomainMixin):
 
     @geokube_logging
     def __getitem__(
-        self, key: Union[Iterable[str], Iterable[Tuple[str, str]], str, Tuple[str, str]]
+        self,
+        key: Union[
+            Iterable[str], Iterable[Tuple[str, str]], str, Tuple[str, str]
+        ],
     ):
         if isinstance(key, str) and (
             (key in self._fields) or key in self._ncvar_to_name
         ):
-            return self._fields.get(key, self._fields.get(self._ncvar_to_name.get(key)))
+            return self._fields.get(
+                key, self._fields.get(self._ncvar_to_name.get(key))
+            )
         elif isinstance(key, Iterable) and not isinstance(key, str):
             return DataCube(
                 fields=[self[k] for k in key],
@@ -109,7 +120,8 @@ class DataCube(DomainMixin):
             item = self.domain[key]
             if item is None:
                 raise KeyError(
-                    f"Key `{key}` of type `{type(key)}` is not found in the DataCube",
+                    f"Key `{key}` of type `{type(key)}` is not found in the"
+                    " DataCube"
                 )
             return item
 
@@ -200,7 +212,9 @@ class DataCube(DomainMixin):
         )
 
     @geokube_logging
-    def interpolate(self, domain: Domain, method: str = "nearest") -> "DataCube":
+    def interpolate(
+        self, domain: Domain, method: str = "nearest"
+    ) -> "DataCube":
         return DataCube(
             fields=[
                 self._fields[k].interpolate(domain=domain, method=method)
@@ -276,14 +290,22 @@ class DataCube(DomainMixin):
         #
         for dv in ds.data_vars:
             fields.append(
-                Field.from_xarray(ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping)
+                Field.from_xarray(
+                    ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
+                )
             )
-        return DataCube(fields=fields, properties=ds.attrs, encoding=ds.encoding)
+        return DataCube(
+            fields=fields, properties=ds.attrs, encoding=ds.encoding
+        )
 
     @geokube_logging
     def to_xarray(self, encoding=True):
-        xarray_fields = [f.to_xarray(encoding=encoding) for f in self.fields.values()]
-        dset = xr.merge(xarray_fields, join="outer", combine_attrs="no_conflicts")
+        xarray_fields = [
+            f.to_xarray(encoding=encoding) for f in self.fields.values()
+        ]
+        dset = xr.merge(
+            xarray_fields, join="outer", combine_attrs="no_conflicts"
+        )
         dset.attrs = self.properties
         dset.encoding = self.encoding
         return dset
@@ -291,3 +313,12 @@ class DataCube(DomainMixin):
     @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
+
+    @geokube_logging
+    def to_dict(self) -> dict:
+        # NOTE: it should return concise dict representation without returning each lat/lon/time value
+        dset = self.to_xarray(encoding=True)
+        return {
+            "variables": list(dset.data_vars.keys()),
+            "coordinates": list(dset.coords.keys()),
+        }

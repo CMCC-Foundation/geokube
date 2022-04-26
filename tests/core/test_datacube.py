@@ -14,7 +14,6 @@ from geokube.core.domain import Domain
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
 
-
 from tests import RES_PATH, clear_test_res
 from tests.fixtures import *
 
@@ -38,7 +37,9 @@ def test_from_xarray_regular_lat_lon_with_id_pattern(era5_netcdf):
     assert dc["total_precipitation"].units == Unit("m")
 
 
-def test_to_xarray_regular_lat_lon_with_id_pattern_without_encoding(era5_netcdf):
+def test_to_xarray_regular_lat_lon_with_id_pattern_without_encoding(
+    era5_netcdf,
+):
     dc = DataCube.from_xarray(era5_netcdf, id_pattern="{__ddsapi_name}")
     xr_res = dc.to_xarray(encoding=False)
     assert "2_metre_dewpoint_temperature" in xr_res.data_vars
@@ -90,24 +91,34 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert res["air_temperature"].domain.crs == crs.RotatedGeogCS(
         grid_north_pole_latitude=47, grid_north_pole_longitude=-168
     )
-    W = np.prod(res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.shape)
+    W = np.prod(
+        res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.shape
+    )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.values >= 38
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].latitude.values
+            >= 38
         )
         / W
         > 0.95
     )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.values <= 40
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].latitude.values
+            <= 40
         )
         / W
         > 0.95
     )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].longitude.values
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].longitude.values
             >= 16
         )
         / W
@@ -115,7 +126,9 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].longitude.values
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].longitude.values
             <= 19
         )
         / W

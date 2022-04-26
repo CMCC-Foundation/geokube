@@ -5,7 +5,6 @@ import numpy as np
 import dask.array as da
 import pytest
 
-
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.unit import Unit
@@ -17,7 +16,10 @@ from tests.fixtures import *
 def test_process_bounds_fails():
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+        match=(
+            r"Expected argument is one of the following types `dict`,"
+            r" `numpy.ndarray`, or `geokube.Variable`, but provided*"
+        ),
     ):
         Coordinate._process_bounds(
             [1, 2, 3, 4],
@@ -29,7 +31,10 @@ def test_process_bounds_fails():
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+        match=(
+            r"Expected argument is one of the following types `dict`,"
+            r" `numpy.ndarray`, or `geokube.Variable`, but provided*"
+        ),
     ):
         Coordinate._process_bounds(
             "bounds",
@@ -41,7 +46,10 @@ def test_process_bounds_fails():
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+        match=(
+            r"Expected argument is one of the following types `dict`,"
+            r" `numpy.ndarray`, or `geokube.Variable`, but provided*"
+        ),
     ):
         Coordinate._process_bounds(
             xr.DataArray([1, 2, 3, 4]),
@@ -62,7 +70,9 @@ def test_process_bounds_fails():
 
     with pytest.raises(ValueError, match=r"Bounds should *"):
         _ = Coordinate._process_bounds(
-            Variable(data=np.random.rand(100, 5), dims=["time", "bounds"], units="m"),
+            Variable(
+                data=np.random.rand(100, 5), dims=["time", "bounds"], units="m"
+            ),
             name="name",
             units="units",
             axis=Axis("time"),
@@ -93,7 +103,11 @@ def test_process_bounds_proper_attrs_setting():
     assert np.all(r["name_bounds"] == D)
 
     r = Coordinate._process_bounds(
-        bounds=D, name="name", units="units", axis=Axis("time"), variable_shape=(100, 1)
+        bounds=D,
+        name="name",
+        units="units",
+        axis=Axis("time"),
+        variable_shape=(100, 1),
     )
     assert isinstance(r, dict)
     assert "name_bounds" in r
@@ -151,26 +165,35 @@ def test_init_fails():
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `geokube.Axis` or `str`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `geokube.Axis`"
+            r" or `str`, but provided *"
+        ),
     ):
         _ = Coordinate(data=np.ones(100), axis=["lat"])
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `geokube.Axis` or `str`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `geokube.Axis`"
+            r" or `str`, but provided *"
+        ),
     ):
         _ = Coordinate(data=np.ones(100), axis=15670)
 
     with pytest.raises(
         ValueError,
-        match=r"If coordinate is not a dimension, you need to supply `dims` argument!",
+        match=(
+            r"If coordinate is not a dimension, you need to supply `dims`"
+            r" argument!"
+        ),
     ):
         _ = Coordinate(data=np.ones(100), axis=Axis("lat", is_dim=False))
 
 
 def test_init_from_dask():
     D = da.random.random((100,))
-    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="latitude")
     assert c.dim_names == ("latitude",)
     assert c.dim_ncvars == ("latitude",)
     assert c.type is CoordinateType.INDEPENDENT
@@ -179,7 +202,8 @@ def test_init_from_dask():
 
 
 @pytest.mark.skip(
-    "Invalidate as in the current version, if `dims` is None, it is created based on provided `axis`"
+    "Invalidate as in the current version, if `dims` is None, it is created"
+    " based on provided `axis`"
 )
 def test_init_from_dask_fail():
     D = da.random.random((100,))
@@ -271,7 +295,8 @@ def test_from_xarray__regular_latlon(era5_netcdf):
     assert c.axis_type is AxisType.TIME
     assert c.dim_names == ("time",)
     assert c.units == Unit(
-        era5_netcdf["time"].encoding["units"], era5_netcdf["time"].encoding["calendar"]
+        era5_netcdf["time"].encoding["units"],
+        era5_netcdf["time"].encoding["calendar"],
     )
     assert c.bounds is None
     assert not c.has_bounds
@@ -318,16 +343,15 @@ def test_to_xarray_rotated_pole_without_encoding(era5_rotated_netcdf):
     assert coord.name == "depth"
     assert np.all(era5_rotated_netcdf.soil1.values == coord.depth.values)
     assert coord.attrs == era5_rotated_netcdf.soil1.attrs
-    assert set(coord.encoding) - {"name"} == set(
-        era5_rotated_netcdf.soil1.encoding.keys()
-    )
 
     assert ("bounds" in coord.encoding) or ("bounds" in coord.attrs)
     compare_dicts(
         coord.encoding,
         era5_rotated_netcdf.soil1.encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
+        exclude_d2="_FillValue",
     )
+    assert coord.encoding["_FillValue"] is None
 
 
 def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
@@ -338,14 +362,13 @@ def test_to_xarray_rotated_pole_with_encoding(era5_rotated_netcdf):
     assert coord.name == "soil1"
     assert np.all(era5_rotated_netcdf.soil1.values == coord.soil1.values)
     assert coord.attrs == era5_rotated_netcdf.soil1.attrs
-    assert set(coord.encoding) - {"name"} == set(
-        era5_rotated_netcdf.soil1.encoding.keys()
-    )
     compare_dicts(
         coord.encoding,
         era5_rotated_netcdf.soil1.encoding,
-        exclude_d1="name",
+        exclude_d1=["name", "_FillValue"],
+        exclude_d2="_FillValue",
     )
+    assert coord.encoding["_FillValue"] is None
 
 
 def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):
@@ -358,7 +381,7 @@ def test_to_xarray_rotated_pole_with_encoding_2(era5_rotated_netcdf):
     assert "grid_longitude" in coord.dims
     assert np.all(era5_rotated_netcdf.lat.values == coord.latitude.values)
     assert coord.attrs == era5_rotated_netcdf.lat.attrs
-    assert set(coord.encoding) - {"name"} == set(
+    assert set(coord.encoding) - {"name", "_FillValue"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
@@ -372,7 +395,7 @@ def test_to_xarray_rotated_pole_without_encoding_2(era5_rotated_netcdf):
     assert "rlon" in coord.dims
     assert np.all(era5_rotated_netcdf.lat.values == coord.lat.values)
     assert coord.attrs == era5_rotated_netcdf.lat.attrs
-    assert set(coord.encoding) - {"name"} == set(
+    assert set(coord.encoding) - {"name", "_FillValue"} == set(
         era5_rotated_netcdf.lat.encoding.keys()
     ) - {"bounds"}
 
@@ -410,7 +433,7 @@ def test_toxarray_keeping_encoding_encoding_false_no_dims_passed():
 
 def test_toxarray_keeping_encoding_encoding_false():
     D = da.random.random((100,))
-    c = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("lat"))
+    c = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims="lat")
     coords_dset = c.to_xarray(encoding=False)
     coord = coords_dset["lat"]
     assert "lat" in coord.coords
@@ -423,7 +446,7 @@ def test_toxarray_keeping_encoding_encoding_false():
     assert "name" in coord.encoding
     assert coord.encoding["name"] == "lat"
 
-    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="latitude")
     coords_dset = c.to_xarray(encoding=False)
     coord = coords_dset["latitude"]
     assert coord.dims == ("latitude",)
@@ -440,21 +463,30 @@ def test_init_fails_if_is_dim_and_axis_name_differ_from_dims():
     D = da.random.random((100,))
     with pytest.raises(
         ValueError,
-        match=r"If the Coordinate is a dimension, it has to depend only on itself, but provided `dims` are*",
+        match=(
+            r"If the Coordinate is a dimension, it has to depend only on"
+            r" itself, but provided `dims` are*"
+        ),
     ):
         _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("x", "y"))
 
     with pytest.raises(
         ValueError,
-        match=r"`dims` parameter for dimension coordinate should have the same name as axis name*",
+        match=(
+            r"`dims` parameter for dimension coordinate should have the same"
+            r" name as axis name*"
+        ),
     ):
-        _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("latitude"))
+        _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims="latitude")
 
     with pytest.raises(
         ValueError,
-        match=r"`dims` parameter for dimension coordinate should have the same name as axis name*",
+        match=(
+            r"`dims` parameter for dimension coordinate should have the same"
+            r" name as axis name*"
+        ),
     ):
-        _ = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("lat"))
+        _ = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="lat")
 
 
 def test_toxarray_keeping_encoding_encoding_true():
@@ -471,7 +503,7 @@ def test_toxarray_keeping_encoding_encoding_true():
     assert "name" in coord.encoding
     assert coord.encoding["name"] == "lat"
 
-    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims=("latitude"))
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="latitude")
     coord_dset = c.to_xarray(encoding=True)
     coord = coord_dset["latitude"]
     assert coord.name == "latitude"
@@ -536,7 +568,9 @@ def test_to_xarray_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
     coord_dset = coord.to_xarray(encoding=True)
     assert "time_counter_bounds" in coord_dset
     assert "bounds" in coord_dset["time_counter"].encoding
-    assert coord_dset["time_counter"].encoding["bounds"] == "time_counter_bounds"
+    assert (
+        coord_dset["time_counter"].encoding["bounds"] == "time_counter_bounds"
+    )
 
     coord = Coordinate.from_xarray(nemo_ocean_16, "nav_lat")
     coord_dset = coord.to_xarray(encoding=False)

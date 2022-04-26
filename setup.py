@@ -3,7 +3,7 @@ import setuptools
 from distutils.util import convert_path
 
 main_ns = {}
-ver_path = convert_path('geokube/version.py')
+ver_path = convert_path("geokube/version.py")
 with open(ver_path) as ver_file:
     exec(ver_file.read(), main_ns)
 
@@ -12,26 +12,27 @@ with open("README.md", "r") as f:
 
 setuptools.setup(
     name="geokube",
-    version=main_ns['__version__'],
+    version=main_ns["__version__"],
     author="geokube Contributors",
     author_email="geokube@googlegroups.com",
-    description=("Python package for Earth Science Data Analysis"),
+    description="Python package for Earth Science Data Analysis",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/geokube/geokube",
     packages=setuptools.find_packages(),
     install_requires=[
+        "black",
         "cf_units",
         "dask",
         "distributed",
-        "intake",
+        "intake>=0.6.5",
         "xarray",
         "pytest-cov",
         "pytest",
         "netCDF4",
         "scipy",
         "metpy",
-        "pyarrow"
+        "pyarrow",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -41,9 +42,9 @@ setuptools.setup(
         "Natural Language :: English",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Topic :: Scientific/Engineering :: Earth Science"
+        "Topic :: Scientific/Engineering :: Earth Science",
     ],
     python_requires=">=3.9",
     license="Apache License, Version 2.0",
-    package_data={'geokube': ['static/css/*.css', 'static/html/*.html']},
+    package_data={"geokube": ["static/css/*.css", "static/html/*.html"]},
 )

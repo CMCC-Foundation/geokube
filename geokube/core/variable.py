@@ -4,7 +4,16 @@ import warnings
 from html import escape
 from numbers import Number
 from string import Formatter, Template
-from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Hashable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import dask.array as da
 import numpy as np
@@ -45,7 +54,9 @@ class Variable(xr.Variable):
             or isinstance(data, Number)
         ):
             raise TypeError(
-                f"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`, but provided {type(data)}",
+                "Expected argument is one of the following types"
+                " `number.Number`, `numpy.ndarray`, `dask.array.Array`, or"
+                f" `xarray.Variable`, but provided {type(data)}"
             )
         if isinstance(data, Number):
             data = np.array(data)
@@ -65,7 +76,9 @@ class Variable(xr.Variable):
                 dims = np.array(dims, ndmin=1, dtype=Axis)
                 if len(dims) != data.ndim:
                     raise ValueError(
-                        f"Provided data have {data.ndim} dimension(s) but {len(dims)} Dimension(s) provided in `dims` argument",
+                        f"Provided data have {data.ndim} dimension(s) but"
+                        f" {len(dims)} Dimension(s) provided in `dims`"
+                        " argument"
                     )
 
                 self._dimensions = dims
@@ -78,7 +91,9 @@ class Variable(xr.Variable):
                 fastpath=True,
             )
             self._units = (
-                Unit(units) if isinstance(units, str) or units is None else units
+                Unit(units)
+                if isinstance(units, str) or units is None
+                else units
             )
 
     def _as_dimension_tuple(self, dims) -> Tuple[Axis, ...]:
@@ -94,16 +109,22 @@ class Variable(xr.Variable):
                 if isinstance(d, str):
                     _dims.append(Axis(name=d, is_dim=True))
                 elif isinstance(d, AxisType):
-                    _dims.append(Axis(name=d.axis_type_name, axistype=d, is_dim=True))
+                    _dims.append(
+                        Axis(name=d.axis_type_name, axistype=d, is_dim=True)
+                    )
                 elif isinstance(d, Axis):
                     _dims.append(d)
                 else:
                     raise TypeError(
-                        f"Expected argument of collection item is one of the following types `str` or `geokube.Axis`, but provided {type(d)}",
+                        "Expected argument of collection item is one of the"
+                        " following types `str` or `geokube.Axis`, but"
+                        f" provided {type(d)}"
                     )
             return tuple(_dims)
         raise ValueError(
-            f"Expected argument is one of the following types `str`, `iterable of str`, `iterable of geokub.Axis`, or `iterable of str`, but provided {type(dims)}",
+            "Expected argument is one of the following types `str`, `iterable"
+            " of str`, `iterable of geokub.Axis`, or `iterable of str`, but"
+            f" provided {type(dims)}"
         )
 
     @property
@@ -144,9 +165,12 @@ class Variable(xr.Variable):
         unit = Unit(unit) if isinstance(unit, str) else unit
         if not isinstance(self.data, np.ndarray):
             Variable._LOG.warn(
-                "Converting units is supported only for np.ndarray inner data type. Data will be loaded into the memory!"
+                "Converting units is supported only for np.ndarray inner data"
+                " type. Data will be loaded into the memory!"
             )
-            self.data = np.array(self.data)  # TODO: inplace for cf.Unit doesn't work!
+            self.data = np.array(
+                self.data
+            )  # TODO: inplace for cf.Unit doesn't work!
         res = self.units.convert(self.data, unit, inplace)
         if not inplace:
             return Variable(
@@ -178,7 +202,8 @@ class Variable(xr.Variable):
         for k in field_names:
             if k not in da.attrs:
                 warnings.warn(
-                    f"Requested id_pattern component - `{k}` is not present among provided attributes!"
+                    f"Requested id_pattern component - `{k}` is not present"
+                    " among provided attributes!"
                 )
                 return da.name
             id_pattern = id_pattern.replace(
@@ -198,7 +223,8 @@ class Variable(xr.Variable):
     ):
         if not isinstance(da, xr.DataArray):
             raise TypeError(
-                f"Expected argument of the following type `xarray.DataArray`, but provided {type(da)}",
+                "Expected argument of the following type `xarray.DataArray`,"
+                f" but provided {type(da)}"
             )
         data = da.data.copy() if copy else da.data
         dims = []

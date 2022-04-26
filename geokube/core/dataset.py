@@ -11,6 +11,7 @@ import pandas as pd
 from dask.delayed import Delayed
 
 from ..utils.decorators import geokube_logging
+from ..utils import util_methods
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis
 from .datacube import DataCube
@@ -70,7 +71,9 @@ class Dataset:
             else Dataset._get_eligible_fields_for_datacube(hcube, key)
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
-        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        dset = Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
         return dset._drop_empty()
 
     def __len__(self):
@@ -78,7 +81,9 @@ class Dataset:
 
     @staticmethod
     def _get_eligible_fields_for_datacube(hcube, key: set):
-        return hcube[(key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())]
+        return hcube[
+            (key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())
+        ]
 
     def geobbox(
         self,
@@ -101,7 +106,9 @@ class Dataset:
                 bottom=bottom,
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def locations(
         self,
@@ -116,7 +123,9 @@ class Dataset:
                 latitude=latitude, longitude=longitude, vertical=vertical
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def sel(
         self,
@@ -138,7 +147,9 @@ class Dataset:
                 **indexers_kwargs,
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def update_metadata(self, metadata: dict):
         self.__metadata.update(metadata)
@@ -156,16 +167,21 @@ class Dataset:
         return self.__data[self.DATACUBE_COL].tolist()
 
     def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
-        return {
-            row[: self.__cube_idx]: row[self.__cube_idx]
-            for row in self.__data.itertuples(index=False, name=None)
-        }
+        # NOTE: List of files is not hashable and it can be extremely large
+        res = (
+            self.__data.drop(labels=Dataset.FILES_COL, inplace=False, axis=1)
+            .applymap(util_methods.to_dict_if_possible)
+            .to_dict("records")
+        )
+        return res
 
     def _drop_empty(self) -> Dataset:
         mask = self.__data[self.FIELD_COL].astype(dtype=np.bool_)
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
-        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
 
     @geokube_logging
     def filter(
@@ -176,15 +192,15 @@ class Dataset:
         else:
             if intersect := sorted(indexers.keys() & indexers_kwargs.keys()):
                 raise ValueError(
-                    "'indexers' and 'indexers_kwargs' have common parameters: "
-                    f"{intersect}",
+                    "'indexers' and 'indexers_kwargs' have common parameters:"
+                    " {intersect}"
                 )
             params = {**indexers, **indexers_kwargs}
 
         if not (idx := params.keys()) <= (attrs := set(self.__attrs)):
             # TODO: Make better message.
             raise ValueError(
-                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}",
+                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}"
             )
 
         mask = np.full(shape=len(self.__data), fill_value=True, dtype=np.bool_)
@@ -193,7 +209,9 @@ class Dataset:
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
 
-        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
 
     def apply(
         self,
@@ -207,7 +225,9 @@ class Dataset:
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
         data.index = np.arange(len(data))
-        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        dset = Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
         return dset._drop_empty() if drop_empty else dset
 
     def persist(self, path=None):
@@ -224,7 +244,9 @@ class Dataset:
             path, os.path.basename(dataframe_item[self.FILES_COL][0])
         )
         persisted = (
-            dataframe_item[self.DATACUBE_COL].to_xarray().to_netcdf(path_to_store)
+            dataframe_item[self.DATACUBE_COL]
+            .to_xarray()
+            .to_netcdf(path_to_store)
         )
         if isinstance(persisted, Delayed):
             persisted.compute()

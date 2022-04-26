@@ -1,6 +1,5 @@
 import pytest
 
-
 from geokube.core.axis import Axis, AxisType
 from geokube.core.unit import Unit
 from tests.fixtures import *
@@ -33,19 +32,28 @@ def test_parsing():
 def test_init_fails():
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `str`,"
+            r" `geokube.AxisType`, but provided *"
+        ),
     ):
         _ = Axis("lon", axistype=10)
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `str`,"
+            r" `geokube.AxisType`, but provided *"
+        ),
     ):
         _ = Axis("lon", axistype={"lat"})
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `str`,"
+            r" `geokube.AxisType`, but provided *"
+        ),
     ):
         _ = Axis("lon", axistype=["lon"])
 
@@ -107,3 +115,8 @@ def test_axis_hash():
     assert Axis("depth") in d
     assert d[Axis("lat")] == [1, 2, 3]
     assert d[Axis("depth")] == [-1, -2, -3]
+
+
+def test_vertical_axis_pattern():
+    assert Axis("dept").type is AxisType.VERTICAL
+    assert Axis("depth").type is AxisType.VERTICAL

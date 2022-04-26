@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 import xarray as xr
 
-
 from geokube.core.axis import Axis, AxisType
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
@@ -15,19 +14,28 @@ from tests.fixtures import *
 def test_fails_on_wrong_type():
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable({1, 2, 3, 4})
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable([1, 2, 3, 4])
 
     with pytest.raises(
         TypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable("some_data")
 
@@ -161,7 +169,9 @@ def test_init_proper_attr_set_with_encoding_for_axes():
 
 
 def test_from_xarray_with_id_pattern(era5_netcdf):
-    v = Variable.from_xarray(era5_netcdf["tp"], id_pattern="prefix:{units}_{long_name}")
+    v = Variable.from_xarray(
+        era5_netcdf["tp"], id_pattern="prefix:{units}_{long_name}"
+    )
 
     d1 = v.dims[0]
     assert d1.type is AxisType.TIME
@@ -196,9 +206,12 @@ def test_from_xarray_with_id_pattern(era5_netcdf):
 
 def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf_wso):
     v = Variable.from_xarray(
-        era5_rotated_netcdf_wso["W_SO"], mapping={"soil1": {"name": "my_depth"}}
+        era5_rotated_netcdf_wso["W_SO"],
+        mapping={"soil1": {"name": "my_depth"}},
     )
-    assert set(v.dim_ncvars) == (set(era5_rotated_netcdf_wso.dims.keys()) - {"bnds"})
+    assert set(v.dim_ncvars) == (
+        set(era5_rotated_netcdf_wso.dims.keys()) - {"bnds"}
+    )
     mask = ~np.isnan(v._data)
     assert np.allclose(
         np.array(v._data)[mask],
@@ -210,6 +223,11 @@ def test_from_xarray_rotated_pole_with_mapping(era5_rotated_netcdf_wso):
     assert r1.attrs == era5_rotated_netcdf_wso["W_SO"].attrs
 
     r2 = v.to_xarray(encoding=False)
-    assert set(r2.dims) == {"my_depth", "time", "grid_latitude", "grid_longitude"}
+    assert set(r2.dims) == {
+        "my_depth",
+        "time",
+        "grid_latitude",
+        "grid_longitude",
+    }
     assert r2.encoding == era5_rotated_netcdf_wso["W_SO"].encoding
     assert r2.attrs == era5_rotated_netcdf_wso["W_SO"].attrs

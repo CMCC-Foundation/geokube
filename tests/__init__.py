@@ -9,8 +9,12 @@ RES_PATH = os.path.join("tests", "resources", "__res.nc")
 
 
 def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
-    exclude_d1 = list(np.array(exclude_d1, ndmin=1)) if exclude_d1 is not None else []
-    exclude_d2 = list(np.array(exclude_d2, ndmin=1)) if exclude_d2 is not None else []
+    exclude_d1 = (
+        list(np.array(exclude_d1, ndmin=1)) if exclude_d1 is not None else []
+    )
+    exclude_d2 = (
+        list(np.array(exclude_d2, ndmin=1)) if exclude_d2 is not None else []
+    )
     for ek in set(d1.keys()):
         if ek in exclude_d1:
             continue

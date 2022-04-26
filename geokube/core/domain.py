@@ -17,13 +17,30 @@ from ..utils import util_methods
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
-from .coord_system import CoordSystem, CurvilinearGrid, GeogCS, RegularLatLon, parse_crs
+from .coord_system import (
+    CoordSystem,
+    CurvilinearGrid,
+    GeogCS,
+    RegularLatLon,
+    parse_crs,
+)
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
 from .enums import LatitudeConvention, LongitudeConvention
 from .variable import Variable
 
-_COORDS_TUPLE_CONTENT = ["dims", "data", "bounds", "units", "properties", "encoding"]
+_COORDS_TUPLE_CONTENT = [
+    "dims",
+    "data",
+    "bounds",
+    "units",
+    "properties",
+    "encoding",
+]
+
+
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
 
 
 class DomainType(Enum):
@@ -46,7 +63,9 @@ class Domain(DomainMixin):
     def __init__(
         self,
         coords: Union[
-            Mapping[Hashable, Tuple[np.ndarray, ...]], Iterable[Coordinate], Domain
+            Mapping[Hashable, Tuple[np.ndarray, ...]],
+            Iterable[Coordinate],
+            Domain,
         ],
         crs: CoordSystem,
         domaintype: Optional[DomainType] = None,
@@ -66,7 +85,9 @@ class Domain(DomainMixin):
 
         self._crs = crs
         self._type = domaintype
-        self._axis_to_name = {c.axis_type: c.name for c in self._coords.values()}
+        self._axis_to_name = {
+            c.axis_type: c.name for c in self._coords.values()
+        }
 
     @classmethod
     def _as_coordinate(cls, coord, name) -> Coordinate:
@@ -75,7 +96,9 @@ class Domain(DomainMixin):
         elif isinstance(coord, tuple):
             # tupl -> (data, dims, axis)
             l = dict(enumerate(coord))
-            return Coordinate(data=coord[0], dims=l.get(1, name), axis=l.get(2, name))
+            return Coordinate(
+                data=coord[0], dims=l.get(1, name), axis=l.get(2, name)
+            )
         else:
             return Coordinate(data=coord, axis=name)
 
@@ -122,10 +145,14 @@ class Domain(DomainMixin):
             return False
         for ck in self._coords.keys():
             if self._coords[ck].axis_type is AxisType.TIME:
-                if not np.all(self._coords[ck].values == other._coords[ck].values):
+                if not np.all(
+                    self._coords[ck].values == other._coords[ck].values
+                ):
                     return False
             else:
-                if not np.allclose(self._coords[ck].values, other._coords[ck].values):
+                if not np.allclose(
+                    self._coords[ck].values, other._coords[ck].values
+                ):
                     return False
         return True
 
@@ -141,7 +168,9 @@ class Domain(DomainMixin):
     def __contains__(self, key: Union[str, Axis, AxisType]) -> bool:
         if isinstance(key, Axis):
             return key.type in self._axis_to_name
-        return (key in self._coords) or (AxisType.parse(key) in self._axis_to_name)
+        return (key in self._coords) or (
+            AxisType.parse(key) in self._axis_to_name
+        )
 
     def __next__(self):
         for k, v in self._coords.items():
@@ -164,7 +193,8 @@ class Domain(DomainMixin):
                 dt = getattr(_ds, key).values
                 XX = ft.reduce(
                     lambda x, y: x | (dt == y),
-                    [False] + list(np.array(_time_indexer[key], dtype=int, ndmin=1)),
+                    [False]
+                    + list(np.array(_time_indexer[key], dtype=int, ndmin=1)),
                 )
                 return XX
             return True
@@ -183,13 +213,24 @@ class Domain(DomainMixin):
         return {time_coord.name: inds}
 
     @geokube_logging
-    def compute_bounds(self, coord, force: bool = False) -> None:
-        # check if coord is Latitude or Longitude or raise an error
-        coord = self[coord]
-        if coord.ctype is not CoordinateType.INDEPENDENT:
-            raise ValueError(
-                f"Calculating bounds is supported only for independent coordinate, but requested coordinate has type: {coord.ctype}",
+    def compute_bounds(
+        self, coordinate: str | None = None, force: bool = False
+    ) -> None:
+        # Defining behavior if `coordinate` is different from `'latitude'` or
+        # `'longitude'`
+        if coordinate is None:
+            self.compute_bounds(coordinate="latitude", force=False)
+            self.compute_bounds(coordinate="longitude", force=False)
+            return
+        elif coordinate not in {"latitude", "longitude"}:
+            raise NotImplementedError(
+                "'coordinate' must be either 'latitude' or 'longitude', other "
+                "values are not currently supported"
             )
+
+        # Extracting the coordinate object
+        coord = self[coordinate]
+
         # Handling the case when bounds already exist, according to `force`
         if coord.bounds is not None:
             msg = f"{coord.name} bounds already exist"
@@ -200,18 +241,30 @@ class Domain(DomainMixin):
             warnings.warn(f"{msg} and are going to be recalculated")
             self._LOG.warn(f"{msg} and are going to be recalculated")
 
+        # Cases for dependent or scalar coordinates are not handled
+        if coord.type is not CoordinateType.INDEPENDENT:
+            raise NotImplementedError(
+                "'coordinate' must be independent to calculate its bounds, "
+                "dependent coordinates are not currently supported"
+            )
+
         # Handling the case when `crs` is `None` or not instance of `GeogCS`
         crs = self._crs
         if crs is None:
-            raise ValueError("'crs' is None and cell bounds cannot be calculated")
-        if not isinstance(crs, (GeogCS, RegularLatLon)):
+            # TODO: Reconsider if this should be `ValueError` or some other
+            # type of exception, see:
+            # https://docs.python.org/3/library/exceptions.html#ValueError
+            raise ValueError(
+                "'crs' is None and cell bounds cannot be calculated"
+            )
+        if not isinstance(crs, GeogCS):
             raise NotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
                 "calculating cell corners"
             )
 
         # Calculating bounds
-        val = coord.data
+        val = coord.values
         val_b = np.empty(shape=val.size + 1, dtype=np.float64)
         val_b[1:-1] = 0.5 * (val[:-1] + val[1:])
         half_step = 0.5 * (val.ptp() / (val.size - 1))
@@ -221,29 +274,18 @@ class Domain(DomainMixin):
         val_b[j] = val[j] + half_step
         # Making sure that longitude and latitude values are not outside their
         # ranges
-        range_b = ()
-        if coord.atype == AxisType.LONGITUDE:
-            if self.longitude_convention is LongitudeConvention.POSITIVE_WEST:
+        if coord.axis_type is AxisType.LONGITUDE:
+            if coord.convention is LongitudeConvention.POSITIVE_WEST:
                 range_b = (0.0, 360.0)
             else:
                 range_b = (-180.0, 180.0)
-        elif coord.atype == AxisType.LATITUDE:
+        else:  # Case when coord.axis_type is AxisType.LATITUDE
             range_b = (-90.0, 90.0)
+        val_b[i] = val_b[i].clip(*range_b)
+        val_b[j] = val_b[j].clip(*range_b)
 
-        if range_b:
-            val_b[i] = val_b[i].clip(*range_b)
-            val_b[j] = val_b[j].clip(*range_b)
-
-        # Bounds are stored as 1D array of size (coord_vals.shape + 1)
-        # It needs to be stored as array of shape (len(coord_vals), 2)
         # Setting `coordinate.bounds`
-        name = f"{coord.name}_bnds"
-        coord.bounds = Variable(
-            name=name,
-            data=Domain.convert_bounds_1d_to_2d(val_b),
-            units=coord.units,
-            dims=(coord.dims[0].name, "bounds"),
-        )
+        coord.bounds = Domain.convert_bounds_1d_to_2d(val_b)
 
     @staticmethod
     def convert_bounds_1d_to_2d(values):
@@ -295,7 +337,10 @@ class Domain(DomainMixin):
             if dim_name in da.coords:
                 coords.add(
                     Coordinate.from_xarray(
-                        ds=ds, ncvar=dim_name, id_pattern=id_pattern, mapping=mapping
+                        ds=ds,
+                        ncvar=dim_name,
+                        id_pattern=id_pattern,
+                        mapping=mapping,
                     )
                 )
 
@@ -306,15 +351,20 @@ class Domain(DomainMixin):
             for coord_name in xr_coords.split(" "):
                 if coord_name not in ds:
                     warnings.warn(
-                        f"Coordinate {coord_name} does not exist in the dataset!"
+                        f"Coordinate {coord_name} does not exist in the"
+                        " dataset!"
                     )
                     continue
                 coord = Coordinate.from_xarray(
-                    ds=ds, ncvar=coord_name, id_pattern=id_pattern, mapping=mapping
+                    ds=ds,
+                    ncvar=coord_name,
+                    id_pattern=id_pattern,
+                    mapping=mapping,
                 )
                 if coord in coords:
                     warnings.warn(
-                        f"Coordinate {coord_name} was already defined as dimension!"
+                        f"Coordinate {coord_name} was already defined as"
+                        " dimension!"
                     )
                     continue
                 coords.add(coord)
@@ -325,10 +375,18 @@ class Domain(DomainMixin):
         else:
             crs = Domain.guess_crs(da)
 
+        # NOTE: a workaround for keeping domaintype
+        # Issue: https://github.com/geokube/geokube/issues/147
+        if (domain_type := ds[ncvar].attrs.get("__geo_domtype")) is not None:
+            return Domain(
+                coords=coords, crs=crs, domaintype=DomainType(domain_type)
+            )
         return Domain(coords=coords, crs=crs)
 
     @geokube_logging
-    def to_xarray(self, encoding=True) -> xr.core.coordinates.DatasetCoordinates:
+    def to_xarray(
+        self, encoding=True
+    ) -> xr.core.coordinates.DatasetCoordinates:
         grid = {}
         grid = xr.Dataset().coords
         for coord in self._coords.values():
@@ -337,11 +395,15 @@ class Domain(DomainMixin):
         if self.crs is not None:
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
-            grid.update({"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)})
+            grid.update(
+                {"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)}
+            )
         return grid
 
     @classmethod
-    def _make_domain_from_coords_dict_dims_and_crs(cls, coords, dims, crs=None):
+    def _make_domain_from_coords_dict_dims_and_crs(
+        cls, coords, dims, crs=None
+    ):
         """Return a domain based on coords dict, dims, and coordinate reference system.
 
         coords can be in the form {"latitude": lat_value} or in the form where the value
@@ -351,7 +413,8 @@ class Domain(DomainMixin):
         """
         if not isinstance(coords, dict):
             raise TypeError(
-                f"Expected type of `coords` is `dict`, but `{type(coords)}` provided!",
+                f"Expected type of `coords` is `dict`, but `{type(coords)}`"
+                " provided!"
             )
         res_coords = []
         for k, v in coords.items():
@@ -391,7 +454,9 @@ class Domain(DomainMixin):
                 )
             else:
                 raise TypeError(
-                    f"Expected types of coord values are following: [Number, numpy.ndarray, dask.array.Array, tuple], but proided type was `{type(v)}`",
+                    "Expected types of coord values are following: [Number,"
+                    " numpy.ndarray, dask.array.Array, tuple], but proided"
+                    f" type was `{type(v)}`"
                 )
 
         if crs is None:
@@ -445,8 +510,8 @@ class GeodeticGrid(Domain):
             # TODO: TO BE FIXED
             super().__init__(
                 coords={
-                    "latitude": (latitude, "latitude", "latitude"),
-                    "longitude": (longitude, "longitude", "longitude"),
+                    "latitude": (latitude, "latitude"),
+                    "longitude": (longitude, "longitude"),
                 },
                 crs=GeogCS(6371229),
             )
