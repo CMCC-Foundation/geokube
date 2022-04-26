@@ -22,7 +22,6 @@ from typing import (
 )
 import xarray as xr
 
-from ..utils import exceptions as ex
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis

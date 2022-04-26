@@ -1,8 +1,6 @@
 import warnings
 from functools import wraps
 
-from ..utils import exceptions as ex
-
 
 def nonclose_assert(f):
     @wraps(f)

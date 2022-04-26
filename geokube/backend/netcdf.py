@@ -18,7 +18,6 @@ from intake.source.utils import reverse_format
 import geokube.backend.base
 import geokube.core.datacube
 import geokube.core.dataset
-import geokube.utils.exceptions as ex
 from geokube.utils.hcube_logger import HCubeLogger
 
 LOG = HCubeLogger(name="netcdf.py")

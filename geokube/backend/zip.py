@@ -2,7 +2,6 @@ import logging
 import os
 from typing import Any, Mapping, NoReturn, Optional
 
-import geokube.utils.exceptions as ex
 from geokube import LOGGER_NAME
 from geokube.backend.base import BaseOpener
 from geokube.core.container import Container

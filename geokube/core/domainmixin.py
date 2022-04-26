@@ -2,7 +2,6 @@ from typing import Union
 
 import numpy as np
 
-from ..utils import exceptions as ex
 from .axis import Axis, AxisType
 from .coordinate import Coordinate, CoordinateType
 from .enums import LatitudeConvention, LongitudeConvention

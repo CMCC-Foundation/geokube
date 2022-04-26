@@ -13,7 +13,6 @@ import dask.array as da
 import pandas as pd
 import xarray as xr
 
-from ..utils import exceptions as ex
 from ..utils import util_methods
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger

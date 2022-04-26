@@ -5,7 +5,6 @@ import numpy as np
 import dask.array as da
 import pytest
 
-import geokube.utils.exceptions as ex
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coordinate import Coordinate, CoordinateType
 from geokube.core.unit import Unit

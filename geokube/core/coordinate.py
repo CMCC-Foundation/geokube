@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ..utils import exceptions as ex
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from ..utils.attrs_encoding import CFAttributes

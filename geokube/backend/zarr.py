@@ -10,7 +10,6 @@ import zarr
 from intake.source.utils import reverse_format
 from zarr.storage import ContainsArrayError
 
-import geokube.utils.exceptions as ex
 from geokube import LOGGER_NAME
 from geokube.backend.base import BaseOpener
 from geokube.core.container import Container

@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 import xarray as xr
 
-import geokube.utils.exceptions as ex
 from geokube.core.axis import Axis, AxisType
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable

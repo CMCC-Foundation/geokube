@@ -28,7 +28,6 @@ import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
-from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
