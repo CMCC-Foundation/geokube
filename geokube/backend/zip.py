@@ -29,7 +29,7 @@ class _ZipOpenManager(BaseOpener):
         files = os.listdir(unzip_target)
         if not len(files):
             logger.warning("No files found in unzipped directory")
-            raise ex.HCubeValueError("No files found in unzipped directory")
+            raise ValueError("No files found in unzipped directory")
         pattern = os.path.join(unzip_target, pattern)
         hypercube = _NetCDFOpenManager(
             variable_mapping=self.variable_mapping,

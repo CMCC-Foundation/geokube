@@ -351,7 +351,7 @@ def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
 
     with pytest.raises(
-        ex.HCubeKeyError,
+        KeyError,
         match="Axis of type `AxisType.VERTICAL` does not exist in the domain!",
     ):
         tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
@@ -815,7 +815,8 @@ def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
 
 # TODO: verify!
 @pytest.mark.skip(
-    f"Lat depends on `points` but is single-element and should be SCALAR not DEPENDENT"
+    f"Lat depends on `points` but is single-element and should be SCALAR not"
+    f" DEPENDENT"
 )
 def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
@@ -903,7 +904,7 @@ def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
 
 def test_sel_fail_on_missing_x_y(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    with pytest.raises(ex.HCubeKeyError, match=r"Axis of type*"):
+    with pytest.raises(KeyError, match=r"Axis of type*"):
         _ = vt.sel(depth=[1.2, 29], x=slice(60, 100), y=slice(130, 170))
 
 

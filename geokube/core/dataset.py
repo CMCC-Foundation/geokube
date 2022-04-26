@@ -49,10 +49,7 @@ class Dataset:
                 and attr != self.FIELD_COL
             ]
         else:
-            raise ex.HCubeTypeError(
-                "'hcubes' must be mapping or pandas DataFrame",
-                logger=self._LOG,
-            )
+            raise TypeError("'hcubes' must be mapping or pandas DataFrame")
 
         self.__data[self.FIELD_COL] = [
             None
@@ -193,18 +190,16 @@ class Dataset:
             params = indexers_kwargs
         else:
             if intersect := sorted(indexers.keys() & indexers_kwargs.keys()):
-                raise ex.HCubeValueError(
-                    "'indexers' and 'indexers_kwargs' have common parameters: "
-                    f"{intersect}",
-                    logger=self._LOG,
+                raise ValueError(
+                    "'indexers' and 'indexers_kwargs' have common parameters:"
+                    " {intersect}"
                 )
             params = {**indexers, **indexers_kwargs}
 
         if not (idx := params.keys()) <= (attrs := set(self.__attrs)):
             # TODO: Make better message.
-            raise ex.HCubeValueError(
-                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}",
-                logger=self._LOG,
+            raise ValueError(
+                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}"
             )
 
         mask = np.full(shape=len(self.__data), fill_value=True, dtype=np.bool_)

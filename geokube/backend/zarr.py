@@ -50,7 +50,8 @@ class _ZarrOpenManager(BaseOpener):
 
         logger = logging.getLogger(LOGGER_NAME)
         logger.debug(
-            "Connecting to S3 storage at address: http://51.159.24.124:9000 ..."
+            "Connecting to S3 storage at address:"
+            " http://51.159.24.124:9000 ..."
         )
         fs = s3fs.S3FileSystem(
             anon=True,
@@ -82,7 +83,7 @@ class _ZarrOpenManager(BaseOpener):
             logger.error(
                 f"No data found for root: {root}  and pattern: {pattern}!"
             )
-            raise ex.HCubeValueError(
+            raise ValueError(
                 f"No data found for root: {root}  and pattern: {pattern}!"
             )
         cubes, fields = zip(*results)
