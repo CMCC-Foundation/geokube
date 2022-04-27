@@ -1270,19 +1270,15 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-    def hvplot(
-        self,
-        aspect=None,
-        **kwargs
-    ):
+    def hvplot(self, aspect=None, **kwargs):
         axis_names = self.domain._axis_to_name
         time = self.coords.get(axis_names.get(AxisType.TIME))
         vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
         lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
         lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
 
-        kwargs.setdefault('widget_location', 'bottom')
-        kwargs.setdefault('grid', True)
+        kwargs.setdefault("widget_location", "bottom")
+        kwargs.setdefault("grid", True)
 
         # Resolving time series and layers because they do not require most of
         # processing other plot types do:
@@ -1303,7 +1299,7 @@ class Field(Variable, DomainMixin):
                 data = dset[self.name]
                 if "crs" in data.coords:
                     data = data.drop("crs")
-                return data.hvplot(x=time.name, by='points', **kwargs)
+                return data.hvplot(x=time.name, by="points", **kwargs)
             if aspect == "profile":
                 data = dset[self.name]
                 if "crs" in data.coords:
@@ -1314,26 +1310,25 @@ class Field(Variable, DomainMixin):
                         copy=False,
                     )
                     data.coords[vert.name] = -data.coords[vert.name]
-                return data.hvplot(y=vert.name, by='points', **kwargs)
+                return data.hvplot(y=vert.name, by="points", **kwargs)
             if aspect == "points":
                 data = xr.Dataset(
                     data_vars={
                         self.name: dset[self.name],
-                        'lat': dset.coords['latitude'],
-                        'lon': dset.coords['longitude'],
+                        "lat": dset.coords["latitude"],
+                        "lon": dset.coords["longitude"],
                     }
                 )
                 return data.hvplot.scatter(
-                    x='lon',
-                    y='lat',
+                    x="lon",
+                    y="lat",
                     c=self.name,
-                    cmap=kwargs.pop('cmap', 'coolwarm'),
-                    colorbar=kwargs.pop('colorbar', True),
-                    **kwargs
+                    cmap=kwargs.pop("cmap", "coolwarm"),
+                    colorbar=kwargs.pop("colorbar", True),
+                    **kwargs,
                 )
             raise ValueError(
-                "'aspect' must be 'time_series', 'profile', 'points', or "
-                "None"
+                "'aspect' must be 'time_series', 'profile', 'points', or None"
             )
 
         raise NotImplementedError(
