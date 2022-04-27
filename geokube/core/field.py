@@ -24,6 +24,7 @@ import dask.array as da
 import numpy as np
 import pyarrow as pa
 import xarray as xr
+import hvplot.xarray  # noqa
 import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
@@ -1268,6 +1269,76 @@ class Field(Variable, DomainMixin):
                         ax.set_yticks(y_ticks)
 
         return plot
+
+    def hvplot(
+        self,
+        aspect=None,
+        **kwargs
+    ):
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        kwargs.setdefault('widget_location', 'bottom')
+        kwargs.setdefault('grid', True)
+
+        # Resolving time series and layers because they do not require most of
+        # processing other plot types do:
+        if self._domain._type is DomainType.POINTS:
+            n_pts = lat.size
+            n_time = time.size if (time is not None and time.is_dim) else 0
+            n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            if aspect is None:
+                # Integers determine the priority in the case of equal sizes:
+                # greater number means higher priority.
+                aspect = max(
+                    (n_time, 1, "time_series"),
+                    (n_vert, 2, "profile"),
+                    (n_pts, 3, "points"),
+                )[2]
+            dset = self.to_xarray(encoding=False)
+            if aspect == "time_series":
+                data = dset[self.name]
+                if "crs" in data.coords:
+                    data = data.drop("crs")
+                return data.hvplot(x=time.name, by='points', **kwargs)
+            if aspect == "profile":
+                data = dset[self.name]
+                if "crs" in data.coords:
+                    data = data.drop("crs")
+                if vert.attrs.get("positive") == "down":
+                    data = data.reindex(
+                        indexers={vert.name: data.coords[vert.name][::-1]},
+                        copy=False,
+                    )
+                    data.coords[vert.name] = -data.coords[vert.name]
+                return data.hvplot(y=vert.name, by='points', **kwargs)
+            if aspect == "points":
+                data = xr.Dataset(
+                    data_vars={
+                        self.name: dset[self.name],
+                        'lat': dset.coords['latitude'],
+                        'lon': dset.coords['longitude'],
+                    }
+                )
+                return data.hvplot.scatter(
+                    x='lon',
+                    y='lat',
+                    c=self.name,
+                    cmap=kwargs.pop('cmap', 'coolwarm'),
+                    colorbar=kwargs.pop('colorbar', True),
+                    **kwargs
+                )
+            raise ValueError(
+                "'aspect' must be 'time_series', 'profile', 'points', or "
+                "None"
+            )
+
+        raise NotImplementedError(
+            "Only point domain is supported at the moment"
+        )
 
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.Dataset:
