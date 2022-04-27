@@ -22,7 +22,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=[
         "black",
-        "bokeh>=2.4"
+        "bokeh==2.4"
         "cf_units",
         "dask",
         "distributed",
