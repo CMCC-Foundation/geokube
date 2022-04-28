@@ -1387,26 +1387,6 @@ class Field(Variable, DomainMixin):
 
             return plot_call(**kwargs)
 
-            if projection is None:
-                if has_cartopy_items:
-                    subplot_kwa["projection"] = projection = ccrs.PlateCarree()
-                    if transform is None:
-                        transform = plate()
-                elif isinstance(transform, ccrs.PlateCarree):
-                    transform = None
-                if transform is not None:
-                    has_cartopy_items = True
-                    subplot_kwa["projection"] = projection = ccrs.PlateCarree()
-            else:
-                has_cartopy_items = True
-                if isinstance(projection, CoordSystem):
-                    projection = projection.as_cartopy_projection()
-                subplot_kwa["projection"] = projection
-                if transform is None:
-                    transform = ccrs.PlateCarree()
-            if subplot_kwa:
-                kwargs["subplot_kws"] = subplot_kwa
-
         raise NotImplementedError(
             "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
         )
