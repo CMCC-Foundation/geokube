@@ -1342,8 +1342,8 @@ class Field(Variable, DomainMixin):
                 dset = dset.drop("crs")
             plot_call = dset[self.name].hvplot
 
-            if aspect == 'time_series':
-                kwargs.update({'x': time.name, 'y': self.name})
+            if aspect == "time_series":
+                kwargs.update({"x": time.name, "y": self.name})
 
             if lat is not None and lat.is_dim:
                 kwargs.setdefault("y", lat.name)
@@ -1359,29 +1359,31 @@ class Field(Variable, DomainMixin):
                 kwargs.setdefault("x", lon.name)
                 kwargs.setdefault("y", lat.name)
 
-            proj = kwargs.get('projection')
+            proj = kwargs.get("projection")
             if isinstance(proj, CoordSystem):
-                kwargs['projection'] = proj = proj.as_cartopy_projection()
+                kwargs["projection"] = proj = proj.as_cartopy_projection()
 
             if (
                 not (
                     (proj is None or isinstance(proj, ccrs.PlateCarree))
                     and (crs is None or isinstance(crs, ccrs.PlateCarree))
                 )
-                and 'x' not in kwargs and 'y' not in kwargs
-                and lat is not None and lon is not None
+                and "x" not in kwargs
+                and "y" not in kwargs
+                and lat is not None
+                and lon is not None
             ):
                 plot_call = plot_call.quadmesh
-                kwargs['crs'] = crs
-                kwargs.setdefault('rasterize', True)
-                kwargs.setdefault('project', True)
-                lat_name = lat.attrs.get('long_name', 'latitude')
-                if (lat_units := lat.attrs.get('units')) is not None:
-                    lat_name = f'{lat_name} ({lat_units})'
-                lon_name = lon.attrs.get('long_name', 'longitude')
-                if (lon_units := lon.attrs.get('units')) is not None:
-                    lon_name = f'{lon_name} ({lon_units})'
-                kwargs.update({'xlabel': lon_name, 'ylabel': lat_name})
+                kwargs["crs"] = crs
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
+                lat_name = lat.attrs.get("long_name", "latitude")
+                if (lat_units := lat.attrs.get("units")) is not None:
+                    lat_name = f"{lat_name} ({lat_units})"
+                lon_name = lon.attrs.get("long_name", "longitude")
+                if (lon_units := lon.attrs.get("units")) is not None:
+                    lon_name = f"{lon_name} ({lon_units})"
+                kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
 
             return plot_call(**kwargs)
 
@@ -1405,12 +1407,9 @@ class Field(Variable, DomainMixin):
             if subplot_kwa:
                 kwargs["subplot_kws"] = subplot_kwa
 
-            
-
         raise NotImplementedError(
             "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
         )
-        
 
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.Dataset:
