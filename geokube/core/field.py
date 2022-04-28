@@ -1278,10 +1278,8 @@ class Field(Variable, DomainMixin):
         lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
 
         kwargs.setdefault("widget_location", "bottom")
-        kwargs.setdefault("grid", True)
 
-        # Resolving time series and layers because they do not require most of
-        # processing other plot types do:
+        # Working with `DomainType.POINTS`.
         if self._domain._type is DomainType.POINTS:
             n_pts = lat.size
             n_time = time.size if (time is not None and time.is_dim) else 0
@@ -1331,9 +1329,88 @@ class Field(Variable, DomainMixin):
                 "'aspect' must be 'time_series', 'profile', 'points', or None"
             )
 
+        # Working with `DomainType.GRIDDED`.
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            dset = self.to_xarray(encoding=False)
+            if "crs" in dset.coords:
+                dset = dset.drop("crs")
+            plot_call = dset[self.name].hvplot
+
+            if aspect == 'time_series':
+                kwargs.update({'x': time.name, 'y': self.name})
+
+            if lat is not None and lat.is_dim:
+                kwargs.setdefault("y", lat.name)
+            if lon is not None and lon.is_dim:
+                kwargs.setdefault("x", lon.name)
+
+            crs = self._domain.crs
+            if crs is not None:
+                crs = crs.as_cartopy_projection()
+            else:
+                # HACK: This is used in the cases where obtaining Cartopy
+                # projections is not implemented.
+                kwargs.setdefault("x", lon.name)
+                kwargs.setdefault("y", lat.name)
+
+            proj = kwargs.get('projection')
+            if isinstance(proj, CoordSystem):
+                kwargs['projection'] = proj = proj.as_cartopy_projection()
+
+            if (
+                not (
+                    (proj is None or isinstance(proj, ccrs.PlateCarree))
+                    and (crs is None or isinstance(crs, ccrs.PlateCarree))
+                )
+                and 'x' not in kwargs and 'y' not in kwargs
+                and lat is not None and lon is not None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs['crs'] = crs
+                kwargs.setdefault('rasterize', True)
+                kwargs.setdefault('project', True)
+                lat_name = lat.attrs.get('long_name', 'latitude')
+                if (lat_units := lat.attrs.get('units')) is not None:
+                    lat_name = f'{lat_name} ({lat_units})'
+                lon_name = lon.attrs.get('long_name', 'longitude')
+                if (lon_units := lon.attrs.get('units')) is not None:
+                    lon_name = f'{lon_name} ({lon_units})'
+                kwargs.update({'xlabel': lon_name, 'ylabel': lat_name})
+
+            return plot_call(**kwargs)
+
+            if projection is None:
+                if has_cartopy_items:
+                    subplot_kwa["projection"] = projection = ccrs.PlateCarree()
+                    if transform is None:
+                        transform = plate()
+                elif isinstance(transform, ccrs.PlateCarree):
+                    transform = None
+                if transform is not None:
+                    has_cartopy_items = True
+                    subplot_kwa["projection"] = projection = ccrs.PlateCarree()
+            else:
+                has_cartopy_items = True
+                if isinstance(projection, CoordSystem):
+                    projection = projection.as_cartopy_projection()
+                subplot_kwa["projection"] = projection
+                if transform is None:
+                    transform = ccrs.PlateCarree()
+            if subplot_kwa:
+                kwargs["subplot_kws"] = subplot_kwa
+
+            
+
         raise NotImplementedError(
-            "Only point domain is supported at the moment"
+            "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
         )
+        
 
     @log_func_debug
     def to_xarray(self, encoding=True) -> xr.Dataset:
