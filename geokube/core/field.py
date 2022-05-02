@@ -1047,8 +1047,8 @@ class Field(Variable, DomainMixin):
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
             with np.nditer((lat.values, lon.values)) as it:
                 points = [
-                    f'{lat.name}={lat_.item():.2f} {lat.units}, '
-                    f'{lon.name}={lon_.item():.2f} {lon.units}'
+                    f"{lat.name}={lat_.item():.2f} {lat.units}, "
+                    f"{lon.name}={lon_.item():.2f} {lon.units}"
                     for lat_, lon_ in it
                 ]
             if aspect is None:
@@ -1279,6 +1279,9 @@ class Field(Variable, DomainMixin):
         return plot
 
     def hvplot(self, aspect=None, **kwargs):
+        # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
+        # for the details on what can be passed with `kwargs`.
+
         axis_names = self.domain._axis_to_name
         time = self.coords.get(axis_names.get(AxisType.TIME))
         vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
@@ -1306,6 +1309,16 @@ class Field(Variable, DomainMixin):
             n_pts = lat.size
             n_time = time.size if (time is not None and time.is_dim) else 0
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f'{lat.name}={lat_.item():.2f} {lat.units}, '
+                #     f'{lon.name}={lon_.item():.2f} {lon.units}'
+                #     for lat_, lon_ in it
+                # ]
+                points = [
+                    f"{lat_.item():.2f}, {lon_.item():.2f}"
+                    for lat_, lon_ in it
+                ]
             if aspect is None:
                 # Integers determine the priority in the case of equal sizes:
                 # greater number means higher priority.
@@ -1316,9 +1329,11 @@ class Field(Variable, DomainMixin):
                 )[2]
             if aspect == "time_series":
                 data = dset[self.name]
+                data = data.assign_coords(points=points)
                 return data.hvplot(x=time.name, by="points", **kwargs)
             if aspect == "profile":
                 data = dset[self.name]
+                data = data.assign_coords(points=points)
                 return data.hvplot(y=vert.name, by="points", **kwargs)
             if aspect == "points":
                 data = xr.Dataset(
