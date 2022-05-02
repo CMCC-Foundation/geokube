@@ -1045,6 +1045,12 @@ class Field(Variable, DomainMixin):
             n_pts = lat.size
             n_time = time.size if (time is not None and time.is_dim) else 0
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                points = [
+                    f'{lat.name}={lat_.item():.2f} {lat.units}, '
+                    f'{lon.name}={lon_.item():.2f} {lon.units}'
+                    for lat_, lon_ in it
+                ]
             if aspect is None:
                 # Integers determine the priority in the case of equal sizes:
                 # greater number means higher priority.
@@ -1061,8 +1067,9 @@ class Field(Variable, DomainMixin):
                 )
             if aspect == "time_series":
                 data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
                 kwargs["x"] = time.name
-                if n_vert > 1 or vert.name in data.dims:
+                if n_vert > 1 or (vert is not None and vert.name in data.dims):
                     kwargs.setdefault("row", vert.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
@@ -1073,6 +1080,7 @@ class Field(Variable, DomainMixin):
                 return plot
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
                 if vert.attrs.get("positive") == "down":
                     data = data.reindex(
                         indexers={vert.name: data.coords[vert.name][::-1]},
@@ -1081,7 +1089,7 @@ class Field(Variable, DomainMixin):
                     data.coords[vert.name] = -data.coords[vert.name]
                     # vert.values = -vert.values[::-1]
                 kwargs["y"] = vert.name
-                if n_time > 1 or time.name in data.dims:
+                if n_time > 1 or (time is not None and time.name in data.dims):
                     kwargs.setdefault("col", time.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
