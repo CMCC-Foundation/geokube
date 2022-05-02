@@ -1279,6 +1279,20 @@ class Field(Variable, DomainMixin):
 
         kwargs.setdefault("widget_location", "bottom")
 
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        if (
+            vert is not None
+            and vert.is_dim
+            and vert.attrs.get("positive") == "down"
+        ):
+            dset = dset.reindex(
+                indexers={vert.name: dset.coords[vert.name][::-1]},
+                copy=False,
+            )
+            dset.coords[vert.name] = -dset.coords[vert.name]
+
         # Working with `DomainType.POINTS`.
         if self._domain._type is DomainType.POINTS:
             n_pts = lat.size
@@ -1292,22 +1306,11 @@ class Field(Variable, DomainMixin):
                     (n_vert, 2, "profile"),
                     (n_pts, 3, "points"),
                 )[2]
-            dset = self.to_xarray(encoding=False)
             if aspect == "time_series":
                 data = dset[self.name]
-                if "crs" in data.coords:
-                    data = data.drop("crs")
                 return data.hvplot(x=time.name, by="points", **kwargs)
             if aspect == "profile":
                 data = dset[self.name]
-                if "crs" in data.coords:
-                    data = data.drop("crs")
-                if vert.attrs.get("positive") == "down":
-                    data = data.reindex(
-                        indexers={vert.name: data.coords[vert.name][::-1]},
-                        copy=False,
-                    )
-                    data.coords[vert.name] = -data.coords[vert.name]
                 return data.hvplot(y=vert.name, by="points", **kwargs)
             if aspect == "points":
                 data = xr.Dataset(
@@ -1337,31 +1340,47 @@ class Field(Variable, DomainMixin):
             self._domain._type is DomainType.GRIDDED
             or self._domain._type is None
         ):
-            dset = self.to_xarray(encoding=False)
-            if "crs" in dset.coords:
-                dset = dset.drop("crs")
-            plot_call = dset[self.name].hvplot
+            crs = self._domain.crs
+            if crs is not None:
+                try:
+                    crs = crs.as_cartopy_projection()
+                except NotImplementedError:
+                    # HACK: This is used in the cases where obtaining Cartopy
+                    # projections is not implemented.
+                    crs = None
+                    kwargs.setdefault("x", lon.name)
+                    kwargs.setdefault("y", lat.name)
 
-            if aspect == "time_series":
-                kwargs.update({"x": time.name, "y": self.name})
+            proj = kwargs.get("projection")
+            if isinstance(proj, CoordSystem):
+                kwargs["projection"] = proj = proj.as_cartopy_projection()
+
+            if aspect is not None:
+                if aspect == "time_series":
+                    kwargs.update({"x": time.name, "y": self.name})
+                elif aspect == "profile":
+                    kwargs.update({"x": self.name, "y": vert.name})
+                if crs is not None and not isinstance(crs, ccrs.PlateCarree):
+                    dset = self.to_regular().to_xarray(encoding=False)
+                    if "crs" in dset.coords:
+                        dset = dset.drop("crs")
+                    if (
+                        vert is not None
+                        and vert.is_dim
+                        and vert.attrs.get("positive") == "down"
+                    ):
+                        dset = dset.reindex(
+                            indexers={vert.name: dset.coords[vert.name][::-1]},
+                            copy=False,
+                        )
+                        dset.coords[vert.name] = -dset.coords[vert.name]
+
+            plot_call = dset[self.name].hvplot
 
             if lat is not None and lat.is_dim:
                 kwargs.setdefault("y", lat.name)
             if lon is not None and lon.is_dim:
                 kwargs.setdefault("x", lon.name)
-
-            crs = self._domain.crs
-            if crs is not None:
-                crs = crs.as_cartopy_projection()
-            else:
-                # HACK: This is used in the cases where obtaining Cartopy
-                # projections is not implemented.
-                kwargs.setdefault("x", lon.name)
-                kwargs.setdefault("y", lat.name)
-
-            proj = kwargs.get("projection")
-            if isinstance(proj, CoordSystem):
-                kwargs["projection"] = proj = proj.as_cartopy_projection()
 
             if (
                 not (
