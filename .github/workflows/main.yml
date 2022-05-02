@@ -35,6 +35,9 @@ jobs:
         
       - run: |
           conda run python setup.py install
+          
+      - run: |
+          conda run pip install black==22.3.0
 
       - name: Check formatting in `tests` catalog
         shell: bash -l {0}
