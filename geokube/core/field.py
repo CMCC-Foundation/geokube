@@ -1046,9 +1046,13 @@ class Field(Variable, DomainMixin):
             n_time = time.size if (time is not None and time.is_dim) else 0
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
             with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f"{lat.name}={lat_.item():.2f} {lat.units}, "
+                #     f"{lon.name}={lon_.item():.2f} {lon.units}"
+                #     for lat_, lon_ in it
+                # ]
                 points = [
-                    f"{lat.name}={lat_.item():.2f} {lat.units}, "
-                    f"{lon.name}={lon_.item():.2f} {lon.units}"
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
                     for lat_, lon_ in it
                 ]
             if aspect is None:
@@ -1316,7 +1320,7 @@ class Field(Variable, DomainMixin):
                 #     for lat_, lon_ in it
                 # ]
                 points = [
-                    f"{lat_.item():.2f}, {lon_.item():.2f}"
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
                     for lat_, lon_ in it
                 ]
             if aspect is None:
