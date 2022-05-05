@@ -1001,7 +1001,8 @@ class Field(Variable, DomainMixin):
         # NOTE: `reduce` removes all `encoding` properties
         da[self.name].encoding = ds[self.name].encoding
         res = xr.Dataset(
-            da, coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
+            da,
+            coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
         field = Field.from_xarray(res, ncvar=self.name)
         field.time.bounds = new_bnds
