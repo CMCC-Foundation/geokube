@@ -1281,7 +1281,8 @@ class Field(Variable, DomainMixin):
             result = {"type": "FeatureCollection", "features": []}
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
-                value = self.sel(time=time_)
+                # value = self.sel(time=time_) if self.time.shape else self
+                value = self.sel(time=time_) if self.time.size > 1 else self
                 feature = {
                     "geometry": {"type": "Point", "coordinates": coords},
                     "properties": {"time": time_, self.name: float(value)},
@@ -1314,9 +1315,13 @@ class Field(Variable, DomainMixin):
                 )
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
-                        value = field.sel( # this gives an error if only 1 time is selected before to_geojson()
-                            time=time_, latitude=lat, longitude=lon
-                        )
+                        idx = {'latitude': lat, 'longitude': lon}
+                        # if self.time.shape:
+                        if self.time.size > 1:
+                            idx['time'] = time_
+                        # TODO: Check whether this works now:
+                        # this gives an error if only 1 time is selected before to_geojson()
+                        value = field.sel(**idx)
                         feature = {
                             "type": "Feature",
                             "geometry": {
