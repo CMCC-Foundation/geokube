@@ -1001,8 +1001,7 @@ class Field(Variable, DomainMixin):
         # NOTE: `reduce` removes all `encoding` properties
         da[self.name].encoding = ds[self.name].encoding
         res = xr.Dataset(
-            da,
-            coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
+            da, coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
         field = Field.from_xarray(res, ncvar=self.name)
         field.time.bounds = new_bnds
@@ -1278,42 +1277,41 @@ class Field(Variable, DomainMixin):
                     "'self.domain' must have exactly 1 point"
                 )
             coords = [self.longitude.item(), self.latitude.item()]
-            name = self.attrs['__ddsapi_name']
-            result = {'type': 'FeatureCollection', 'features': []}
+            name = self.attrs["__ddsapi_name"]
+            result = {"type": "FeatureCollection", "features": []}
             for time in self.time.values.flat:
-                time_ = pd.to_datetime(time).strftime('%Y-%m-%dT%H:%M')
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 value = self.sel(time=time_)
                 feature = {
-                    'geometry': {'type': 'Point', 'coordinates': coords},
-                    'properties': {'time': time_, name: float(value)}
+                    "geometry": {"type": "Point", "coordinates": coords},
+                    "properties": {"time": time_, name: float(value)},
                 }
-                result['features'].append(feature)
+                result["features"].append(feature)
         elif (
-            self.domain.type is DomainType.GRIDDED
-            or self.domain.type is None
+            self.domain.type is DomainType.GRIDDED or self.domain.type is None
         ):
             # HACK: The case `self.domain.type is None` is included to be able
             # to handle undefined domain types temporarily.
-            name = self.attrs['__ddsapi_name']
-            result = {'data': []}
+            name = self.attrs["__ddsapi_name"]
+            result = {"data": []}
             for time in self.time.values.flat:
-                time_ = pd.to_datetime(time).strftime('%Y-%m-%dT%H:%M')
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
-                    'type': 'FeatureCollection',
-                    'date': time_,
-                    'bbox': [
+                    "type": "FeatureCollection",
+                    "date": time_,
+                    "bbox": [
                         self.longitude.min().item(),  # West
                         self.latitude.min().item(),  # South
                         self.longitude.max().item(),  # East
-                        self.latitude.max().item()  # North
+                        self.latitude.max().item(),  # North
                     ],
-                    'units': {name: self.attrs['units']},
-                    'features': []
+                    "units": {name: self.attrs["units"]},
+                    "features": [],
                 }
                 field = (
                     self
-                    if isinstance(self.domain.crs, RegularLatLon) else
-                    self.to_regular()
+                    if isinstance(self.domain.crs, RegularLatLon)
+                    else self.to_regular()
                 )
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
@@ -1321,15 +1319,15 @@ class Field(Variable, DomainMixin):
                             time=time_, latitude=lat, longitude=lon
                         )
                         feature = {
-                            'type': 'Feature',
-                            'geometry': {
-                                'type': 'Point',
-                                'coordinates': [lon.item(), lat.item()]
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [lon.item(), lat.item()],
                             },
-                            'properties': {name: float(value)}
+                            "properties": {name: float(value)},
                         }
-                        time_data['features'].append(feature)
-                result['data'].append(time_data)
+                        time_data["features"].append(feature)
+                result["data"].append(time_data)
         else:
             raise NotImplementedError(
                 f"'self.domain.type' is {self.domain.type}, which is currently"
@@ -1337,7 +1335,7 @@ class Field(Variable, DomainMixin):
             )
 
         if target is not None:
-            with open(target, mode='w') as file:
+            with open(target, mode="w") as file:
                 json.dump(result, file, indent=4)
 
         return result
