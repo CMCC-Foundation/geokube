@@ -1278,14 +1278,13 @@ class Field(Variable, DomainMixin):
                     "'self.domain' must have exactly 1 point"
                 )
             coords = [self.longitude.item(), self.latitude.item()]
-            name = self.attrs["__ddsapi_name"]
             result = {"type": "FeatureCollection", "features": []}
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 value = self.sel(time=time_)
                 feature = {
                     "geometry": {"type": "Point", "coordinates": coords},
-                    "properties": {"time": time_, name: float(value)},
+                    "properties": {"time": time_, self.name: float(value)},
                 }
                 result["features"].append(feature)
         elif (
@@ -1293,7 +1292,6 @@ class Field(Variable, DomainMixin):
         ):
             # HACK: The case `self.domain.type is None` is included to be able
             # to handle undefined domain types temporarily.
-            name = self.attrs["__ddsapi_name"]
             result = {"data": []}
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
@@ -1306,7 +1304,7 @@ class Field(Variable, DomainMixin):
                         self.longitude.max().item(),  # East
                         self.latitude.max().item(),  # North
                     ],
-                    "units": {name: self.attrs["units"]},
+                    "units": {self.name: str(self.units)},
                     "features": [],
                 }
                 field = (
@@ -1325,7 +1323,7 @@ class Field(Variable, DomainMixin):
                                 "type": "Point",
                                 "coordinates": [lon.item(), lat.item()],
                             },
-                            "properties": {name: float(value)},
+                            "properties": {self.name: float(value)},
                         }
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
