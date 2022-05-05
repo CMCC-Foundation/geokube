@@ -1314,7 +1314,7 @@ class Field(Variable, DomainMixin):
                 )
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
-                        value = field.sel(
+                        value = field.sel( # this gives an error if only 1 time is selected before to_geojson()
                             time=time_, latitude=lat, longitude=lon
                         )
                         feature = {
