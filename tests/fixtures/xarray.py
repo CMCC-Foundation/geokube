@@ -9,7 +9,9 @@ from geokube.core.datacube import DataCube
 def dataset():
     yield open_dataset(
         "tests//resources//*-single-levels-reanalysis_*",
-        pattern="tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc",
+        pattern=(
+            "tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc"
+        ),
     )
 
 
@@ -25,7 +27,9 @@ def dataset_single_att():
 def dataset_idpattern():
     yield open_dataset(
         "tests//resources//era5-single-levels-reanalysis_*",
-        pattern="tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc",
+        pattern=(
+            "tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc"
+        ),
         id_pattern="std_{units}",
     )
 

@@ -52,7 +52,8 @@ class Coordinate(Variable, Axis):
             )
         if not isinstance(axis, (Axis, str)):
             raise ex.HCubeTypeError(
-                f"Expected argument is one of the following types `geokube.Axis` or `str`, but provided {type(data)}",
+                "Expected argument is one of the following types"
+                f" `geokube.Axis` or `str`, but provided {type(data)}",
                 logger=Coordinate._LOG,
             )
         Axis.__init__(self, name=axis)
@@ -67,7 +68,8 @@ class Coordinate(Variable, Axis):
             and not hasattr(data, "dims")
         ):
             raise ex.HCubeValueError(
-                "If coordinate is not a dimension, you need to supply `dims` argument!",
+                "If coordinate is not a dimension, you need to supply `dims`"
+                " argument!",
                 logger=Coordinate._LOG,
             )
         if self.is_dim:
@@ -83,12 +85,14 @@ class Coordinate(Variable, Axis):
             else:
                 if dims is not None and len(dims_tuple) > 1:
                     raise ex.HCubeValueError(
-                        f"If the Coordinate is a dimension, it has to depend only on itself, but provided `dims` are: {dims}",
+                        "If the Coordinate is a dimension, it has to depend"
+                        f" only on itself, but provided `dims` are: {dims}",
                         logger=Coordinate._LOG,
                     )
                 if len(dims_tuple) == 1 and dims_tuple[0] != self.name:
                     raise ex.HCubeValueError(
-                        f"`dims` parameter for dimension coordinate should have the same name as axis name!",
+                        f"`dims` parameter for dimension coordinate should"
+                        f" have the same name as axis name!",
                         logger=Coordinate._LOG,
                     )
         Variable.__init__(
@@ -169,7 +173,9 @@ class Coordinate(Variable, Axis):
                     )
                 else:
                     raise ex.HCubeTypeError(
-                        f"Each defined bound is expected to be one of the following types `geokube.Variable`, `numpy.array`, or `dask.Array`, but provided {type(bounds)}",
+                        "Each defined bound is expected to be one of the"
+                        " following types `geokube.Variable`, `numpy.array`,"
+                        f" or `dask.Array`, but provided {type(bounds)}",
                         logger=Coordinate._LOG,
                     )
         elif isinstance(bounds, Bounds):
@@ -195,7 +201,9 @@ class Coordinate(Variable, Axis):
             }
         else:
             raise ex.HCubeTypeError(
-                f"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided {type(bounds)}",
+                "Expected argument is one of the following types `dict`,"
+                " `numpy.ndarray`, or `geokube.Variable`, but provided"
+                f" {type(bounds)}",
                 logger=Coordinate._LOG,
             )
         return _bounds
@@ -244,7 +252,8 @@ class Coordinate(Variable, Axis):
         if cls._is_valid_nd_bounds(provided_bnds_shape, provided_data_shape):
             return BoundsND
         raise ex.HCubeValueError(
-            f"Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6), ... Provided shape is `{provided_bnds_shape}`",
+            "Bounds should have dimensions: (2,), (N,2), (N,M,4), (N,M,L,6),"
+            f" ... Provided shape is `{provided_bnds_shape}`",
             logger=Coordinate._LOG,
         )
 

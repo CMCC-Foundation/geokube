@@ -22,7 +22,8 @@ def log_func_debug(f):
     def decorated_function(self, *args, **kwargs):
         if not hasattr(self, "_LOG"):
             warnings.warn(
-                f"The class of the decorated `{str(f)}` does not contain `_LOG` object."
+                f"The class of the decorated `{str(f)}` does not contain"
+                " `_LOG` object."
             )
             return f(self, *args, **kwargs)
         self._LOG.debug(f"Entering `{str(f)}`")
@@ -30,7 +31,8 @@ def log_func_debug(f):
             return f(self, *args, **kwargs)
         except Exception as e:
             self._LOG.error(
-                f"{type(e).__name__} with message `{e}` raised while executing `{str(f)}`"
+                f"{type(e).__name__} with message `{e}` raised while executing"
+                f" `{str(f)}`"
             )
             raise e
         finally:

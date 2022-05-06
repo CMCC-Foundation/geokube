@@ -33,19 +33,28 @@ def test_parsing():
 def test_init_fails():
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `str`,"
+            r" `geokube.AxisType`, but provided *"
+        ),
     ):
         _ = Axis("lon", axistype=10)
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `str`,"
+            r" `geokube.AxisType`, but provided *"
+        ),
     ):
         _ = Axis("lon", axistype={"lat"})
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `str`,"
+            r" `geokube.AxisType`, but provided *"
+        ),
     ):
         _ = Axis("lon", axistype=["lon"])
 

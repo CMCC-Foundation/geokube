@@ -240,8 +240,9 @@ class Dataset:
 
         self.data.apply(self._persist_datacube, path=path, axis=1)
 
-    def get_nbytes(self) -> int:
-        return sum(cube.get_nbytes() for cube in self.cubes)
+    @property
+    def nbytes(self) -> int:
+        return sum(cube.nbytes for cube in self.cubes)
 
     def _persist_datacube(self, dataframe_item, path):
         path_to_store = os.path.join(

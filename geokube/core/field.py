@@ -117,14 +117,17 @@ class Field(Variable, DomainMixin):
         if ancillary is not None:
             if not isinstance(ancillary, dict):
                 raise ex.HCubeTypeError(
-                    f"Expected type of `ancillary` argument is dict, but the provided one if {type(ancillary)}",
+                    "Expected type of `ancillary` argument is dict, but the"
+                    f" provided one if {type(ancillary)}",
                     logger=Field._LOG,
                 )
             res_anc = {}
             for k, v in ancillary.items():
                 if not isinstance(v, (np.ndarray, da.Array, Variable, Number)):
                     raise ex.HCubeTypeError(
-                        f"Expected type of single ancillary variable is: `numpy.ndarray`, `dask.Array`, `geokube.Variable`, or `Number`, but the provided one if {type(v)}",
+                        "Expected type of single ancillary variable is:"
+                        " `numpy.ndarray`, `dask.Array`, `geokube.Variable`,"
+                        f" or `Number`, but the provided one if {type(v)}",
                         logger=Field._LOG,
                     )
                 # TODO: what should be axis and dims for ancillary variables? SHould it be `Variable`?
@@ -132,7 +135,10 @@ class Field(Variable, DomainMixin):
             self._ancillary = res_anc
 
     def __str__(self) -> str:
-        return f"Field {self.name}:{self.ncvar} with cell method: {self.cell_methods}"
+        return (
+            f"Field {self.name}:{self.ncvar} with cell method:"
+            f" {self.cell_methods}"
+        )
 
     @property
     def name(self) -> str:
@@ -222,7 +228,8 @@ class Field(Variable, DomainMixin):
             north, south, west, east, top, bottom
         ):
             raise ex.HCubeKeyError(
-                "At least on of the following must be defined: [north, south, west, east, top, bottom]!",
+                "At least on of the following must be defined: [north, south,"
+                " west, east, top, bottom]!",
                 logger=Field._LOG,
             )
         return self._geobbox_idx(
@@ -545,8 +552,7 @@ class Field(Variable, DomainMixin):
         n = lats.size
         if lons.size != n:
             raise ValueError(
-                "'latitude' and 'longitude' must have the same number of "
-                "items"
+                "'latitude' and 'longitude' must have the same number of items"
             )
 
         # Vertical
@@ -688,7 +694,8 @@ class Field(Variable, DomainMixin):
         ):
             # TODO: implement for dependent coordinate
             raise ex.HCubeNotImplementedError(
-                "Rolling longitude is currently supported only for independent coordinate!",
+                "Rolling longitude is currently supported only for independent"
+                " coordinate!",
                 logger=Field._LOG,
             )
         first_el, last_el = (

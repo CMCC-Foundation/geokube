@@ -101,7 +101,9 @@ class Axis:
                     self._type = axistype
                 else:
                     raise ex.HCubeTypeError(
-                        f"Expected argument is one of the following types `str`, `geokube.AxisType`, but provided {type(axistype)}",
+                        "Expected argument is one of the following types"
+                        " `str`, `geokube.AxisType`, but provided"
+                        f" {type(axistype)}",
                         logger=Axis._LOG,
                     )
 
@@ -155,7 +157,10 @@ class Axis:
         return not (self == other)
 
     def __repr__(self) -> str:
-        return f"<Axis(name={self.name}, type:{self.type}, encoding={self._encoding}>"
+        return (
+            f"<Axis(name={self.name}, type:{self.type},"
+            f" encoding={self._encoding}>"
+        )
 
     def __str__(self) -> str:
         return f"{self.name}: {self.type}"
@@ -170,6 +175,7 @@ class Axis:
             return obj.axis_type_name
         else:
             raise ex.HCubeTypeError(
-                f"`dims` can be a tuple or a list of [geokube.Axis, geokube.AxisType, str], but provided type is `{type(obj)}`",
+                "`dims` can be a tuple or a list of [geokube.Axis,"
+                f" geokube.AxisType, str], but provided type is `{type(obj)}`",
                 logger=Axis._LOG,
             )

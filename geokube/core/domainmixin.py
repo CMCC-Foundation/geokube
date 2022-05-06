@@ -82,6 +82,8 @@ class DomainMixin:
                 )
             return self.coords[self._axis_to_name.get(key.type)]
         raise ex.HCubeTypeError(
-            f"Indexing coordinates for Domain is supported only for object of types [str, geokube.Axis, geokub.AxisType]. Provided type: {type(key)}",
+            "Indexing coordinates for Domain is supported only for object of"
+            " types [str, geokube.Axis, geokub.AxisType]. Provided type:"
+            f" {type(key)}",
             logger=self._LOG,
         )

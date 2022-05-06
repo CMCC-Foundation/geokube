@@ -120,7 +120,8 @@ class DataCube(DomainMixin):
             item = self.domain[key]
             if item is None:
                 raise ex.HCubeKeyError(
-                    f"Key `{key}` of type `{type(key)}` is not found in the DataCube",
+                    f"Key `{key}` of type `{type(key)}` is not found in the"
+                    " DataCube",
                     logger=DataCube._LOG,
                 )
             return item

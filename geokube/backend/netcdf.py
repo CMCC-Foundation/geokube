@@ -121,7 +121,8 @@ def open_dataset(
     if metadata_caching:
         if metadata_cache_path is None:
             raise ex.HCubeValueError(
-                "If `metadata_caching` set to True, `metadata_cache_path` argument needs to be provided!",
+                "If `metadata_caching` set to True, `metadata_cache_path`"
+                " argument needs to be provided!",
                 logger=LOG,
             )
         cached_ds = _read_cache(metadata_cache_path)

@@ -178,8 +178,9 @@ class Domain(DomainMixin):
             yield k, v
         raise StopIteration
 
+    @property
     def nbytes(self) -> int:
-        return sum(coord.nbytes for coord in self._coords)
+        return sum(coord.nbytes for coord in self._coords.values())
 
     def map_indexers(self, indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
         return {Axis(n): v for n, v in indexers.items()}
@@ -358,7 +359,8 @@ class Domain(DomainMixin):
             for coord_name in xr_coords.split(" "):
                 if coord_name not in ds:
                     warnings.warn(
-                        f"Coordinate {coord_name} does not exist in the dataset!"
+                        f"Coordinate {coord_name} does not exist in the"
+                        " dataset!"
                     )
                     continue
                 coord = Coordinate.from_xarray(
@@ -369,7 +371,8 @@ class Domain(DomainMixin):
                 )
                 if coord in coords:
                     warnings.warn(
-                        f"Coordinate {coord_name} was already defined as dimension!"
+                        f"Coordinate {coord_name} was already defined as"
+                        " dimension!"
                     )
                     continue
                 coords.add(coord)
@@ -418,7 +421,8 @@ class Domain(DomainMixin):
         """
         if not isinstance(coords, dict):
             raise ex.HCubeTypeError(
-                f"Expected type of `coords` is `dict`, but `{type(coords)}` provided!",
+                f"Expected type of `coords` is `dict`, but `{type(coords)}`"
+                " provided!",
                 logger=Domain._LOG,
             )
         res_coords = []
@@ -459,7 +463,9 @@ class Domain(DomainMixin):
                 )
             else:
                 raise ex.HCubeTypeError(
-                    f"Expected types of coord values are following: [Number, numpy.ndarray, dask.array.Array, tuple], but proided type was `{type(v)}`",
+                    "Expected types of coord values are following: [Number,"
+                    " numpy.ndarray, dask.array.Array, tuple], but proided"
+                    f" type was `{type(v)}`",
                     logger=Domain._LOG,
                 )
 

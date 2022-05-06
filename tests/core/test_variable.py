@@ -15,19 +15,28 @@ from tests.fixtures import *
 def test_fails_on_wrong_type():
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable({1, 2, 3, 4})
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable([1, 2, 3, 4])
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable("some_data")
 

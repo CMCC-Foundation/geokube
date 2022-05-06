@@ -17,7 +17,10 @@ from tests.fixtures import *
 def test_process_bounds_fails():
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+        match=(
+            r"Expected argument is one of the following types `dict`,"
+            r" `numpy.ndarray`, or `geokube.Variable`, but provided*"
+        ),
     ):
         Coordinate._process_bounds(
             [1, 2, 3, 4],
@@ -29,7 +32,10 @@ def test_process_bounds_fails():
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+        match=(
+            r"Expected argument is one of the following types `dict`,"
+            r" `numpy.ndarray`, or `geokube.Variable`, but provided*"
+        ),
     ):
         Coordinate._process_bounds(
             "bounds",
@@ -41,7 +47,10 @@ def test_process_bounds_fails():
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `dict`, `numpy.ndarray`, or `geokube.Variable`, but provided*",
+        match=(
+            r"Expected argument is one of the following types `dict`,"
+            r" `numpy.ndarray`, or `geokube.Variable`, but provided*"
+        ),
     ):
         Coordinate._process_bounds(
             xr.DataArray([1, 2, 3, 4]),
@@ -157,28 +166,35 @@ def test_init_fails():
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `geokube.Axis` or `str`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `geokube.Axis`"
+            r" or `str`, but provided *"
+        ),
     ):
         _ = Coordinate(data=np.ones(100), axis=["lat"])
 
     with pytest.raises(
         ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `geokube.Axis` or `str`, but provided *",
+        match=(
+            r"Expected argument is one of the following types `geokube.Axis`"
+            r" or `str`, but provided *"
+        ),
     ):
         _ = Coordinate(data=np.ones(100), axis=15670)
 
     with pytest.raises(
         ex.HCubeValueError,
-        match=r"If coordinate is not a dimension, you need to supply `dims` argument!",
+        match=(
+            r"If coordinate is not a dimension, you need to supply `dims`"
+            r" argument!"
+        ),
     ):
         _ = Coordinate(data=np.ones(100), axis=Axis("lat", is_dim=False))
 
 
 def test_init_from_dask():
     D = da.random.random((100,))
-    c = Coordinate(
-        data=D, axis=Axis("latitude", is_dim=True), dims=("latitude")
-    )
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="latitude")
     assert c.dim_names == ("latitude",)
     assert c.dim_ncvars == ("latitude",)
     assert c.type is CoordinateType.INDEPENDENT
@@ -187,7 +203,8 @@ def test_init_from_dask():
 
 
 @pytest.mark.skip(
-    "Invalidate as in the current version, if `dims` is None, it is created based on provided `axis`"
+    "Invalidate as in the current version, if `dims` is None, it is created"
+    " based on provided `axis`"
 )
 def test_init_from_dask_fail():
     D = da.random.random((100,))
@@ -417,7 +434,7 @@ def test_toxarray_keeping_encoding_encoding_false_no_dims_passed():
 
 def test_toxarray_keeping_encoding_encoding_false():
     D = da.random.random((100,))
-    c = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("lat"))
+    c = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims="lat")
     coords_dset = c.to_xarray(encoding=False)
     coord = coords_dset["lat"]
     assert "lat" in coord.coords
@@ -430,9 +447,7 @@ def test_toxarray_keeping_encoding_encoding_false():
     assert "name" in coord.encoding
     assert coord.encoding["name"] == "lat"
 
-    c = Coordinate(
-        data=D, axis=Axis("latitude", is_dim=True), dims=("latitude")
-    )
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="latitude")
     coords_dset = c.to_xarray(encoding=False)
     coord = coords_dset["latitude"]
     assert coord.dims == ("latitude",)
@@ -449,25 +464,30 @@ def test_init_fails_if_is_dim_and_axis_name_differ_from_dims():
     D = da.random.random((100,))
     with pytest.raises(
         ex.HCubeValueError,
-        match=r"If the Coordinate is a dimension, it has to depend only on itself, but provided `dims` are*",
+        match=(
+            r"If the Coordinate is a dimension, it has to depend only on"
+            r" itself, but provided `dims` are*"
+        ),
     ):
         _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims=("x", "y"))
 
     with pytest.raises(
         ex.HCubeValueError,
-        match=r"`dims` parameter for dimension coordinate should have the same name as axis name*",
+        match=(
+            r"`dims` parameter for dimension coordinate should have the same"
+            r" name as axis name*"
+        ),
     ):
-        _ = Coordinate(
-            data=D, axis=Axis("lat", is_dim=True), dims=("latitude")
-        )
+        _ = Coordinate(data=D, axis=Axis("lat", is_dim=True), dims="latitude")
 
     with pytest.raises(
         ex.HCubeValueError,
-        match=r"`dims` parameter for dimension coordinate should have the same name as axis name*",
+        match=(
+            r"`dims` parameter for dimension coordinate should have the same"
+            r" name as axis name*"
+        ),
     ):
-        _ = Coordinate(
-            data=D, axis=Axis("latitude", is_dim=True), dims=("lat")
-        )
+        _ = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="lat")
 
 
 def test_toxarray_keeping_encoding_encoding_true():
@@ -484,9 +504,7 @@ def test_toxarray_keeping_encoding_encoding_true():
     assert "name" in coord.encoding
     assert coord.encoding["name"] == "lat"
 
-    c = Coordinate(
-        data=D, axis=Axis("latitude", is_dim=True), dims=("latitude")
-    )
+    c = Coordinate(data=D, axis=Axis("latitude", is_dim=True), dims="latitude")
     coord_dset = c.to_xarray(encoding=True)
     coord = coord_dset["latitude"]
     assert coord.name == "latitude"

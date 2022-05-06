@@ -815,7 +815,8 @@ def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
 
 # TODO: verify!
 @pytest.mark.skip(
-    f"Lat depends on `points` but is single-element and should be SCALAR not DEPENDENT"
+    f"Lat depends on `points` but is single-element and should be SCALAR not"
+    f" DEPENDENT"
 )
 def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
