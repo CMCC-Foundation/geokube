@@ -1292,7 +1292,6 @@ class Field(Variable, DomainMixin):
             result = {"type": "FeatureCollection", "features": []}
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
-                # value = self.sel(time=time_) if self.time.shape else self
                 value = self.sel(time=time_) if self.time.size > 1 else self
                 feature = {
                     "geometry": {"type": "Point", "coordinates": coords},
@@ -1305,6 +1304,12 @@ class Field(Variable, DomainMixin):
             # HACK: The case `self.domain.type is None` is included to be able
             # to handle undefined domain types temporarily.
             result = {"data": []}
+            field = (
+                self
+                if isinstance(self.domain.crs, RegularLatLon)
+                else self.to_regular()
+            )
+            axis_names = field.domain._axis_to_name
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
@@ -1319,17 +1324,15 @@ class Field(Variable, DomainMixin):
                     "units": {self.name: str(self.units)},
                     "features": [],
                 }
-                field = (
-                    self
-                    if isinstance(self.domain.crs, RegularLatLon)
-                    else self.to_regular()
-                )
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
-                        idx = {"latitude": lat, "longitude": lon}
+                        idx = {
+                            axis_names[AxisType.LATITUDE]: lat,
+                            axis_names[AxisType.LONGITUDE]: lon,
+                        }
                         # if self.time.shape:
                         if self.time.size > 1:
-                            idx["time"] = time_
+                            idx[axis_names[AxisType.TIME]] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
                         value = field.sel(**idx)
