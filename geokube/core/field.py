@@ -1282,7 +1282,6 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-
     def to_geojson(self, target=None):
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
@@ -1327,10 +1326,10 @@ class Field(Variable, DomainMixin):
                 )
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
-                        idx = {'latitude': lat, 'longitude': lon}
+                        idx = {"latitude": lat, "longitude": lon}
                         # if self.time.shape:
                         if self.time.size > 1:
-                            idx['time'] = time_
+                            idx["time"] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
                         value = field.sel(**idx)
