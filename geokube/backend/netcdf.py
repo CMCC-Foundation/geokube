@@ -18,7 +18,6 @@ from intake.source.utils import reverse_format
 import geokube.backend.base
 import geokube.core.datacube
 import geokube.core.dataset
-import geokube.utils.exceptions as ex
 from geokube.utils.hcube_logger import HCubeLogger
 
 LOG = HCubeLogger(name="netcdf.py")
@@ -84,9 +83,7 @@ def _get_df_from_files_list(files, pattern, ds_attr_names):
         l.append(d)
     df = pd.DataFrame(l)
     if len(l) == 0:
-        raise ex.HCubeValueError(
-            f"No files found for the provided path!", logger=LOG
-        )
+        raise ValueError(f"No files found for the provided path!")
     # unique index for each dataset attribute combos - we create a list of files
     df = df.groupby(ds_attr_names)[FILES_COL].apply(list).reset_index()
     df = df.set_index(ds_attr_names)
@@ -120,9 +117,9 @@ def open_dataset(
 
     if metadata_caching:
         if metadata_cache_path is None:
-            raise ex.HCubeValueError(
-                "If `metadata_caching` set to True, `metadata_cache_path` argument needs to be provided!",
-                logger=LOG,
+            raise ValueError(
+                "If `metadata_caching` set to True, `metadata_cache_path`"
+                " argument needs to be provided!"
             )
         cached_ds = _read_cache(metadata_cache_path)
         if cached_ds is not None:

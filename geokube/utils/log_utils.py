@@ -49,7 +49,8 @@ def configure_logger(
     if not log_path.endswith("log"):
         log_path = log_path + ".log"
     formatter = logging.Formatter(
-        "%(asctime)s:%(msecs)s %(levelname)s %(user_id)s %(request_id)s %(module)s %(message)s",
+        "%(asctime)s:%(msecs)s %(levelname)s %(user_id)s %(request_id)s"
+        " %(module)s %(message)s",
         datefmt="%Y-%m-%dT%H:%M:%S",
     )
     logger.setLevel(debug_level)

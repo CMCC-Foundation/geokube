@@ -72,7 +72,8 @@ def assert_exactly_one_arg(**kwargs):
     for v in kwargs.values():
         if provided and v is not None:
             raise ValueError(
-                f"Those arguments cannot be passed at ones: {list(kwargs.keys())}"
+                "Those arguments cannot be passed at ones:"
+                f" {list(kwargs.keys())}"
             )
         if not provided and v is not None:
             provided = True

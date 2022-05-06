@@ -40,8 +40,7 @@ def format_dims(dims, coord_names):
     }
 
     dims_li = "".join(
-        f"<li><span{dim_css_map[dim]}>"
-        f"{escape(str(dim))}</span>: {size}</li>"
+        f"<li><span{dim_css_map[dim]}>{escape(str(dim))}</span>: {size}</li>"
         for dim, size in dims.items()
     )
 
@@ -50,8 +49,7 @@ def format_dims(dims, coord_names):
 
 def summarize_attrs(attrs):
     attrs_dl = "".join(
-        f"<dt><span>{escape(str(k))} :</span></dt>"
-        f"<dd>{escape(str(v))}</dd>"
+        f"<dt><span>{escape(str(k))} :</span></dt><dd>{escape(str(v))}</dd>"
         for k, v in attrs.items()
     )
 
@@ -61,10 +59,9 @@ def summarize_attrs(attrs):
 def _icon(icon_name):
     # icon_name should be defined in xarray/static/html/icon-svg-inline.html
     return (
-        "<svg class='icon xr-{0}'>"
-        "<use xlink:href='#{0}'>"
-        "</use>"
-        "</svg>".format(icon_name)
+        "<svg class='icon xr-{0}'><use xlink:href='#{0}'></use></svg>".format(
+            icon_name
+        )
     )
 
 
@@ -219,12 +216,11 @@ def array_section(obj):
     data_icon = _icon("icon-database")
 
     return (
-        "<div class='xr-array-wrap'>"
-        f"<input id='{data_id}' class='xr-array-in' type='checkbox' {collapsed}>"
-        f"<label for='{data_id}' title='Show/hide data repr'>{data_icon}</label>"
-        f"<div class='xr-array-preview xr-preview'><span>{preview}</span></div>"
-        f"<div class='xr-array-data'>{data_repr}</div>"
-        "</div>"
+        f"<div class='xr-array-wrap'><input id='{data_id}' class='xr-array-in'"
+        f" type='checkbox' {collapsed}><label for='{data_id}' title='Show/hide"
+        f" data repr'>{data_icon}</label><div class='xr-array-preview"
+        f" xr-preview'><span>{preview}</span></div><div"
+        f" class='xr-array-data'>{data_repr}</div></div>"
     )
 
 
