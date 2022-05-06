@@ -26,6 +26,7 @@ setuptools.setup(
         "distributed",
         "intake>=0.6.5",
         "xarray",
+        "hvplot",
         "pytest-cov",
         "pytest",
         "netCDF4",

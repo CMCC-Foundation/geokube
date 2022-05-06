@@ -24,6 +24,7 @@ import dask.array as da
 import numpy as np
 import pyarrow as pa
 import xarray as xr
+import hvplot.xarray  # noqa
 import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
@@ -1043,6 +1044,16 @@ class Field(Variable, DomainMixin):
             n_pts = lat.size
             n_time = time.size if (time is not None and time.is_dim) else 0
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f"{lat.name}={lat_.item():.2f} {lat.units}, "
+                #     f"{lon.name}={lon_.item():.2f} {lon.units}"
+                #     for lat_, lon_ in it
+                # ]
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
             if aspect is None:
                 # Integers determine the priority in the case of equal sizes:
                 # greater number means higher priority.
@@ -1058,8 +1069,9 @@ class Field(Variable, DomainMixin):
                 )
             if aspect == "time_series":
                 data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
                 kwargs["x"] = time.name
-                if n_vert > 1 or vert.name in data.dims:
+                if n_vert > 1 or (vert is not None and vert.name in data.dims):
                     kwargs.setdefault("row", vert.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
@@ -1070,6 +1082,7 @@ class Field(Variable, DomainMixin):
                 return plot
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
                 if vert.attrs.get("positive") == "down":
                     data = data.reindex(
                         indexers={vert.name: data.coords[vert.name][::-1]},
@@ -1078,7 +1091,7 @@ class Field(Variable, DomainMixin):
                     data.coords[vert.name] = -data.coords[vert.name]
                     # vert.values = -vert.values[::-1]
                 kwargs["y"] = vert.name
-                if n_time > 1 or time.name in data.dims:
+                if n_time > 1 or (time is not None and time.name in data.dims):
                     kwargs.setdefault("col", time.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
@@ -1266,6 +1279,161 @@ class Field(Variable, DomainMixin):
                         ax.set_yticks(y_ticks)
 
         return plot
+
+    def hvplot(self, aspect=None, **kwargs):
+        # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
+        # for the details on what can be passed with `kwargs`.
+
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        kwargs.setdefault("widget_location", "bottom")
+
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        if (
+            vert is not None
+            and vert.is_dim
+            and vert.attrs.get("positive") == "down"
+        ):
+            dset = dset.reindex(
+                indexers={vert.name: dset.coords[vert.name][::-1]},
+                copy=False,
+            )
+            dset.coords[vert.name] = -dset.coords[vert.name]
+
+        # Working with `DomainType.POINTS`.
+        if self._domain._type is DomainType.POINTS:
+            n_pts = lat.size
+            n_time = time.size if (time is not None and time.is_dim) else 0
+            n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f'{lat.name}={lat_.item():.2f} {lat.units}, '
+                #     f'{lon.name}={lon_.item():.2f} {lon.units}'
+                #     for lat_, lon_ in it
+                # ]
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
+            if aspect is None:
+                # Integers determine the priority in the case of equal sizes:
+                # greater number means higher priority.
+                aspect = max(
+                    (n_time, 1, "time_series"),
+                    (n_vert, 2, "profile"),
+                    (n_pts, 3, "points"),
+                )[2]
+            if aspect == "time_series":
+                data = dset[self.name]
+                data = data.assign_coords(points=points)
+                return data.hvplot(x=time.name, by="points", **kwargs)
+            if aspect == "profile":
+                data = dset[self.name]
+                data = data.assign_coords(points=points)
+                return data.hvplot(y=vert.name, by="points", **kwargs)
+            if aspect == "points":
+                data = xr.Dataset(
+                    data_vars={
+                        self.name: dset[self.name],
+                        "lat": dset.coords["latitude"],
+                        "lon": dset.coords["longitude"],
+                    }
+                )
+                return data.hvplot.scatter(
+                    x="lon",
+                    y="lat",
+                    c=self.name,
+                    cmap=kwargs.pop("cmap", "coolwarm"),
+                    colorbar=kwargs.pop("colorbar", True),
+                    **kwargs,
+                )
+            raise ValueError(
+                "'aspect' must be 'time_series', 'profile', 'points', or None"
+            )
+
+        # Working with `DomainType.GRIDDED`.
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            crs = self._domain.crs
+            if crs is not None:
+                try:
+                    crs = crs.as_cartopy_projection()
+                except NotImplementedError:
+                    # HACK: This is used in the cases where obtaining Cartopy
+                    # projections is not implemented.
+                    crs = None
+                    kwargs.setdefault("x", lon.name)
+                    kwargs.setdefault("y", lat.name)
+
+            proj = kwargs.get("projection")
+            if isinstance(proj, CoordSystem):
+                kwargs["projection"] = proj = proj.as_cartopy_projection()
+
+            if aspect is not None:
+                if aspect == "time_series":
+                    kwargs.update({"x": time.name, "y": self.name})
+                elif aspect == "profile":
+                    kwargs.update({"x": self.name, "y": vert.name})
+                if crs is not None and not isinstance(crs, ccrs.PlateCarree):
+                    dset = self.to_regular().to_xarray(encoding=False)
+                    if "crs" in dset.coords:
+                        dset = dset.drop("crs")
+                    if (
+                        vert is not None
+                        and vert.is_dim
+                        and vert.attrs.get("positive") == "down"
+                    ):
+                        dset = dset.reindex(
+                            indexers={vert.name: dset.coords[vert.name][::-1]},
+                            copy=False,
+                        )
+                        dset.coords[vert.name] = -dset.coords[vert.name]
+
+            plot_call = dset[self.name].hvplot
+
+            if lat is not None and lat.is_dim:
+                kwargs.setdefault("y", lat.name)
+            if lon is not None and lon.is_dim:
+                kwargs.setdefault("x", lon.name)
+
+            if (
+                not (
+                    (proj is None or isinstance(proj, ccrs.PlateCarree))
+                    and (crs is None or isinstance(crs, ccrs.PlateCarree))
+                )
+                and "x" not in kwargs
+                and "y" not in kwargs
+                and lat is not None
+                and lon is not None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs["crs"] = crs
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
+                lat_name = lat.attrs.get("long_name", "latitude")
+                if (lat_units := lat.attrs.get("units")) is not None:
+                    lat_name = f"{lat_name} ({lat_units})"
+                lon_name = lon.attrs.get("long_name", "longitude")
+                if (lon_units := lon.attrs.get("units")) is not None:
+                    lon_name = f"{lon_name} ({lon_units})"
+                kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
+
+            return plot_call(**kwargs)
+
+        raise NotImplementedError(
+            "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
+        )
 
     @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Dataset:
