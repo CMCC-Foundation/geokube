@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 import xarray as xr
 
-import geokube.utils.exceptions as ex
 from geokube.core.axis import Axis, AxisType
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
@@ -14,20 +13,29 @@ from tests.fixtures import *
 
 def test_fails_on_wrong_type():
     with pytest.raises(
-        ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        TypeError,
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable({1, 2, 3, 4})
 
     with pytest.raises(
-        ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        TypeError,
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable([1, 2, 3, 4])
 
     with pytest.raises(
-        ex.HCubeTypeError,
-        match=r"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*",
+        TypeError,
+        match=(
+            r"Expected argument is one of the following types `number.Number`,"
+            r" `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`*"
+        ),
     ):
         _ = Variable("some_data")
 
