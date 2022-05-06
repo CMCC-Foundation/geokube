@@ -21,6 +21,7 @@ setuptools.setup(
     url="https://github.com/geokube/geokube",
     packages=setuptools.find_packages(),
     install_requires=[
+        "bokeh==2.4.0",
         "cf_units",
         "dask",
         "distributed",
