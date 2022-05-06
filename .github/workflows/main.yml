@@ -38,11 +38,11 @@ jobs:
 
       - name: Check formatting in `tests` catalog
         shell: bash -l {0}
-        run: conda run black --line-length 79 tests
+        run: conda run black --l 79 tests
 
       - name: Check formatting in `geokube` catalog
         shell: bash -l {0}
-        run: conda run black --line-length 79 geokube
+        run: conda run black --l 79 geokube
 
       - name: Check for modified files
         id: git-check
@@ -53,7 +53,7 @@ jobs:
         uses: actions/github-script@v3
         with:
           script: |
-            core.setFailed('`geokube` or `tests` directory is not well formatted! Use command `black --line-length 79 geokube` and `black --line-length 79 tests`')
+            core.setFailed('`geokube` or `tests` directory is not well formatted! Use command `black --l 79 --preview geokube` and `black --l 79 --preview tests`')
 
       - name: Run pytest
         shell: bash -l {0}
