@@ -41,11 +41,11 @@ jobs:
 
       - name: Check formatting in `tests` catalog
         shell: bash -l {0}
-        run: conda run black -l 79 tests
+        run: conda run black -l 79 --preview tests
 
       - name: Check formatting in `geokube` catalog
         shell: bash -l {0}
-        run: conda run black -l 79 geokube
+        run: conda run black -l 79 --preview geokube
 
       - name: Check for modified files
         id: git-check
