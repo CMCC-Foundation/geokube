@@ -5,7 +5,6 @@ import pandas as pd
 import cf_units as cf
 
 import geokube.core.coord_system as crs
-import geokube.utils.exceptions as ex
 from geokube.backend.netcdf import open_datacube, open_dataset
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import GeogCS, RegularLatLon
@@ -351,7 +350,7 @@ def test_locations_regular_latlon_wrong_vertical(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
 
     with pytest.raises(
-        ex.HCubeKeyError,
+        KeyError,
         match="Axis of type `AxisType.VERTICAL` does not exist in the domain!",
     ):
         tp.locations(latitude=[35, 40], longitude=[15, 20], vertical=[1, 2])
@@ -904,7 +903,7 @@ def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
 
 def test_sel_fail_on_missing_x_y(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    with pytest.raises(ex.HCubeKeyError, match=r"Axis of type*"):
+    with pytest.raises(KeyError, match=r"Axis of type*"):
         _ = vt.sel(depth=[1.2, 29], x=slice(60, 100), y=slice(130, 170))
 
 

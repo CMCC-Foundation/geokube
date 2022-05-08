@@ -1,8 +1,6 @@
 import warnings
 from functools import wraps
 
-from ..utils import exceptions as ex
-
 
 def nonclose_assert(f):
     @wraps(f)
@@ -17,7 +15,7 @@ def nonclose_assert(f):
     return decorated_function
 
 
-def log_func_debug(f):
+def geokube_logging(f):
     @wraps(f)
     def decorated_function(self, *args, **kwargs):
         if not hasattr(self, "_LOG"):

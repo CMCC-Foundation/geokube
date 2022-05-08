@@ -10,7 +10,6 @@ import zarr
 from intake.source.utils import reverse_format
 from zarr.storage import ContainsArrayError
 
-import geokube.utils.exceptions as ex
 from geokube import LOGGER_NAME
 from geokube.backend.base import BaseOpener
 from geokube.core.container import Container
@@ -83,7 +82,7 @@ class _ZarrOpenManager(BaseOpener):
             logger.error(
                 f"No data found for root: {root}  and pattern: {pattern}!"
             )
-            raise ex.HCubeValueError(
+            raise ValueError(
                 f"No data found for root: {root}  and pattern: {pattern}!"
             )
         cubes, fields = zip(*results)

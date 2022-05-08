@@ -24,13 +24,13 @@ import dask.array as da
 import numpy as np
 import pyarrow as pa
 import xarray as xr
+import hvplot.xarray  # noqa
 import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
-from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .cell_methods import CellMethod
@@ -116,19 +116,17 @@ class Field(Variable, DomainMixin):
         self._cell_methods = cell_methods
         if ancillary is not None:
             if not isinstance(ancillary, dict):
-                raise ex.HCubeTypeError(
+                raise TypeError(
                     "Expected type of `ancillary` argument is dict, but the"
-                    f" provided one if {type(ancillary)}",
-                    logger=Field._LOG,
+                    f" provided one if {type(ancillary)}"
                 )
             res_anc = {}
             for k, v in ancillary.items():
                 if not isinstance(v, (np.ndarray, da.Array, Variable, Number)):
-                    raise ex.HCubeTypeError(
+                    raise TypeError(
                         "Expected type of single ancillary variable is:"
                         " `numpy.ndarray`, `dask.Array`, `geokube.Variable`,"
-                        f" or `Number`, but the provided one if {type(v)}",
-                        logger=Field._LOG,
+                        f" or `Number`, but the provided one if {type(v)}"
                     )
                 # TODO: what should be axis and dims for ancillary variables? SHould it be `Variable`?
                 res_anc[k] = Variable(data=v)
@@ -189,7 +187,7 @@ class Field(Variable, DomainMixin):
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical
-    @log_func_debug
+    @geokube_logging
     def geobbox(
         self,
         north: Number | None = None,
@@ -220,17 +218,16 @@ class Field(Variable, DomainMixin):
 
         Raises
         ------
-        HCubeKeyError
+        KeyError
             If no bound is provided.
 
         """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
-            raise ex.HCubeKeyError(
+            raise KeyError(
                 "At least on of the following must be defined: [north, south,"
-                " west, east, top, bottom]!",
-                logger=Field._LOG,
+                " west, east, top, bottom]!"
             )
         return self._geobbox_idx(
             south=south,
@@ -308,7 +305,7 @@ class Field(Variable, DomainMixin):
         if top is not None or bottom is not None:
             try:
                 vert = field.vertical
-            except ex.HCubeKeyError:
+            except KeyError:
                 vert = None
             # TODO: Reconsider `not vert.shape`.
             if vert is None or not vert.shape:
@@ -638,7 +635,7 @@ class Field(Variable, DomainMixin):
 
     # consider only independent coordinates
     # TODO: we should use metpy approach (user can also specify - units)
-    @log_func_debug
+    @geokube_logging
     def sel(
         self,
         indexers: Mapping[Union[Axis, str], Any] = None,
@@ -683,7 +680,7 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-    @log_func_debug
+    @geokube_logging
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
         if Axis("longitude") not in indexers:
@@ -693,10 +690,9 @@ class Field(Variable, DomainMixin):
             is not CoordinateType.INDEPENDENT
         ):
             # TODO: implement for dependent coordinate
-            raise ex.HCubeNotImplementedError(
+            raise NotImplementedError(
                 "Rolling longitude is currently supported only for independent"
-                " coordinate!",
-                logger=Field._LOG,
+                " coordinate!"
             )
         first_el, last_el = (
             self.domain[Axis("longitude")].min(),
@@ -765,7 +761,7 @@ class Field(Variable, DomainMixin):
         )
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def regrid(
         self,
         target: Union[Domain, "Field"],
@@ -803,9 +799,8 @@ class Field(Variable, DomainMixin):
             if isinstance(target, Field):
                 target = target.domain
             else:
-                raise ex.HCubeTypeError(
-                    "'target' must be an instance of Domain or Field",
-                    logger=Field._LOG,
+                raise TypeError(
+                    "'target' must be an instance of Domain or Field"
                 )
 
         if not isinstance(method, RegridMethod):
@@ -889,7 +884,7 @@ class Field(Variable, DomainMixin):
         return field_out
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def resample(
         self,
         operator: Union[Callable, MethodType, str],
@@ -933,10 +928,9 @@ class Field(Variable, DomainMixin):
             elif isinstance(operator, MethodType):
                 operator_func = operator
             else:
-                raise ex.HCubeTypeError(
-                    "Operator must be `str`, `MethodType`, or `callable`. "
-                    f"Provided `{type(operator)}`",
-                    logger=Field._LOG,
+                raise TypeError(
+                    "Operator must be `str`, `MethodType`, or `callable`."
+                    " Provided `{type(operator)}`"
                 )
             if operator_func is MethodType.UNDEFINED:
                 methods = {
@@ -944,10 +938,9 @@ class Field(Variable, DomainMixin):
                     for method in MethodType.__members__.values()
                 }
                 methods.discard("<undefined>")
-                raise ex.HCubeValueError(
-                    f"Provided operator '{operator}' was not found! Available "
-                    f"operators are: {sorted(methods)}!",
-                    logger=Field._LOG,
+                raise ValueError(
+                    f"Provided operator '{operator}' was not found! Available"
+                    f" operators are: {sorted(methods)}!"
                 )
             func = (
                 operator_func.dask_operator
@@ -1019,12 +1012,12 @@ class Field(Variable, DomainMixin):
         # #########################################################################################
         return field
 
-    @log_func_debug
+    @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def plot(
         self,
         features=None,
@@ -1051,6 +1044,16 @@ class Field(Variable, DomainMixin):
             n_pts = lat.size
             n_time = time.size if (time is not None and time.is_dim) else 0
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f"{lat.name}={lat_.item():.2f} {lat.units}, "
+                #     f"{lon.name}={lon_.item():.2f} {lon.units}"
+                #     for lat_, lon_ in it
+                # ]
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
             if aspect is None:
                 # Integers determine the priority in the case of equal sizes:
                 # greater number means higher priority.
@@ -1060,15 +1063,15 @@ class Field(Variable, DomainMixin):
                     (n_pts, 3, "points"),
                 )[2]
             if aspect not in {"time_series", "profile", "points"}:
-                raise ex.HCubeValueError(
-                    "'aspect' must be 'time_series', 'profile', 'points', or "
-                    "None",
-                    logger=Field._LOG,
+                raise ValueError(
+                    "'aspect' must be 'time_series', 'profile', 'points', or"
+                    " None"
                 )
             if aspect == "time_series":
                 data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
                 kwargs["x"] = time.name
-                if n_vert > 1 or vert.name in data.dims:
+                if n_vert > 1 or (vert is not None and vert.name in data.dims):
                     kwargs.setdefault("row", vert.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
@@ -1079,6 +1082,7 @@ class Field(Variable, DomainMixin):
                 return plot
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
                 if vert.attrs.get("positive") == "down":
                     data = data.reindex(
                         indexers={vert.name: data.coords[vert.name][::-1]},
@@ -1087,7 +1091,7 @@ class Field(Variable, DomainMixin):
                     data.coords[vert.name] = -data.coords[vert.name]
                     # vert.values = -vert.values[::-1]
                 kwargs["y"] = vert.name
-                if n_time > 1 or time.name in data.dims:
+                if n_time > 1 or (time is not None and time.name in data.dims):
                     kwargs.setdefault("col", time.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
@@ -1276,7 +1280,162 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-    @log_func_debug
+    def hvplot(self, aspect=None, **kwargs):
+        # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
+        # for the details on what can be passed with `kwargs`.
+
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        kwargs.setdefault("widget_location", "bottom")
+
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        if (
+            vert is not None
+            and vert.is_dim
+            and vert.attrs.get("positive") == "down"
+        ):
+            dset = dset.reindex(
+                indexers={vert.name: dset.coords[vert.name][::-1]},
+                copy=False,
+            )
+            dset.coords[vert.name] = -dset.coords[vert.name]
+
+        # Working with `DomainType.POINTS`.
+        if self._domain._type is DomainType.POINTS:
+            n_pts = lat.size
+            n_time = time.size if (time is not None and time.is_dim) else 0
+            n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f'{lat.name}={lat_.item():.2f} {lat.units}, '
+                #     f'{lon.name}={lon_.item():.2f} {lon.units}'
+                #     for lat_, lon_ in it
+                # ]
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
+            if aspect is None:
+                # Integers determine the priority in the case of equal sizes:
+                # greater number means higher priority.
+                aspect = max(
+                    (n_time, 1, "time_series"),
+                    (n_vert, 2, "profile"),
+                    (n_pts, 3, "points"),
+                )[2]
+            if aspect == "time_series":
+                data = dset[self.name]
+                data = data.assign_coords(points=points)
+                return data.hvplot(x=time.name, by="points", **kwargs)
+            if aspect == "profile":
+                data = dset[self.name]
+                data = data.assign_coords(points=points)
+                return data.hvplot(y=vert.name, by="points", **kwargs)
+            if aspect == "points":
+                data = xr.Dataset(
+                    data_vars={
+                        self.name: dset[self.name],
+                        "lat": dset.coords["latitude"],
+                        "lon": dset.coords["longitude"],
+                    }
+                )
+                return data.hvplot.scatter(
+                    x="lon",
+                    y="lat",
+                    c=self.name,
+                    cmap=kwargs.pop("cmap", "coolwarm"),
+                    colorbar=kwargs.pop("colorbar", True),
+                    **kwargs,
+                )
+            raise ValueError(
+                "'aspect' must be 'time_series', 'profile', 'points', or None"
+            )
+
+        # Working with `DomainType.GRIDDED`.
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            crs = self._domain.crs
+            if crs is not None:
+                try:
+                    crs = crs.as_cartopy_projection()
+                except NotImplementedError:
+                    # HACK: This is used in the cases where obtaining Cartopy
+                    # projections is not implemented.
+                    crs = None
+                    kwargs.setdefault("x", lon.name)
+                    kwargs.setdefault("y", lat.name)
+
+            proj = kwargs.get("projection")
+            if isinstance(proj, CoordSystem):
+                kwargs["projection"] = proj = proj.as_cartopy_projection()
+
+            if aspect is not None:
+                if aspect == "time_series":
+                    kwargs.update({"x": time.name, "y": self.name})
+                elif aspect == "profile":
+                    kwargs.update({"x": self.name, "y": vert.name})
+                if crs is not None and not isinstance(crs, ccrs.PlateCarree):
+                    dset = self.to_regular().to_xarray(encoding=False)
+                    if "crs" in dset.coords:
+                        dset = dset.drop("crs")
+                    if (
+                        vert is not None
+                        and vert.is_dim
+                        and vert.attrs.get("positive") == "down"
+                    ):
+                        dset = dset.reindex(
+                            indexers={vert.name: dset.coords[vert.name][::-1]},
+                            copy=False,
+                        )
+                        dset.coords[vert.name] = -dset.coords[vert.name]
+
+            plot_call = dset[self.name].hvplot
+
+            if lat is not None and lat.is_dim:
+                kwargs.setdefault("y", lat.name)
+            if lon is not None and lon.is_dim:
+                kwargs.setdefault("x", lon.name)
+
+            if (
+                not (
+                    (proj is None or isinstance(proj, ccrs.PlateCarree))
+                    and (crs is None or isinstance(crs, ccrs.PlateCarree))
+                )
+                and "x" not in kwargs
+                and "y" not in kwargs
+                and lat is not None
+                and lon is not None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs["crs"] = crs
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
+                lat_name = lat.attrs.get("long_name", "latitude")
+                if (lat_units := lat.attrs.get("units")) is not None:
+                    lat_name = f"{lat_name} ({lat_units})"
+                lon_name = lon.attrs.get("long_name", "longitude")
+                if (lon_units := lon.attrs.get("units")) is not None:
+                    lon_name = f"{lon_name} ({lon_units})"
+                kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
+
+            return plot_call(**kwargs)
+
+        raise NotImplementedError(
+            "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
+        )
+
+    @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Dataset:
         data_vars = {}
         var_name = self.ncvar if encoding else self.name
@@ -1316,7 +1475,7 @@ class Field(Variable, DomainMixin):
         return xr.Dataset(data_vars=data_vars, coords=coords)
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         ds: xr.Dataset,
@@ -1326,9 +1485,8 @@ class Field(Variable, DomainMixin):
         copy=False,
     ):
         if not isinstance(ds, xr.Dataset):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
-                logger=cls._LOG,
+            raise TypeError(
+                f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
             )
 
         da = ds[ncvar].copy(copy)  # TODO: TO CHECK

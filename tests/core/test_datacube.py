@@ -13,7 +13,6 @@ from geokube.core.field import Field
 from geokube.core.domain import Domain
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
-import geokube.utils.exceptions as ex
 
 from tests import RES_PATH, clear_test_res
 from tests.fixtures import *

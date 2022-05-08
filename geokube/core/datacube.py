@@ -22,8 +22,7 @@ from typing import (
 )
 import xarray as xr
 
-from ..utils import exceptions as ex
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis
 from .domain import Domain
@@ -98,6 +97,7 @@ class DataCube(DomainMixin):
             or (key in self._domain)
         )
 
+    @geokube_logging
     def __getitem__(
         self,
         key: Union[
@@ -119,10 +119,9 @@ class DataCube(DomainMixin):
         else:
             item = self.domain[key]
             if item is None:
-                raise ex.HCubeKeyError(
+                raise KeyError(
                     f"Key `{key}` of type `{type(key)}` is not found in the"
-                    " DataCube",
-                    logger=DataCube._LOG,
+                    " DataCube"
                 )
             return item
 
@@ -142,7 +141,7 @@ class DataCube(DomainMixin):
         #     return f"<pre>{escape(repr(self.to_xarray()))}</pre>"
         # return formatting_html.array_repr(self)
 
-    @log_func_debug
+    @geokube_logging
     def geobbox(
         self,
         north=None,
@@ -168,7 +167,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def locations(
         self,
         latitude,
@@ -186,7 +185,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def sel(
         self,
         indexers: Mapping[Union[Axis, str], Any] = None,
@@ -212,7 +211,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def interpolate(
         self, domain: Domain, method: str = "nearest"
     ) -> "DataCube":
@@ -225,7 +224,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def resample(
         self,
         operator: Union[Callable, MethodType, str],
@@ -243,7 +242,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def to_regular(
         self,
     ) -> "DataCube":
@@ -253,7 +252,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def regrid(
         self,
         target: Union[Domain, "Field"],
@@ -276,7 +275,7 @@ class DataCube(DomainMixin):
         )
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         ds: xr.Dataset,
@@ -299,7 +298,7 @@ class DataCube(DomainMixin):
             fields=fields, properties=ds.attrs, encoding=ds.encoding
         )
 
-    @log_func_debug
+    @geokube_logging
     def to_xarray(self, encoding=True):
         xarray_fields = [
             f.to_xarray(encoding=encoding) for f in self.fields.values()
@@ -311,11 +310,11 @@ class DataCube(DomainMixin):
         dset.encoding = self.encoding
         return dset
 
-    @log_func_debug
+    @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
-    @log_func_debug
+    @geokube_logging
     def to_dict(self) -> dict:
         # NOTE: it should return concise dict representation without returning each lat/lon/time value
         dset = self.to_xarray(encoding=True)

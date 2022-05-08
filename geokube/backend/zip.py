@@ -2,7 +2,6 @@ import logging
 import os
 from typing import Any, Mapping, NoReturn, Optional
 
-import geokube.utils.exceptions as ex
 from geokube import LOGGER_NAME
 from geokube.backend.base import BaseOpener
 from geokube.core.container import Container
@@ -29,7 +28,7 @@ class _ZipOpenManager(BaseOpener):
         files = os.listdir(unzip_target)
         if not len(files):
             logger.warning("No files found in unzipped directory")
-            raise ex.HCubeValueError("No files found in unzipped directory")
+            raise ValueError("No files found in unzipped directory")
         pattern = os.path.join(unzip_target, pattern)
         hypercube = _NetCDFOpenManager(
             variable_mapping=self.variable_mapping,

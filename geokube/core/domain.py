@@ -13,9 +13,8 @@ import dask.array as da
 import pandas as pd
 import xarray as xr
 
-from ..utils import exceptions as ex
 from ..utils import util_methods
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .coord_system import (
@@ -185,7 +184,7 @@ class Domain(DomainMixin):
     def map_indexers(self, indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
         return {Axis(n): v for n, v in indexers.items()}
 
-    @log_func_debug
+    @geokube_logging
     def _process_time_combo(self, indexer: Mapping[Hashable, Any]):
         if "time" in indexer:
             indexer = indexer["time"]
@@ -202,9 +201,7 @@ class Domain(DomainMixin):
             return True
 
         if (time_coord := self[AxisType.TIME]) is None:
-            raise ex.HCubeNoSuchAxisError(
-                f"Time axis was not found for that dataset!", logger=self._LOG
-            )
+            raise KeyError(f"Time axis was not found for that dataset!")
         time_coord_dset = time_coord.to_xarray(encoding=False)
         time_coord_dt = time_coord_dset[time_coord.name].dt
 
@@ -216,7 +213,7 @@ class Domain(DomainMixin):
         inds = util_methods.list_to_slice_or_array(inds)
         return {time_coord.name: inds}
 
-    @log_func_debug
+    @geokube_logging
     def compute_bounds(
         self, coordinate: str | None = None, force: bool = False
     ) -> None:
@@ -227,10 +224,9 @@ class Domain(DomainMixin):
             self.compute_bounds(coordinate="longitude", force=False)
             return
         elif coordinate not in {"latitude", "longitude"}:
-            raise ex.HCubeNotImplementedError(
+            raise NotImplementedError(
                 "'coordinate' must be either 'latitude' or 'longitude', other "
-                "values are not currently supported",
-                logger=self._LOG,
+                "values are not currently supported"
             )
 
         # Extracting the coordinate object
@@ -248,10 +244,9 @@ class Domain(DomainMixin):
 
         # Cases for dependent or scalar coordinates are not handled
         if coord.type is not CoordinateType.INDEPENDENT:
-            raise ex.HCubeNotImplementedError(
+            raise NotImplementedError(
                 "'coordinate' must be independent to calculate its bounds, "
-                "dependent coordinates are not currently supported",
-                logger=self._LOG,
+                "dependent coordinates are not currently supported"
             )
 
         # Handling the case when `crs` is `None` or not instance of `GeogCS`
@@ -260,15 +255,13 @@ class Domain(DomainMixin):
             # TODO: Reconsider if this should be `ValueError` or some other
             # type of exception, see:
             # https://docs.python.org/3/library/exceptions.html#ValueError
-            raise ex.HCubeValueError(
-                "'crs' is None and cell bounds cannot be calculated",
-                logger=self._LOG,
+            raise ValueError(
+                "'crs' is None and cell bounds cannot be calculated"
             )
         if not isinstance(crs, GeogCS):
-            raise ex.HCubeNotImplementedError(
+            raise NotImplementedError(
                 f"'{crs.__class__.__name__}' is currently not supported for "
-                "calculating cell corners",
-                logger=self._LOG,
+                "calculating cell corners"
             )
 
         # Calculating bounds
@@ -320,7 +313,7 @@ class Domain(DomainMixin):
         return GeogCS(6371229)
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def merge(cls, domains: List[Domain]):
         # TODO: check if the domains are defined on the same crs
         coords = {}
@@ -329,7 +322,7 @@ class Domain(DomainMixin):
         return Domain(coords=coords, crs=domains[0].crs)
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         ds: xr.Dataset,
@@ -391,7 +384,7 @@ class Domain(DomainMixin):
             )
         return Domain(coords=coords, crs=crs)
 
-    @log_func_debug
+    @geokube_logging
     def to_xarray(
         self, encoding=True
     ) -> xr.core.coordinates.DatasetCoordinates:
@@ -420,10 +413,9 @@ class Domain(DomainMixin):
 
         """
         if not isinstance(coords, dict):
-            raise ex.HCubeTypeError(
+            raise TypeError(
                 f"Expected type of `coords` is `dict`, but `{type(coords)}`"
-                " provided!",
-                logger=Domain._LOG,
+                " provided!"
             )
         res_coords = []
         for k, v in coords.items():
@@ -462,11 +454,10 @@ class Domain(DomainMixin):
                     )
                 )
             else:
-                raise ex.HCubeTypeError(
+                raise TypeError(
                     "Expected types of coord values are following: [Number,"
                     " numpy.ndarray, dask.array.Array, tuple], but proided"
-                    f" type was `{type(v)}`",
-                    logger=Domain._LOG,
+                    f" type was `{type(v)}`"
                 )
 
         if crs is None:
