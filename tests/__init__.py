@@ -4,8 +4,10 @@ import timeit
 from numbers import Number
 
 import numpy as np
+import shutil
 
 RES_PATH = os.path.join("tests", "resources", "__res.nc")
+RES_DIR = os.path.join("tests", "resources", "__res")
 
 
 def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
@@ -37,10 +39,11 @@ def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
 
 
 def clear_test_res():
-    try:
-        os.remove(RES_PATH)
-    except:
-        pass
+    for f in [RES_DIR, RES_DIR]:
+        try:
+            shutil.rmtree(f)
+        except:
+            pass
 
 
 class TimeCounter:

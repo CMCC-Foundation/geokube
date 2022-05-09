@@ -177,8 +177,9 @@ class Domain(DomainMixin):
             yield k, v
         raise StopIteration
 
+    @property
     def nbytes(self) -> int:
-        return sum(coord.nbytes for coord in self._coords)
+        return sum(coord.nbytes for coord in self._coords.values())
 
     def map_indexers(self, indexers: Mapping[str, Any]) -> Mapping[Axis, Any]:
         return {Axis(n): v for n, v in indexers.items()}

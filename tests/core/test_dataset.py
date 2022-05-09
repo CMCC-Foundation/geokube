@@ -3,6 +3,7 @@ import pytest
 from geokube.backend.netcdf import open_dataset
 
 from tests.fixtures import *
+from tests import RES_PATH, RES_DIR, clear_test_res
 
 
 def test_keeping_files_after_selecting_field(dataset):
@@ -30,3 +31,26 @@ def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
 
     _ = json.dumps(dataset.to_dict())
     _ = json.dumps(dataset_single_att.to_dict())
+
+
+def test_nbytes_estimation(dataset_single_att):
+    import os
+
+    clear_test_res()
+    d2m = dataset_single_att.sel(
+        time={"day": [5, 8], "hour": [1, 2, 3, 12, 13, 14, 22, 23]}
+    ).geobbox(north=44, south=39, east=12, west=7)
+    precomputed_nbytes = d2m.nbytes
+    assert precomputed_nbytes != 0
+    os.mkdir(RES_DIR)
+    d2m.persist(RES_DIR)
+    postcomputed_nbytes = sum(
+        [
+            os.path.getsize(os.path.join(RES_DIR, f))
+            for f in os.listdir(RES_DIR)
+        ]
+    )
+    clear_test_res()
+    assert (
+        (precomputed_nbytes - postcomputed_nbytes) / postcomputed_nbytes
+    ) < 0.25  # TODO: maybe estimation should be more precise
