@@ -253,6 +253,19 @@ class DataCube(DomainMixin):
         )
 
     @geokube_logging
+    def extract_polygons(self, geometry, crop=True, return_mask=False):
+        return DataCube(
+            fields=[
+                self._fields[k].extract_polygons(
+                    geometry=geometry, crop=crop, return_mask=return_mask
+                )
+                for k in self._fields.keys()
+            ],
+            properties=self.properties,
+            encoding=self.encoding,
+        )
+
+    @geokube_logging
     def regrid(
         self,
         target: Union[Domain, "Field"],

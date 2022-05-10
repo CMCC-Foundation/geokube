@@ -762,7 +762,7 @@ class Field(Variable, DomainMixin):
             domain=GeodeticGrid(latitude=lat, longitude=lon), method="nearest"
         )
 
-    def extract_polygons(self, geometry, crop=True, return_mask=True):
+    def extract_polygons(self, geometry, crop=True, return_mask=False):
         # Preparing geometry.
         polygons = []
         for polygon in np.asarray(geometry).flat:
@@ -787,9 +787,7 @@ class Field(Variable, DomainMixin):
                 "'self.domain.type' must be 'DomainType.GRIDDED'"
             )
         field = (
-            self
-            if isinstance(self.domain.crs, RegularLatLon)
-            else self.to_regular()
+            self if isinstance(self.domain.crs, GeogCS) else self.to_regular()
         )
         lat, lon = field.latitude.values, field.longitude.values
         coords = {"latitude": lat, "longitude": lon}
