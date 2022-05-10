@@ -30,6 +30,7 @@ setuptools.setup(
         "hvplot",
         "pytest-cov",
         "pytest",
+        "shapely",
         "netCDF4",
         "scipy",
         "metpy",
