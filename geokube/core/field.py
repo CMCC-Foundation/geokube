@@ -23,6 +23,8 @@ import cartopy.feature as cartf
 import dask.array as da
 import numpy as np
 import pyarrow as pa
+from shapely.geometry import MultiPolygon, Polygon
+from shapely.vectorized import contains as sv_contains
 import xarray as xr
 import hvplot.xarray  # noqa
 import xesmf as xe
@@ -759,6 +761,60 @@ class Field(Variable, DomainMixin):
         return self.interpolate(
             domain=GeodeticGrid(latitude=lat, longitude=lon), method="nearest"
         )
+
+    def extract_polygons(self, geometry, crop=True, return_mask=True):
+        # Preparing geometry.
+        polygons = []
+        for polygon in np.asarray(geometry).flat:
+            if isinstance(polygon, Polygon):
+                polygons.append(polygon)
+            elif isinstance(polygon, MultiPolygon):
+                polygons += list(polygon.geoms)
+            else:
+                raise TypeError(
+                    "'geometry' must contain one or more instances of "
+                    f"'Polygon' or'MultiPolygon', not {type(polygon)}"
+                )
+        multi_polygon = MultiPolygon(polygons=polygons)
+
+        # Preparing masks.
+        # HACK: Check against `None` is provided temporarily.
+        if (
+            self.domain.type is not DomainType.GRIDDED
+            and self.domain.type is not None
+        ):
+            raise NotImplementedError(
+                "'self.domain.type' must be 'DomainType.GRIDDED'"
+            )
+        field = (
+            self
+            if isinstance(self.domain.crs, RegularLatLon)
+            else self.to_regular()
+        )
+        lat, lon = field.latitude.values, field.longitude.values
+        coords = {"latitude": lat, "longitude": lon}
+        mask = xr.DataArray(coords=coords, dims=coords.keys(), name="mask")
+        lon_, lat_ = np.meshgrid(lon, lat, indexing="xy")
+        mask.values = sv_contains(geometry=multi_polygon, x=lon_, y=lat_)
+
+        # Applying mask.
+        data = field.to_xarray(encoding=False).where(mask, other=np.nan)
+
+        # Cropping.
+        if crop:
+            lon_min, lat_min, lon_max, lat_max = multi_polygon.bounds
+            lat_order = 1 if lat[0] <= lat[-1] else -1
+            lon_order = 1 if lon[0] <= lon[-1] else -1
+            idx = {
+                field.latitude.name: np.s_[lat_min:lat_max:lat_order],
+                field.longitude.name: np.s_[lon_min:lon_max:lon_order],
+            }
+            data = data.sel(indexers=idx)
+
+        # Converting back to field.
+        result = Field.from_xarray(data, ncvar=field.name)
+
+        return (result, mask) if return_mask else result
 
     # TO CHECK
     @geokube_logging
