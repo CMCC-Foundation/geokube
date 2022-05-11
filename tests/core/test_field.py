@@ -1759,3 +1759,49 @@ def test_field_serialization_success_with_domtype_attr(era5_netcdf):
     assert field.domain.type is DomainType.POINTS
     field.to_netcdf(RES_PATH)
     clear_test_res()
+
+
+def test_extract_polygons_regular(era5_globe_netcdf, it_shape_100_km):
+    tp = era5_globe_netcdf["tp"]
+    field = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
+    coord_names = field.coords.keys()
+    field, mask = field.extract_polygons(
+        geometry=it_shape_100_km, crop=True, return_mask=True
+    )
+    lon_lb = it_shape_100_km.bounds["minx"].min()
+    lon_ub = it_shape_100_km.bounds["maxx"].max()
+    lat_lb = it_shape_100_km.bounds["miny"].min()
+    lat_ub = it_shape_100_km.bounds["maxy"].max()
+    assert mask.values.dtype == np.bool_
+    assert mask.coords.keys() == {"latitude", "longitude"}
+    assert np.allclose(mask.coords["latitude"], tp.coords["latitude"])
+    assert np.allclose(mask.coords["longitude"], tp.coords["longitude"])
+    assert field.coords.keys() == coord_names
+    assert field.latitude.values.min() >= lat_lb
+    assert field.latitude.values.max() <= lat_ub
+    assert field.longitude.values.min() >= lon_lb
+    assert field.longitude.values.max() <= lon_ub
+    assert np.nanmin(field.values) >= np.nanmin(tp)
+    assert np.nanmin(field.values) <= np.nanmax(tp)
+
+
+def test_extract_polygons_rotated_pole(
+    era5_rotated_netcdf_wso, it_shape_100_km
+):
+    wso = era5_rotated_netcdf_wso["W_SO"]
+    field = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    field, mask = field.extract_polygons(
+        geometry=it_shape_100_km, crop=True, return_mask=True
+    )
+    lon_lb = it_shape_100_km.bounds["minx"].min()
+    lon_ub = it_shape_100_km.bounds["maxx"].max()
+    lat_lb = it_shape_100_km.bounds["miny"].min()
+    lat_ub = it_shape_100_km.bounds["maxy"].max()
+    assert mask.values.dtype == np.bool_
+    assert mask.coords.keys() == {"latitude", "longitude"}
+    assert field.latitude.values.min() >= lat_lb
+    assert field.latitude.values.max() <= lat_ub
+    assert field.longitude.values.min() >= lon_lb
+    assert field.longitude.values.max() <= lon_ub
+    assert np.nanmin(field.values) >= np.nanmin(wso)
+    assert np.nanmin(field.values) <= np.nanmax(wso)
