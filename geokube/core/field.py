@@ -1441,18 +1441,6 @@ class Field(Variable, DomainMixin):
                     kwargs.update({"x": self.name, "y": vert.name})
                 if crs is not None and not isinstance(crs, ccrs.PlateCarree):
                     dset = self.to_regular().to_xarray(encoding=False)
-                    if "crs" in dset.coords:
-                        dset = dset.drop("crs")
-                    if (
-                        vert is not None
-                        and vert.is_dim
-                        and vert.attrs.get("positive") == "down"
-                    ):
-                        dset = dset.reindex(
-                            indexers={vert.name: dset.coords[vert.name][::-1]},
-                            copy=False,
-                        )
-                        dset.coords[vert.name] = -dset.coords[vert.name]
 
             plot_call = dset[self.name].hvplot
 
@@ -1460,6 +1448,15 @@ class Field(Variable, DomainMixin):
                 kwargs.setdefault("y", lat.name)
             if lon is not None and lon.is_dim:
                 kwargs.setdefault("x", lon.name)
+
+            if (
+                crs is None
+                and (lat.size > 1 or lon.size > 1)
+                and aspect is None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
 
             if (
                 not (
