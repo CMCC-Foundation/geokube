@@ -20,17 +20,25 @@ from typing import (
     Tuple,
     Union,
 )
+
+import pandas as pd
 import xarray as xr
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
-from .axis import Axis
-from .domain import Domain
+from .axis import Axis, AxisType
+from .coord_system import RegularLatLon
+from .domain import Domain, DomainType
 from .enums import RegridMethod
 from .field import Field
 from .domainmixin import DomainMixin
 
 IndexerType = Union[slice, List[slice], Number, List[Number]]
+
+
+# pylint: disable=missing-class-docstring
+# pylint: disable=missing-function-docstring
+
 
 # TODO: Not a priority
 # dc = datacube.set_id_pattern('{standard_name}')
@@ -286,6 +294,91 @@ class DataCube(DomainMixin):
             properties=self.properties,
             encoding=self.encoding,
         )
+
+    def to_geojson(self, target=None):
+        if self.domain.type is DomainType.POINTS:
+            if self.latitude.size != 1 or self.longitude.size != 1:
+                raise NotImplementedError(
+                    "'self.domain' must have exactly 1 point"
+                )
+            coords = [self.longitude.item(), self.latitude.item()]
+            result = {"type": "FeatureCollection", "features": []}
+            for time in self.time.values.flat:
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
+                feature = {
+                    "geometry": {"type": "Point", "coordinates": coords},
+                    "properties": {"time": time_},
+                }
+                for field in self.fields.values():
+                    value = (
+                        field.sel(time=time_) if field.time.size > 1 else field
+                    )
+                    feature["properties"][field.name] = float(value)
+                result["features"].append(feature)
+        elif (
+            self.domain.type is DomainType.GRIDDED or self.domain.type is None
+        ):
+            # HACK: The case `self.domain.type is None` is included to be able
+            # to handle undefined domain types temporarily.
+            result = {"data": []}
+            cube = (
+                self
+                if isinstance(self.domain.crs, RegularLatLon)
+                else self.to_regular()
+            )
+            axis_names = cube.domain._axis_to_name
+            units = {
+                field.name: str(field.units) for field in self.fields.values()
+            }
+            for time in self.time.values.flat:
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
+                time_data = {
+                    "type": "FeatureCollection",
+                    "date": time_,
+                    "bbox": [
+                        self.longitude.min().item(),  # West
+                        self.latitude.min().item(),  # South
+                        self.longitude.max().item(),  # East
+                        self.latitude.max().item(),  # North
+                    ],
+                    "units": units,
+                    "features": [],
+                }
+                for lat in cube.latitude.values.flat:
+                    for lon in cube.longitude.values.flat:
+                        idx = {
+                            axis_names[AxisType.LATITUDE]: lat,
+                            axis_names[AxisType.LONGITUDE]: lon,
+                        }
+                        # if self.time.shape:
+                        if self.time.size > 1:
+                            idx[axis_names[AxisType.TIME]] = time_
+                        # TODO: Check whether this works now:
+                        # this gives an error if only 1 time is selected before to_geojson()
+                        feature = {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [lon.item(), lat.item()],
+                            },
+                            "properties": {},
+                        }
+                        for field in self.fields.values():
+                            value = field.sel(indexers=idx)
+                            feature["properties"][field.name] = float(value)
+                        time_data["features"].append(feature)
+                result["data"].append(time_data)
+        else:
+            raise NotImplementedError(
+                f"'self.domain.type' is {self.domain.type}, which is currently"
+                f" not supported"
+            )
+
+        if target is not None:
+            with open(target, mode="w") as file:
+                json.dump(result, file, indent=4)
+
+        return result
 
     @classmethod
     @geokube_logging

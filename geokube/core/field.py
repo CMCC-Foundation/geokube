@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import functools as ft
+import json
 import os
 import warnings
 from html import escape
@@ -22,6 +23,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cartf
 import dask.array as da
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.vectorized import contains as sv_contains
@@ -1334,6 +1336,83 @@ class Field(Variable, DomainMixin):
 
         return plot
 
+    def to_geojson(self, target=None):
+        if self.domain.type is DomainType.POINTS:
+            if self.latitude.size != 1 or self.longitude.size != 1:
+                raise NotImplementedError(
+                    "'self.domain' must have exactly 1 point"
+                )
+            coords = [self.longitude.item(), self.latitude.item()]
+            result = {"type": "FeatureCollection", "features": []}
+            for time in self.time.values.flat:
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
+                value = self.sel(time=time_) if self.time.size > 1 else self
+                feature = {
+                    "geometry": {"type": "Point", "coordinates": coords},
+                    "properties": {"time": time_, self.name: float(value)},
+                }
+                result["features"].append(feature)
+        elif (
+            self.domain.type is DomainType.GRIDDED or self.domain.type is None
+        ):
+            # HACK: The case `self.domain.type is None` is included to be able
+            # to handle undefined domain types temporarily.
+            result = {"data": []}
+            field = (
+                self
+                if isinstance(self.domain.crs, RegularLatLon)
+                else self.to_regular()
+            )
+            axis_names = field.domain._axis_to_name
+            for time in self.time.values.flat:
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
+                time_data = {
+                    "type": "FeatureCollection",
+                    "date": time_,
+                    "bbox": [
+                        self.longitude.min().item(),  # West
+                        self.latitude.min().item(),  # South
+                        self.longitude.max().item(),  # East
+                        self.latitude.max().item(),  # North
+                    ],
+                    "units": {self.name: str(self.units)},
+                    "features": [],
+                }
+                for lat in field.latitude.values.flat:
+                    for lon in field.longitude.values.flat:
+                        idx = {
+                            axis_names[AxisType.LATITUDE]: lat,
+                            axis_names[AxisType.LONGITUDE]: lon,
+                        }
+                        # if self.time.shape:
+                        if self.time.size > 1:
+                            idx[axis_names[AxisType.TIME]] = time_
+                        # TODO: Check whether this works now:
+                        # this gives an error if only 1 time is selected before to_geojson()
+                        value = field.sel(**idx)
+                        feature = {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [lon.item(), lat.item()],
+                            },
+                            "properties": {self.name: float(value)},
+                        }
+                        time_data["features"].append(feature)
+                result["data"].append(time_data)
+        else:
+            raise NotImplementedError(
+                f"'self.domain.type' is {self.domain.type}, which is currently"
+                f" not supported"
+            )
+
+        if target is not None:
+            with open(target, mode="w") as file:
+                json.dump(result, file, indent=4)
+
+        return result
+
+    @geokube_logging
     def hvplot(self, aspect=None, **kwargs):
         # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
         # for the details on what can be passed with `kwargs`.
