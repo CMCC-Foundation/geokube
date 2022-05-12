@@ -301,11 +301,16 @@ class DataCube(DomainMixin):
                 raise NotImplementedError(
                     "'self.domain' must have exactly 1 point"
                 )
+            units = {
+                field.name: str(field.units) for field in self.fields.values()
+            }
             coords = [self.longitude.item(), self.latitude.item()]
             result = {"type": "FeatureCollection", "features": []}
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 feature = {
+                    "type": "Feature",
+                    "units": units,
                     "geometry": {"type": "Point", "coordinates": coords},
                     "properties": {"time": time_},
                 }
