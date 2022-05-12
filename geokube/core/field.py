@@ -1567,6 +1567,23 @@ class Field(Variable, DomainMixin):
                     lon_name = f"{lon_name} ({lon_units})"
                 kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
 
+            # TODO: Consider improving the logic (handling conditions).
+            if (
+                kwargs.get("tiles")
+                and lat is not None
+                and lon is not None
+                and kwargs.get("x") == lon.name
+                and kwargs.get("y") == lat.name
+                and aspect is None
+            ):
+                lat_name = lat.attrs.get("long_name", lat.name)
+                if (lat_units := lat.attrs.get("units")) is not None:
+                    lat_name = f"{lat_name} ({lat_units})"
+                lon_name = lon.attrs.get("long_name", lon.name)
+                if (lon_units := lon.attrs.get("units")) is not None:
+                    lon_name = f"{lon_name} ({lon_units})"
+                kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
+
             return plot_call(**kwargs)
 
         raise NotImplementedError(
