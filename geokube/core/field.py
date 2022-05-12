@@ -1343,11 +1343,16 @@ class Field(Variable, DomainMixin):
                     "'self.domain' must have exactly 1 point"
                 )
             coords = [self.longitude.item(), self.latitude.item()]
-            result = {"type": "FeatureCollection", "features": []}
+            result = {
+                "type": "FeatureCollection",
+                "units": {self.name: str(self.units)},
+                "features": [],
+            }
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 value = self.sel(time=time_) if self.time.size > 1 else self
                 feature = {
+                    "type": "Feature",
                     "geometry": {"type": "Point", "coordinates": coords},
                     "properties": {"time": time_, self.name: float(value)},
                 }
@@ -1403,7 +1408,7 @@ class Field(Variable, DomainMixin):
         else:
             raise NotImplementedError(
                 f"'self.domain.type' is {self.domain.type}, which is currently"
-                f" not supported"
+                " not supported"
             )
 
         if target is not None:
