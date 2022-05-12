@@ -1451,6 +1451,8 @@ class Field(Variable, DomainMixin):
 
             if (
                 crs is None
+                and lat is not None
+                and lon is not None
                 and (lat.size > 1 or lon.size > 1)
                 and aspect is None
             ):
@@ -1472,10 +1474,10 @@ class Field(Variable, DomainMixin):
                 kwargs["crs"] = crs
                 kwargs.setdefault("rasterize", True)
                 kwargs.setdefault("project", True)
-                lat_name = lat.attrs.get("long_name", "latitude")
+                lat_name = lat.attrs.get("long_name", lat.name)
                 if (lat_units := lat.attrs.get("units")) is not None:
                     lat_name = f"{lat_name} ({lat_units})"
-                lon_name = lon.attrs.get("long_name", "longitude")
+                lon_name = lon.attrs.get("long_name", lon.name)
                 if (lon_units := lon.attrs.get("units")) is not None:
                     lon_name = f"{lon_name} ({lon_units})"
                 kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
