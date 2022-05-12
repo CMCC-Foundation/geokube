@@ -376,7 +376,7 @@ class DataCube(DomainMixin):
         else:
             raise NotImplementedError(
                 f"'self.domain.type' is {self.domain.type}, which is currently"
-                f" not supported"
+                " not supported"
             )
 
         if target is not None:
