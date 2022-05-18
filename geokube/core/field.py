@@ -1470,10 +1470,12 @@ class Field(Variable, DomainMixin):
             if aspect == "time_series":
                 data = dset[self.name]
                 data = data.assign_coords(points=points)
+                kwargs.update({"geo": False, "tiles": False})
                 return data.hvplot(x=time.name, by="points", **kwargs)
             if aspect == "profile":
                 data = dset[self.name]
                 data = data.assign_coords(points=points)
+                kwargs.update({"geo": False, "tiles": False})
                 return data.hvplot(y=vert.name, by="points", **kwargs)
             if aspect == "points":
                 data = xr.Dataset(
@@ -1521,8 +1523,10 @@ class Field(Variable, DomainMixin):
             if aspect is not None:
                 if aspect == "time_series":
                     kwargs.update({"x": time.name, "y": self.name})
+                    kwargs.update({"geo": False, "tiles": False})
                 elif aspect == "profile":
                     kwargs.update({"x": self.name, "y": vert.name})
+                    kwargs.update({"geo": False, "tiles": False})
                 if crs is not None and not isinstance(crs, ccrs.PlateCarree):
                     dset = self.to_regular().to_xarray(encoding=False)
 
