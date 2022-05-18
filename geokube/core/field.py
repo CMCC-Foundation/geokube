@@ -1525,18 +1525,6 @@ class Field(Variable, DomainMixin):
                     kwargs.update({"x": self.name, "y": vert.name})
                 if crs is not None and not isinstance(crs, ccrs.PlateCarree):
                     dset = self.to_regular().to_xarray(encoding=False)
-                    if "crs" in dset.coords:
-                        dset = dset.drop("crs")
-                    if (
-                        vert is not None
-                        and vert.is_dim
-                        and vert.attrs.get("positive") == "down"
-                    ):
-                        dset = dset.reindex(
-                            indexers={vert.name: dset.coords[vert.name][::-1]},
-                            copy=False,
-                        )
-                        dset.coords[vert.name] = -dset.coords[vert.name]
 
             plot_call = dset[self.name].hvplot
 
@@ -1544,6 +1532,17 @@ class Field(Variable, DomainMixin):
                 kwargs.setdefault("y", lat.name)
             if lon is not None and lon.is_dim:
                 kwargs.setdefault("x", lon.name)
+
+            if (
+                crs is None
+                and lat is not None
+                and lon is not None
+                and (lat.size > 1 or lon.size > 1)
+                and aspect is None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
 
             if (
                 not (
@@ -1559,10 +1558,10 @@ class Field(Variable, DomainMixin):
                 kwargs["crs"] = crs
                 kwargs.setdefault("rasterize", True)
                 kwargs.setdefault("project", True)
-                lat_name = lat.attrs.get("long_name", "latitude")
+                lat_name = lat.attrs.get("long_name", lat.name)
                 if (lat_units := lat.attrs.get("units")) is not None:
                     lat_name = f"{lat_name} ({lat_units})"
-                lon_name = lon.attrs.get("long_name", "longitude")
+                lon_name = lon.attrs.get("long_name", lon.name)
                 if (lon_units := lon.attrs.get("units")) is not None:
                     lon_name = f"{lon_name} ({lon_units})"
                 kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
