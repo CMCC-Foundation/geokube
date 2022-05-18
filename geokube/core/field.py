@@ -1446,14 +1446,14 @@ class Field(Variable, DomainMixin):
 
         # Considering the case when boxplot is required.
         if boxplot:
-            group = kwargs.get('groupby')
-            if group == 'vertical':
-                kwargs['groupby'] = vert.name
-            elif group and not isinstance(group, str) and 'vertical' in group:
+            group = kwargs.get("groupby")
+            if group == "vertical":
+                kwargs["groupby"] = vert.name
+            elif group and not isinstance(group, str) and "vertical" in group:
                 group = list(group)
-                idx = group.index('vertical')
+                idx = group.index("vertical")
                 group[idx] = vert.name
-                kwargs['groupby'] = group
+                kwargs["groupby"] = group
 
             data = dset[self.name]
 
