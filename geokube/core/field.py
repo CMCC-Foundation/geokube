@@ -1418,7 +1418,7 @@ class Field(Variable, DomainMixin):
         return result
 
     @geokube_logging
-    def hvplot(self, aspect=None, **kwargs):
+    def hvplot(self, aspect=None, boxplot=False, **kwargs):
         # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
         # for the details on what can be passed with `kwargs`.
 
@@ -1443,6 +1443,29 @@ class Field(Variable, DomainMixin):
                 copy=False,
             )
             dset.coords[vert.name] = -dset.coords[vert.name]
+
+        # Considering the case when boxplot is required.
+        if boxplot:
+            group = kwargs.get('groupby')
+            if group == 'vertical':
+                kwargs['groupby'] = vert.name
+            elif group and not isinstance(group, str) and 'vertical' in group:
+                group = list(group)
+                idx = group.index('vertical')
+                group[idx] = vert.name
+                kwargs['groupby'] = group
+
+            data = dset[self.name]
+
+            if self._domain._type is DomainType.POINTS:
+                with np.nditer((lat.values, lon.values)) as it:
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                        for lat_, lon_ in it
+                    ]
+                data = data.assign_coords(points=points)
+
+            return data.hvplot.box(y=self.name, **kwargs)
 
         # Working with `DomainType.POINTS`.
         if self._domain._type is DomainType.POINTS:
