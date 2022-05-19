@@ -34,6 +34,7 @@ setuptools.setup(
         "netCDF4",
         "scipy",
         "metpy",
+        "plotly",
         "pyarrow",
     ],
     classifiers=[
