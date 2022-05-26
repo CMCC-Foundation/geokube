@@ -24,6 +24,7 @@ import cartopy.feature as cartf
 import dask.array as da
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import pyarrow as pa
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.vectorized import contains as sv_contains
@@ -1418,7 +1419,7 @@ class Field(Variable, DomainMixin):
         return result
 
     @geokube_logging
-    def hvplot(self, aspect=None, **kwargs):
+    def hvplot(self, aspect=None, boxplot=False, **kwargs):
         # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
         # for the details on what can be passed with `kwargs`.
 
@@ -1443,6 +1444,29 @@ class Field(Variable, DomainMixin):
                 copy=False,
             )
             dset.coords[vert.name] = -dset.coords[vert.name]
+
+        # Considering the case when boxplot is required.
+        if boxplot:
+            group = kwargs.get("groupby")
+            if group == "vertical":
+                kwargs["groupby"] = vert.name
+            elif group and not isinstance(group, str) and "vertical" in group:
+                group = list(group)
+                idx = group.index("vertical")
+                group[idx] = vert.name
+                kwargs["groupby"] = group
+
+            data = dset[self.name]
+
+            if self._domain._type is DomainType.POINTS:
+                with np.nditer((lat.values, lon.values)) as it:
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                        for lat_, lon_ in it
+                    ]
+                data = data.assign_coords(points=points)
+
+            return data.hvplot.box(y=self.name, **kwargs)
 
         # Working with `DomainType.POINTS`.
         if self._domain._type is DomainType.POINTS:
@@ -1592,6 +1616,94 @@ class Field(Variable, DomainMixin):
         raise NotImplementedError(
             "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
         )
+
+    @geokube_logging
+    def box_plot(self, by=None, orientation="vertical", **kwargs):
+        # NOTE: `kwargs` are passed directly or in a slightly modified form
+        # to `plotly.express.box`. For more details, see the official
+        # documentation:
+        # * https://plotly.github.io/plotly.py-docs/generated/plotly.express.box.html
+        # * https://plotly.com/python/box-plots/
+
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        if by is None:
+            by_ = None
+        elif by == "points" and self._domain._type is DomainType.POINTS:
+            by_ = "points"
+        else:
+            if by in (dim_types := {ax.value[0] for ax in axis_names.keys()}):
+                by_ = getattr(self, by).name
+            elif by not in (dim_names := {*axis_names.values()}):
+                raise ValueError(
+                    "'by' must be 'None' or one of the following: "
+                    f"{sorted(dim_types | dim_names)}"
+                )
+
+        if orientation in {"h", "horizontal"}:
+            kwargs.setdefault("x", self.name)
+            if by_:
+                kwargs.setdefault("y", by_)
+        elif orientation in {"v", "vertical"}:
+            kwargs.setdefault("y", self.name)
+            if by_:
+                kwargs.setdefault("x", by_)
+        else:
+            raise ValueError(
+                "'orientation' must be either 'horizontal' ('h') or "
+                "'vertical' ('v')"
+            )
+
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        if (
+            vert is not None
+            and vert.is_dim
+            and vert.attrs.get("positive") == "down"
+        ):
+            dset = dset.reindex(
+                indexers={vert.name: dset.coords[vert.name][::-1]},
+                copy=False,
+            )
+            dset.coords[vert.name] = -dset.coords[vert.name]
+
+        darr = dset[self.name]
+        if self._domain._type is DomainType.POINTS:
+            with np.nditer((lat.values, lon.values)) as it:
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
+                darr = darr.assign_coords(points=points)
+
+        df = darr.to_dataframe()
+        df_ = df.index.to_frame()
+        df_.index = np.arange(df_.shape[0])
+        for col_name in df.columns.to_numpy().flat:
+            df_[col_name] = df[col_name].to_numpy()
+        af = kwargs.get("animation_frame")
+        if af and af == time.name:
+            kwargs["animation_frame"] = animation_name = af + "_"
+            df_[animation_name] = df_[af].astype(str)
+
+        fig = px.box(df_, **kwargs)
+
+        if af:
+            min_, max_ = np.nanmin(self.values), np.nanmax(self.values)
+            margin = 0.05 * (np.nanmax(self.values) - np.nanmin(self.values))
+            bounds = [min_ - margin, max_ + margin]
+            name = f"{'x' if orientation[0] == 'h' else 'y'}axis_range"
+            kwa = {name: bounds}
+            fig.update_layout(**kwa)
+            # for f in fig.frames:
+            #     f.layout.update(**kwa)
+
+        return fig
 
     @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Dataset:
