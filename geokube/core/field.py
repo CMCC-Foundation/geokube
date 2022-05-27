@@ -1473,24 +1473,48 @@ class Field(Variable, DomainMixin):
             n_pts = lat.size
             n_time = time.size if (time is not None and time.is_dim) else 0
             n_vert = vert.size if (vert is not None and vert.is_dim) else 0
-            with np.nditer((lat.values, lon.values)) as it:
-                # points = [
-                #     f'{lat.name}={lat_.item():.2f} {lat.units}, '
-                #     f'{lon.name}={lon_.item():.2f} {lon.units}'
-                #     for lat_, lon_ in it
-                # ]
-                points = [
-                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
-                    for lat_, lon_ in it
-                ]
-            if aspect is None:
-                # Integers determine the priority in the case of equal sizes:
-                # greater number means higher priority.
-                aspect = max(
-                    (n_time, 1, "time_series"),
-                    (n_vert, 2, "profile"),
-                    (n_pts, 3, "points"),
-                )[2]
+            if vert is None or vert.is_dim:
+                # NOTE: Case when vertical is given as a profile.
+                vals = (lat.values, lon.values)
+                with np.nditer(vals) as it:
+                    # NOTE: This approach might result in an error when the
+                    # string representations of multiple points are equal.
+                    # points = [
+                    #     f'{lat.name}={lat_.item():.2f} {lat.units}, '
+                    #     f'{lon.name}={lon_.item():.2f} {lon.units}'
+                    #     for lat_, lon_ in it
+                    # ]
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                        for lat_, lon_ in it
+                    ]
+                if aspect is None:
+                    # Integers determine the priority in the case of equal:
+                    # sizes greater number means higher priority.
+                    aspect = max(
+                        (n_time, 1, "time_series"),
+                        (n_vert, 2, "profile"),
+                        (n_pts, 3, "points"),
+                    )[2]
+            else:
+                # NOTE: Case when vertical is given as points.
+                # NOTE: This approach might result in an error when the
+                # string representations of multiple points are equal.
+                dset.coords[vert.name] = -dset.coords[vert.name]
+                vals = (lat.values, lon.values, dset.coords[vert.name].values)
+                with np.nditer(vals) as it:
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}° "
+                        f"{vert_.item():.2f} {vert.units}"
+                        for lat_, lon_, vert_ in it
+                    ]
+                if aspect is None:
+                    # Integers determine the priority in the case of equal:
+                    # sizes greater number means higher priority.
+                    aspect = max(
+                        (n_time, 1, "time_series"),
+                        (n_pts, 2, "points"),
+                    )[2]
             if aspect == "time_series":
                 data = dset[self.name]
                 data = data.assign_coords(points=points)
@@ -1502,13 +1526,18 @@ class Field(Variable, DomainMixin):
                 kwargs.update({"geo": False, "tiles": False})
                 return data.hvplot(y=vert.name, by="points", **kwargs)
             if aspect == "points":
-                data = xr.Dataset(
-                    data_vars={
-                        self.name: dset[self.name],
-                        "lat": dset.coords["latitude"],
-                        "lon": dset.coords["longitude"],
-                    }
-                )
+                data_vars = {
+                    self.name: dset[self.name],
+                    "lat": dset.coords["latitude"],
+                    "lon": dset.coords["longitude"],
+                }
+                if (vert is not None) and (not vert.is_dim):
+                    data_vars["vert"] = dset.coords[vert.name]
+                    if "groupby" not in kwargs:
+                        kwargs["groupby"] = sorted(
+                            self.coords.keys() - {"latitude", "longitude"}
+                        )
+                data = xr.Dataset(data_vars=data_vars)
                 return data.hvplot.scatter(
                     x="lon",
                     y="lat",
