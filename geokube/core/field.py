@@ -1569,8 +1569,8 @@ class Field(Variable, DomainMixin):
                 and aspect is None
             ):
                 plot_call = plot_call.quadmesh
-                kwargs.setdefault("rasterize", False)
-                kwargs.setdefault("project", False)
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
 
             if (
                 not (
