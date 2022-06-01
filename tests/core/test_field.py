@@ -1805,3 +1805,23 @@ def test_extract_polygons_rotated_pole(
     assert field.longitude.values.max() <= lon_ub
     assert np.nanmin(field.values) >= np.nanmin(wso)
     assert np.nanmin(field.values) <= np.nanmax(wso)
+
+
+def test_using_geo_domtype_attribute_in_serialization_field(
+    era5_rotated_netcdf_wso,
+):
+    clear_test_res()
+    field = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    field.domain.type = DomainType("points")
+    field_dset = field.to_xarray(False)[
+        "lwe_thickness_of_moisture_content_of_soil_layer"
+    ]
+    assert "__geo_domtype" in field_dset.attrs
+    assert isinstance(field_dset.attrs["__geo_domtype"], DomainType)
+    with pytest.raises(TypeError, match=r"Invalid value for attr*"):
+        field_dset.to_netcdf(RES_PATH)
+
+    field_dset = field.to_xarray(True)["W_SO"]
+    assert "__geo_domtype" not in field_dset.attrs
+    field_dset.to_netcdf(RES_PATH)
+    clear_test_res()

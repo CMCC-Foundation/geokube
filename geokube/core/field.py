@@ -1769,8 +1769,9 @@ class Field(Variable, DomainMixin):
         # NOTE: a workaround for keeping domaintype
         # Issue: https://github.com/geokube/geokube/issues/147
         # If saved in .nc file, domain_type should be converted to str
-        if (domain_type := self.domain.type) is not None and encoding is False:
+        if (domain_type := self.domain.type) is not None and (not encoding):
             data_vars[var_name].attrs["__geo_domtype"] = domain_type
+
         return xr.Dataset(data_vars=data_vars, coords=coords)
 
     @classmethod
@@ -1788,16 +1789,16 @@ class Field(Variable, DomainMixin):
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
             )
 
-        da = ds[ncvar].copy(copy)  # TODO: TO CHECK
-        cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
-        var = Variable.from_xarray(da, id_pattern, mapping=mapping)
-        # We need to update `encoding` of var, as `Variable` doesn't contain `name`
-
         domain = Domain.from_xarray(
             ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
         )
+        da = ds[ncvar].copy(copy)  # TODO: TO CHECK
+        cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
+        var = Variable.from_xarray(da, id_pattern, mapping=mapping)
+
         name = Variable._get_name(da, mapping=mapping, id_pattern=id_pattern)
 
+        # We need to update `encoding` of var, as `Variable` doesn't contain `name`
         var.encoding.update(name=da.encoding.get("name", ncvar))
         # TODO ancillary variables
         field = Field(

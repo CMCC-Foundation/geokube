@@ -246,7 +246,7 @@ class Dataset:
         )
         persisted = (
             dataframe_item[self.DATACUBE_COL]
-            .to_xarray()
+            .to_xarray(encoding=True)
             .to_netcdf(path_to_store)
         )
         if isinstance(persisted, Delayed):
