@@ -1769,7 +1769,9 @@ class Field(Variable, DomainMixin):
         # NOTE: a workaround for keeping domaintype
         # Issue: https://github.com/geokube/geokube/issues/147
         # If saved in .nc file, domain_type should be converted to str
-        if (domain_type := self.domain.type) is not None and encoding is False:
+        if ((domain_type := self.domain.type) is not None) and (
+            encoding is False
+        ):
             data_vars[var_name].attrs["__geo_domtype"] = domain_type
         return xr.Dataset(data_vars=data_vars, coords=coords)
 

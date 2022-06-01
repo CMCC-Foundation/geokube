@@ -423,7 +423,7 @@ class DataCube(DomainMixin):
 
     @geokube_logging
     def to_netcdf(self, path):
-        self.to_xarray().to_netcdf(path=path)
+        self.to_xarray(encoding=True).to_netcdf(path=path)
 
     @geokube_logging
     def to_dict(self) -> dict:
