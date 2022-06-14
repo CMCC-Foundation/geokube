@@ -54,3 +54,9 @@ def test_nbytes_estimation(dataset_single_att):
     assert (
         (precomputed_nbytes - postcomputed_nbytes) / postcomputed_nbytes
     ) < 0.25  # TODO: maybe estimation should be more precise
+
+def test_persist_and_return_paths(dataset):
+    clear_test_res()
+    dataset.persist(RES_DIR)
+    import pdb;pdb.set_trace()
+    pass

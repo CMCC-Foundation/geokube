@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from numbers import Number
@@ -9,6 +10,7 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
+from zipfile import ZipFile
 
 from ..utils.decorators import geokube_logging
 from ..utils import util_methods
@@ -230,11 +232,29 @@ class Dataset:
         )
         return dset._drop_empty() if drop_empty else dset
 
+<<<<<<< HEAD
     def persist(self, path=None):
         if path is None:
             path = tempfile.gettempdir()
 
         self.data.apply(self._persist_datacube, path=path, axis=1)
+=======
+    def persist(self, path=None, zip_if_many=False) -> str:
+        if path is None:
+            path = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+            if not os.path.exists(path):
+                os.makedirs(path)
+
+        paths = self.data.apply(self._persist_datacube, path=path, axis=1)
+        if zip_if_many:
+            path = f"{path}.zip"
+            with ZipFile(path, 'w') as archive:
+                for file in paths:
+                    archive.write(file)
+            for file in paths:
+                os.remove(file)
+        return path
+>>>>>>> 5b190f2... Add zip_if_many flag
 
     @property
     def nbytes(self) -> int:
@@ -244,13 +264,10 @@ class Dataset:
         path_to_store = os.path.join(
             path, os.path.basename(dataframe_item[self.FILES_COL][0])
         )
-        persisted = (
-            dataframe_item[self.DATACUBE_COL]
-            .to_xarray(encoding=True)
-            .to_netcdf(path_to_store)
-        )
         if isinstance(persisted, Delayed):
             persisted.compute()
+        persisted = dataframe_item[self.DATACUBE_COL].persist(path_to_store)
+        return path_to_store
 
 
 def _apply(
