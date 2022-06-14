@@ -1384,6 +1384,8 @@ class Field(Variable, DomainMixin):
                     "units": {self.name: str(self.units)},
                     "features": [],
                 }
+                grid_x = 0.5
+                grid_y = 0.5
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
                         idx = {
@@ -1395,12 +1397,23 @@ class Field(Variable, DomainMixin):
                             idx[axis_names[AxisType.TIME]] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
+                        # 
+                        # Polygon:
+                        # for each lat/lon we have to define a polygon with lan/lon centered
+                        # the cell length depends on the grid resolution (that should be computed)
                         value = field.sel(**idx)
+                        lonv = lon.item()
+                        latv = lat.item()
                         feature = {
                             "type": "Feature",
                             "geometry": {
-                                "type": "Point",
-                                "coordinates": [lon.item(), lat.item()],
+                                "type": "Polygon",
+                                "coordinates":[  
+                                   [ [lonv - grid_x, latv + grid_y], [lonv + grid_x, latv + grid_y],
+                                     [lonv + grid_x, latv - grid_y], [lonv - grid_x, latv - grid_y],
+                                     [lonv - grid_x, latv + grid_y]
+                                   ]
+                                ]
                             },
                             "properties": {self.name: float(value)},
                         }
