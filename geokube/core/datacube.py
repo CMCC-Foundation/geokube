@@ -1,6 +1,9 @@
+import os
 import json
 import logging
 import re
+import uuid
+import tempfile
 import warnings
 from collections import defaultdict
 from enum import Enum
@@ -424,6 +427,24 @@ class DataCube(DomainMixin):
     @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray(encoding=True).to_netcdf(path=path)
+
+    def persist(self, path=None) -> str:
+        if path is None:
+            path = os.path.join(
+                tempfile.gettempdir(), f"{str(uuid.uuid4())}.nc"
+            )
+        if not path.endswith(".nc"):
+            self._LOG.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            warnings.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            path = path + ".nc"
+        self.to_netcdf(path)
+        return path
 
     @geokube_logging
     def to_dict(self) -> dict:

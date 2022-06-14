@@ -1,3 +1,4 @@
+import os
 import cartopy.crs as ccrs
 import numpy as np
 import pytest
@@ -14,7 +15,7 @@ from geokube.core.domain import Domain
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
 
-from tests import RES_PATH, clear_test_res
+from tests import RES_PATH, RES_DIR, clear_test_res
 from tests.fixtures import *
 
 
@@ -212,3 +213,16 @@ def test_get_single_field_by_standard_name(rotated_pole_datacube):
     assert isinstance(res, Field)
     assert res.name == "air_temperature"
     assert res.ncvar == "TMIN_2M"
+
+
+def test_persist_with_no_extension(rotated_pole_datacube):
+    clear_test_res()
+    with pytest.warns(UserWarning, match=r"Provided persistance path*"):
+        path = rotated_pole_datacube.persist(RES_DIR)
+        assert path == RES_DIR + ".nc"
+    clear_test_res()
+
+
+def test_persist_no_path_passed(rotated_pole_datacube):
+    path = rotated_pole_datacube.persist()
+    assert os.path.exists(path)

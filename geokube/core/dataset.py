@@ -1,4 +1,5 @@
 from __future__ import annotations
+from logging import warning
 
 import os
 import uuid
@@ -232,29 +233,27 @@ class Dataset:
         )
         return dset._drop_empty() if drop_empty else dset
 
-<<<<<<< HEAD
-    def persist(self, path=None):
-        if path is None:
-            path = tempfile.gettempdir()
-
-        self.data.apply(self._persist_datacube, path=path, axis=1)
-=======
     def persist(self, path=None, zip_if_many=False) -> str:
         if path is None:
             path = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
-            if not os.path.exists(path):
-                os.makedirs(path)
+        if not os.path.exists(path):
+            os.makedirs(path)
 
         paths = self.data.apply(self._persist_datacube, path=path, axis=1)
+        if len(paths) == 0:
+            warning.warn(
+                "No files were created while geokube.Dataset persisting!"
+            )
+        elif len(paths) == 1:
+            return paths.iloc[0]
         if zip_if_many:
-            path = f"{path}.zip"
-            with ZipFile(path, 'w') as archive:
+            path = os.path.join(path, f"{str(uuid.uuid4())}.zip")
+            with ZipFile(path, "w") as archive:
                 for file in paths:
-                    archive.write(file)
+                    archive.write(file, arcname=os.path.basename(file))
             for file in paths:
                 os.remove(file)
         return path
->>>>>>> 5b190f2... Add zip_if_many flag
 
     @property
     def nbytes(self) -> int:
@@ -264,10 +263,10 @@ class Dataset:
         path_to_store = os.path.join(
             path, os.path.basename(dataframe_item[self.FILES_COL][0])
         )
-        if isinstance(persisted, Delayed):
-            persisted.compute()
-        persisted = dataframe_item[self.DATACUBE_COL].persist(path_to_store)
-        return path_to_store
+        dcube = dataframe_item[self.DATACUBE_COL]
+        if isinstance(dcube, Delayed):
+            dcube.compute()
+        return dcube.persist(path_to_store)
 
 
 def _apply(
