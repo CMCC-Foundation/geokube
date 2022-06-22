@@ -84,3 +84,31 @@ def test_persist_and_return_paths_with_zipping(dataset):
         assert RES_DIR not in n
     assert len(names) == 4
     clear_test_res()
+
+
+def test_persisting_with_empty_one_datacube(dataset_single_att):
+    clear_test_res()
+    cube0 = dataset_single_att.data.iloc[0].datacube
+    cube0 = cube0.sel(time=slice("1-01-01", "1-02-01"))
+    dataset_single_att.data.iat[0, 2] = cube0
+    path = dataset_single_att.persist(RES_DIR)
+    assert ".nc" in path
+    assert ".zip" not in path
+    clear_test_res()
+
+
+def test_persisting_with_empty_all_datacube(dataset_single_att):
+    clear_test_res()
+    cube0 = dataset_single_att.data.iloc[0].datacube
+    cube0 = cube0.sel(time=slice("1-01-01", "1-02-01"))
+    cube1 = dataset_single_att.data.iloc[1].datacube
+    cube1 = cube1.sel(time=slice("1-01-01", "1-02-01"))
+    dataset_single_att.data.iat[0, 2] = cube0
+    dataset_single_att.data.iat[1, 2] = cube1
+    with pytest.warns(
+        UserWarning,
+        match=r"No files were created while geokube.Dataset persisting!",
+    ):
+        path = dataset_single_att.persist(RES_DIR)
+    assert path is None
+    clear_test_res()

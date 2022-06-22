@@ -29,6 +29,7 @@ import xarray as xr
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
+from .errs import EmptyDataCubeError
 from .axis import Axis, AxisType
 from .coord_system import RegularLatLon
 from .domain import Domain, DomainType
@@ -443,6 +444,7 @@ class DataCube(DomainMixin):
                 " Adding automatically!"
             )
             path = path + ".nc"
+        self.assert_not_empty()
         self.to_netcdf(path)
         return path
 
@@ -454,3 +456,18 @@ class DataCube(DomainMixin):
             "variables": list(dset.data_vars.keys()),
             "coordinates": list(dset.coords.keys()),
         }
+
+    def assert_not_empty(self):
+        if not len(self):
+            self._LOG.warn("No fields in DataCube")
+            raise EmptyDataCubeError("No fields in DataCube!")
+        for fname, field in self.fields.items():
+            if 0 in field.shape:
+                self._LOG.warn(
+                    f"One of coordinate is empty for the field `{fname}`."
+                    f" Shape=`{field.shape}`. Dimensions=`{field.dim_names}`!"
+                )
+                raise EmptyDataCubeError(
+                    f"One of coordinate is empty for the field `{fname}`."
+                    f" Shape=`{field.shape}`. Dimensions=`{field.dim_names}`!"
+                )
