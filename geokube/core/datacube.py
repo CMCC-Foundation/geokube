@@ -408,9 +408,12 @@ class DataCube(DomainMixin):
                     ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
                 )
             )
-        return DataCube(
-            fields=fields, properties=ds.attrs, encoding=ds.encoding
-        )
+        # Issue https://github.com/opengeokube/geokube/issues/221
+        attrs = ds.attrs.copy()
+        encoding = ds.encoding.copy()
+        attrs.pop("_NCProperties", None)
+        encoding.pop("_NCProperties", None)
+        return DataCube(fields=fields, properties=attrs, encoding=encoding)
 
     @geokube_logging
     def to_xarray(self, encoding=True):
