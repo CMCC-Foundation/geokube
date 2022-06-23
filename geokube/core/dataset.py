@@ -1,5 +1,5 @@
 from __future__ import annotations
-from logging import warning
+import warnings
 
 import os
 import uuid
@@ -16,6 +16,7 @@ from zipfile import ZipFile
 from ..utils.decorators import geokube_logging
 from ..utils import util_methods
 from ..utils.hcube_logger import HCubeLogger
+from .errs import EmptyDataCubeError
 from .axis import Axis
 from .datacube import DataCube
 
@@ -240,10 +241,13 @@ class Dataset:
             os.makedirs(path)
 
         paths = self.data.apply(self._persist_datacube, path=path, axis=1)
+        # NOTE: omit None paths -- results of empty DataCube persistance
+        paths = paths[~paths.isna()]
         if len(paths) == 0:
-            warning.warn(
+            warnings.warn(
                 "No files were created while geokube.Dataset persisting!"
             )
+            return None
         elif len(paths) == 1:
             return paths.iloc[0]
         if zip_if_many:
@@ -266,7 +270,11 @@ class Dataset:
         dcube = dataframe_item[self.DATACUBE_COL]
         if isinstance(dcube, Delayed):
             dcube.compute()
-        return dcube.persist(path_to_store)
+        try:
+            return dcube.persist(path_to_store)
+        except EmptyDataCubeError:
+            self._LOG.warn(f"Skipping empty Dataset item!")
+            return None
 
 
 def _apply(
