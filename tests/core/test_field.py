@@ -22,7 +22,7 @@ from geokube.core.field import Field
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
 from geokube.utils import util_methods
-from tests import RES_PATH, clear_test_res
+from tests import RES_PATH, clear_test_res, compare_dicts
 from tests.fixtures import *
 
 
@@ -1826,3 +1826,14 @@ def test_using_geo_domtype_attribute_in_serialization_field(
     assert "__geo_domtype" not in field_dset.attrs
     field_dset.to_netcdf(RES_PATH)
     clear_test_res()
+
+
+def test_keep_encoding_after_to_regular(era5_rotated_netcdf_wso):
+    field = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    reg_field = field.to_regular()
+    compare_dicts(
+        field.encoding,
+        reg_field.encoding,
+        exclude_d1=["grid_mapping", "coordinates", "_FillValue"],
+        exclude_d2=["grid_mapping", "coordinates", "_FillValue"],
+    )
