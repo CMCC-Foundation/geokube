@@ -488,7 +488,7 @@ class Field(Variable, DomainMixin):
             dset_interp = dset.interp(coords=interp_coords, method=method)
             dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
-        # dset_interp[self.name].encoding.update(dset[self.name].encoding)
+        dset_interp[self.name].encoding.update(dset[self.name].encoding)
         dset_interp[self.name].encoding[
             "coordinates"
         ] = f"{domain.latitude.name} {domain.longitude.name}"
@@ -505,6 +505,7 @@ class Field(Variable, DomainMixin):
         )
 
         field.domain.type = domain.type
+        field.domain.crs = domain.crs
         return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):

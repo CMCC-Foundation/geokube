@@ -27,7 +27,7 @@ def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
             assert np.isnan(d2[ek])
         else:
             assert ek in d2
-            assert d1[ek] == d2[ek]
+            assert d1[ek] == d2[ek], f"Key: {ek}. {d1[ek]} != {d2[ek]}"
     for ek in set(d2.keys()) - set(d1.keys()) - set(exclude_d2):
         assert ek in d1, f"{ek} not present in d1"
         if d2[ek] is None:
@@ -35,7 +35,7 @@ def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
         if isinstance(d2[ek], Number) and np.isnan(d2[ek]):
             assert np.isnan(d1[ek])
         else:
-            assert d1[ek] == d2[ek]
+            assert d1[ek] == d2[ek], f"Key: {ek}. {d1[ek]} != {d2[ek]}"
 
 
 def clear_test_res():
