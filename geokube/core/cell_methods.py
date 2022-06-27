@@ -58,32 +58,22 @@ class CellMethod:
             par_close_index = val.find(")")
 
         where_val = interval_val = comment_val = None
-        min_idx = np.nanmin(
-            [
-                interval_start_idx,
-                comment_start_idx,
-                where_start_idx,
-                par_open_index,
-                par_close_index,
-            ]
-        )
-        if np.isnan(
-            min_idx
-        ):  # Result of nanmin where all items are NaN results in NaN
-            # If there is not `where` or something in (), then takes all string to parse to `method` and `axis`
-            axis, method = val.split(": ")
-        else:
-            axis, method = val[: int(min_idx)].split(": ")
-            axis = axis.strip()
-            method = method.strip()
+        idx_list = [
+            interval_start_idx,
+            comment_start_idx,
+            where_start_idx,
+            par_open_index,
+            par_close_index,
+        ]
 
-        # I could not resist to suggest the modification of the code above:
-        # (Maybe it is less readable.)
-        # axis, method = (
-        #     val.split(": ")
-        #     if np.isnan(min_idx) else
-        #     (item.strip() for item in val[: int(min_idx)].split(": "))
-        # )
+        axis, method = (
+            val.split(": ")
+            if np.isnan(idx_list).all()
+            else (
+                item.strip()
+                for item in val[: int(np.nanmin(idx_list))].split(": ")
+            )
+        )
 
         if not np.isnan(where_start_idx):
             # The case like `time: max where land`
