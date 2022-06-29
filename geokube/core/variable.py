@@ -58,8 +58,10 @@ class Variable(xr.Variable):
                 " `number.Number`, `numpy.ndarray`, `dask.array.Array`, or"
                 f" `xarray.Variable`, but provided {type(data)}"
             )
+        _is_scalar = False
         if isinstance(data, Number):
-            data = np.array(data)
+            data = np.array(data, ndmin=1)
+            _is_scalar = True
         if isinstance(data, Variable):
             self._dimensions = data._dimensions
             self._units = data._units
@@ -74,7 +76,7 @@ class Variable(xr.Variable):
             if dims is not None:
                 dims = self._as_dimension_tuple(dims)
                 dims = np.array(dims, ndmin=1, dtype=Axis)
-                if len(dims) != data.ndim:
+                if (not _is_scalar) and len(dims) != data.ndim:
                     raise ValueError(
                         f"Provided data have {data.ndim} dimension(s) but"
                         f" {len(dims)} Dimension(s) provided in `dims`"

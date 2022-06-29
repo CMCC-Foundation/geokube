@@ -52,7 +52,7 @@ class Coordinate(Variable, Axis):
                 "Expected argument is one of the following types"
                 f" `geokube.Axis` or `str`, but provided {type(data)}"
             )
-        Axis.__init__(self, name=axis)
+        Axis.__init__(self, name=axis, is_dim=dims is None)
         # We need to update as when calling constructor of Variable, encoding will be overwritten
         if encoding is not None:
             # encoding stored in axis
@@ -263,14 +263,15 @@ class Coordinate(Variable, Axis):
     @property
     def type(self):
         # Cooridnate is scalar if data shows so. Dim(s) --  always defined
-        if self.shape == ():
+        if self.is_dimension:
+            if self.shape == () or self.shape == (1,):
+                return CoordinateType.SCALAR
+            else:
+                return CoordinateType.INDEPENDENT
+        elif self.shape == ():
             return CoordinateType.SCALAR
         else:
-            return (
-                CoordinateType.INDEPENDENT
-                if self.is_dimension
-                else CoordinateType.DEPENDENT
-            )
+            return CoordinateType.DEPENDENT
 
     @property
     def axis_type(self):

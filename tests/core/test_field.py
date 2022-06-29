@@ -1837,3 +1837,15 @@ def test_keep_encoding_after_to_regular(era5_rotated_netcdf_wso):
         exclude_d1=["grid_mapping", "coordinates", "_FillValue"],
         exclude_d2=["grid_mapping", "coordinates", "_FillValue"],
     )
+
+
+def test_keep_coordinate_encoding_with_scalars_after_to_regular(
+    era5_rotated_netcdf_wso,
+):
+    era5_rotated_netcdf_wso = era5_rotated_netcdf_wso.assign_coords({"sc": 10})
+    era5_rotated_netcdf_wso["sc"].attrs["standard_name"] = "scalar_coord"
+    era5_rotated_netcdf_wso["W_SO"].encoding["coordinates"] = "lat lon sc"
+    field = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    reg_field = field.to_regular()
+    xr_ds = reg_field.to_xarray()
+    assert xr_ds["W_SO"].encoding["coordinates"] == "sc"
