@@ -489,9 +489,26 @@ class Field(Variable, DomainMixin):
             dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
         dset_interp[self.name].encoding.update(dset[self.name].encoding)
-        dset_interp[self.name].encoding[
-            "coordinates"
-        ] = f"{domain.latitude.name} {domain.longitude.name}"
+
+        encoding_coords = " ".join(
+            coord_name
+            for coord_name, coord in domain.coords.items()
+            if not coord.is_dimension
+        )
+        # NOTE: we need to manually append scalar coordinates
+        # NOTE: as they are not affected by interpolation
+        encoding_coords = " ".join(
+            chain(
+                [encoding_coords],
+                [
+                    coord_name
+                    for coord_name, coord in self.domain.coords.items()
+                    if coord.type is CoordinateType.SCALAR
+                ],
+            )
+        )
+        if encoding_coords:
+            dset_interp[self.name].encoding["coordinates"] = encoding_coords
         # TODO: Fill value should depend on the data type.
         # TODO: Add xarray fillna into Field.to_xarray.
         dset_interp[self.name].encoding["_FillValue"] = -9.0e-20

@@ -344,7 +344,6 @@ class Domain(DomainMixin):
                         mapping=mapping,
                     )
                 )
-
         xr_coords = ds[ncvar].attrs.get(
             "coordinates", ds[ncvar].encoding.get("coordinates", None)
         )

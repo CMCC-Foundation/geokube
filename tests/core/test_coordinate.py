@@ -260,11 +260,6 @@ def test_init_from_numpy_proper_attrs_setting():
     assert c.is_independent
 
 
-def test_init_fails_on_scalar_data_if_dims_passed():
-    with pytest.raises(ValueError, match=r"Provided data have *"):
-        _ = Coordinate(data=10, axis="longitude", dims="longitude")
-
-
 def test_init_with_scalar_data():
     c = Coordinate(data=10, axis="longitude")
     assert c.type is CoordinateType.SCALAR
