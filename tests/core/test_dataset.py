@@ -112,3 +112,15 @@ def test_persisting_with_empty_all_datacube(dataset_single_att):
         path = dataset_single_att.persist(RES_DIR)
     assert path is None
     clear_test_res()
+
+
+def test_attr_str_for_persistance(dataset):
+    attr_str = dataset._form_attr_str(dataset.data.iloc[0])
+    assert attr_str == "dataset=era5-vars=2_mdt"
+    for file in dataset.data.iloc[0]["files"]:
+        assert (
+            dataset._convert_attributes_to_file_name(
+                attr_str, dataset.data.iloc[0]["files"][0]
+            )
+            == f"dataset=era5-vars=2_mdt-{os.path.basename(file)}"
+        )

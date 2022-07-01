@@ -293,9 +293,27 @@ class Dataset:
                 self._LOG.warn(f"Skipping empty Dataset item!")
                 return None
         else:
+            attr_str = self._form_attr_str(dataframe_item)
             for file in dataframe_item[Dataset.FILES_COL]:
-                shutil.copyfile(file, path_to_store)
+                shutil.copyfile(
+                    file,
+                    os.path.join(
+                        path_to_store,
+                        self.convert_attributes_to_file_name(attr_str, file),
+                    ),
+                )
                 return path_to_store
+
+    def _form_attr_str(self, dataframe_item):
+        return "-".join(
+            [
+                f"{attr_name}={dataframe_item[attr_name]}"
+                for attr_name in self.__attrs
+            ]
+        )
+
+    def _convert_attributes_to_file_name(self, attr_str, file):
+        return f"{attr_str}-{os.path.basename(file)}"
 
 
 def _apply(
