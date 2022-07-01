@@ -66,15 +66,12 @@ class Dataset:
         else:
             raise TypeError("'hcubes' must be mapping or pandas DataFrame")
 
-        self.__load_files_on_persistance = load_files_on_persistance
-        if self.__load_files_on_persistance:
-            self.__data[self.FIELD_COL] = [
-                None
-                if isinstance(hcube, Delayed) or hcube is None
-                else list(hcube._fields.keys())
-                for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
-            ]
-
+        self.__data[self.FIELD_COL] = [
+            None
+            if isinstance(hcube, Delayed) or hcube is None
+            else list(hcube._fields.keys())
+            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
+        ]
         self.__cube_idx = len(self.__attrs) + 1
         self.__metadata = dict(metadata) if metadata is not None else {}
 
@@ -230,7 +227,10 @@ class Dataset:
         data.index = np.arange(len(data))
 
         return Dataset(
-            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+            attrs=self.__attrs,
+            hcubes=data,
+            metadata=self.__metadata,
+            load_files_on_persistance=self.__load_files_on_persistance,
         )
 
     def apply(

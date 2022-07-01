@@ -1032,7 +1032,6 @@ class Field(Variable, DomainMixin):
             bnds_name, bnds = f"{self.time.name}_bnds", None
         else:
             ((bnds_name, bnds),) = time_bnds.items()
-
         if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383

@@ -115,7 +115,6 @@ def open_dataset(
     # load the cache file and compare the files from the paths with the files
     # in the dataframe cached and read only the files that are not in the cache
     ds_attr_names = _get_ds_attrs_names(pattern)
-
     if metadata_caching:
         if metadata_cache_path is None:
             raise ValueError(
@@ -132,7 +131,8 @@ def open_dataset(
             not_cached_files = list(set(files) - set(cached_files))
             if len(not_cached_files) == 0:  # there are no new files
                 return geokube.core.dataset.Dataset(
-                    hcubes=cached_ds.reset_index()
+                    hcubes=cached_ds.reset_index(),
+                    load_files_on_persistance=load_files_on_persistance,
                 )
 
             # there are new files we need to update the cache
@@ -226,6 +226,8 @@ def open_dataset(
             )  # we do not need to enable caching here!
     if load_files_on_persistance:
         df[DATACUBE_COL] = cubes
+    else:
+        df[DATACUBE_COL] = None
     # write cache if cache file does not exist and caching is true
     if metadata_caching:
         _write_cache(df, metadata_cache_path)
