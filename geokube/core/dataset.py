@@ -280,29 +280,30 @@ class Dataset:
         return sum(cube.nbytes for cube in self.cubes)
 
     def _persist_datacube(self, dataframe_item, path):
-        path_to_store = os.path.join(
-            path, os.path.basename(dataframe_item[self.FILES_COL][0])
-        )
         if self.__load_files_on_persistance:
             dcube = dataframe_item[self.DATACUBE_COL]
             if isinstance(dcube, Delayed):
                 dcube.compute()
             try:
-                return dcube.persist(path_to_store)
+                return dcube.persist(path)
             except EmptyDataCubeError:
                 self._LOG.warn(f"Skipping empty Dataset item!")
                 return None
         else:
             attr_str = self._form_attr_str(dataframe_item)
-            for file in dataframe_item[Dataset.FILES_COL]:
-                shutil.copyfile(
-                    file,
-                    os.path.join(
-                        path_to_store,
-                        self.convert_attributes_to_file_name(attr_str, file),
-                    ),
+            if len(dataframe_item[Dataset.FILES_COL]) > 1:
+                raise ValueError(
+                    "Too many files! Copying source files is supported for"
+                    " `1` but provided"
+                    f" `{len(dataframe_item[Dataset.FILES_COL])}`"
                 )
-                return path_to_store
+            for file in dataframe_item[Dataset.FILES_COL]:
+                dst_path = os.path.join(
+                    path,
+                    self._convert_attributes_to_file_name(attr_str, file),
+                )
+                shutil.copyfile(file, dst_path)
+                return dst_path
 
     def _form_attr_str(self, dataframe_item):
         return "-".join(
