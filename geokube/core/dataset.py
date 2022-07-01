@@ -4,6 +4,7 @@ import warnings
 import os
 import uuid
 import tempfile
+import shutil
 from collections.abc import Callable, Mapping, Sequence
 from numbers import Number
 from typing import Any, List, Optional, Tuple, Union
@@ -22,7 +23,13 @@ from .datacube import DataCube
 
 
 class Dataset:
-    __slots__ = ("__data", "__metadata", "__attrs", "__cube_idx")
+    __slots__ = (
+        "__data",
+        "__metadata",
+        "__attrs",
+        "__cube_idx",
+        "__load_files_on_persistance",
+    )
 
     _LOG = HCubeLogger(name="Dataset")
 
@@ -35,7 +42,11 @@ class Dataset:
         hcubes: Mapping[tuple[str, ...], DataCube] | pd.DataFrame,
         attrs: Sequence[str] = None,
         metadata: Mapping[str, str] | None = None,
+        load_files_on_persistance: None | bool = True,
     ) -> None:
+        # NOTE: to support Dataset operations
+        # for not-netcdf files
+        self.__load_files_on_persistance = load_files_on_persistance
         # TODO: Make `attrs` capable of taking `np.ndarray`.
         if attrs is None:
             attrs = []
@@ -55,12 +66,14 @@ class Dataset:
         else:
             raise TypeError("'hcubes' must be mapping or pandas DataFrame")
 
-        self.__data[self.FIELD_COL] = [
-            None
-            if isinstance(hcube, Delayed) or hcube is None
-            else list(hcube._fields.keys())
-            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
-        ]
+        self.__load_files_on_persistance = load_files_on_persistance
+        if self.__load_files_on_persistance:
+            self.__data[self.FIELD_COL] = [
+                None
+                if isinstance(hcube, Delayed) or hcube is None
+                else list(hcube._fields.keys())
+                for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
+            ]
 
         self.__cube_idx = len(self.__attrs) + 1
         self.__metadata = dict(metadata) if metadata is not None else {}
@@ -168,7 +181,10 @@ class Dataset:
 
     @property
     def cubes(self) -> List[DataCube]:
-        return self.__data[self.DATACUBE_COL].tolist()
+        if self.__load_files_on_persistance:
+            return self.__data[self.DATACUBE_COL].tolist()
+        else:
+            return None
 
     def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
         # NOTE: List of files is not hashable and it can be extremely large
@@ -267,14 +283,19 @@ class Dataset:
         path_to_store = os.path.join(
             path, os.path.basename(dataframe_item[self.FILES_COL][0])
         )
-        dcube = dataframe_item[self.DATACUBE_COL]
-        if isinstance(dcube, Delayed):
-            dcube.compute()
-        try:
-            return dcube.persist(path_to_store)
-        except EmptyDataCubeError:
-            self._LOG.warn(f"Skipping empty Dataset item!")
-            return None
+        if self.__load_files_on_persistance:
+            dcube = dataframe_item[self.DATACUBE_COL]
+            if isinstance(dcube, Delayed):
+                dcube.compute()
+            try:
+                return dcube.persist(path_to_store)
+            except EmptyDataCubeError:
+                self._LOG.warn(f"Skipping empty Dataset item!")
+                return None
+        else:
+            for file in dataframe_item[Dataset.FILES_COL]:
+                shutil.copyfile(file, path_to_store)
+                return path_to_store
 
 
 def _apply(
