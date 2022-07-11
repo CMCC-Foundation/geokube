@@ -4,6 +4,7 @@ import warnings
 import os
 import uuid
 import tempfile
+import shutil
 from collections.abc import Callable, Mapping, Sequence
 from numbers import Number
 from typing import Any, List, Optional, Tuple, Union
@@ -22,7 +23,13 @@ from .datacube import DataCube
 
 
 class Dataset:
-    __slots__ = ("__data", "__metadata", "__attrs", "__cube_idx")
+    __slots__ = (
+        "__data",
+        "__metadata",
+        "__attrs",
+        "__cube_idx",
+        "__load_files_on_persistance",
+    )
 
     _LOG = HCubeLogger(name="Dataset")
 
@@ -35,7 +42,11 @@ class Dataset:
         hcubes: Mapping[tuple[str, ...], DataCube] | pd.DataFrame,
         attrs: Sequence[str] = None,
         metadata: Mapping[str, str] | None = None,
+        load_files_on_persistance: None | bool = True,
     ) -> None:
+        # NOTE: to support Dataset operations
+        # for not-netcdf files
+        self.__load_files_on_persistance = load_files_on_persistance
         # TODO: Make `attrs` capable of taking `np.ndarray`.
         if attrs is None:
             attrs = []
@@ -61,7 +72,6 @@ class Dataset:
             else list(hcube._fields.keys())
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
-
         self.__cube_idx = len(self.__attrs) + 1
         self.__metadata = dict(metadata) if metadata is not None else {}
 
@@ -168,7 +178,10 @@ class Dataset:
 
     @property
     def cubes(self) -> List[DataCube]:
-        return self.__data[self.DATACUBE_COL].tolist()
+        if self.__load_files_on_persistance:
+            return self.__data[self.DATACUBE_COL].tolist()
+        else:
+            return None
 
     def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
         # NOTE: List of files is not hashable and it can be extremely large
@@ -214,7 +227,10 @@ class Dataset:
         data.index = np.arange(len(data))
 
         return Dataset(
-            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+            attrs=self.__attrs,
+            hcubes=data,
+            metadata=self.__metadata,
+            load_files_on_persistance=self.__load_files_on_persistance,
         )
 
     def apply(
@@ -264,17 +280,41 @@ class Dataset:
         return sum(cube.nbytes for cube in self.cubes)
 
     def _persist_datacube(self, dataframe_item, path):
-        path_to_store = os.path.join(
-            path, os.path.basename(dataframe_item[self.FILES_COL][0])
+        if self.__load_files_on_persistance:
+            dcube = dataframe_item[self.DATACUBE_COL]
+            if isinstance(dcube, Delayed):
+                dcube.compute()
+            try:
+                return dcube.persist(path)
+            except EmptyDataCubeError:
+                self._LOG.warn(f"Skipping empty Dataset item!")
+                return None
+        else:
+            attr_str = self._form_attr_str(dataframe_item)
+            if len(dataframe_item[Dataset.FILES_COL]) > 1:
+                raise ValueError(
+                    "Too many files! Copying source files is supported for"
+                    " `1` but provided"
+                    f" `{len(dataframe_item[Dataset.FILES_COL])}`"
+                )
+            for file in dataframe_item[Dataset.FILES_COL]:
+                dst_path = os.path.join(
+                    path,
+                    self._convert_attributes_to_file_name(attr_str, file),
+                )
+                shutil.copyfile(file, dst_path)
+                return dst_path
+
+    def _form_attr_str(self, dataframe_item):
+        return "-".join(
+            [
+                f"{attr_name}={dataframe_item[attr_name]}"
+                for attr_name in self.__attrs
+            ]
         )
-        dcube = dataframe_item[self.DATACUBE_COL]
-        if isinstance(dcube, Delayed):
-            dcube.compute()
-        try:
-            return dcube.persist(path_to_store)
-        except EmptyDataCubeError:
-            self._LOG.warn(f"Skipping empty Dataset item!")
-            return None
+
+    def _convert_attributes_to_file_name(self, attr_str, file):
+        return f"{attr_str}-{os.path.basename(file)}"
 
 
 def _apply(

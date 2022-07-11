@@ -60,15 +60,9 @@ def test_nbytes_estimation(dataset_single_att):
 
 def test_persist_and_return_paths_no_zipping(dataset):
     clear_test_res()
-    _ = dataset.persist(RES_DIR, zip_if_many=False)
-    files = os.listdir(RES_DIR)
+    res_dir = dataset.persist(RES_DIR, zip_if_many=False)
+    files = os.listdir(res_dir)
     assert len(files) == 4
-    assert "era5-single-levels-reanalysis_2_mdt.nc" in files
-    assert "era5-single-levels-reanalysis_total_precipitation.nc" in files
-    assert "other-era5-single-levels-reanalysis_2_mdt.nc" in files
-    assert (
-        "other-era5-single-levels-reanalysis_total_precipitation.nc" in files
-    )
 
 
 def test_persist_and_return_paths_with_zipping(dataset):
@@ -111,4 +105,18 @@ def test_persisting_with_empty_all_datacube(dataset_single_att):
     ):
         path = dataset_single_att.persist(RES_DIR)
     assert path is None
+    clear_test_res()
+
+
+def test_attr_str_for_persistance(dataset):
+    clear_test_res()
+    attr_str = dataset._form_attr_str(dataset.data.iloc[0])
+    assert attr_str == "dataset=era5-vars=2_mdt"
+    for file in dataset.data.iloc[0]["files"]:
+        assert (
+            dataset._convert_attributes_to_file_name(
+                attr_str, dataset.data.iloc[0]["files"][0]
+            )
+            == f"dataset=era5-vars=2_mdt-{os.path.basename(file)}"
+        )
     clear_test_res()

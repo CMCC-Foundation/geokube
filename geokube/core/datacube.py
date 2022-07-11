@@ -437,6 +437,8 @@ class DataCube(DomainMixin):
             path = os.path.join(
                 tempfile.gettempdir(), f"{str(uuid.uuid4())}.nc"
             )
+        if os.path.isdir(path):
+            path = os.path.join(path, f"{str(uuid.uuid4())}.nc")
         if not path.endswith(".nc"):
             self._LOG.warn(
                 f"Provided persistance path: `{path}` has not `.nc` extension."
