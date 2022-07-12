@@ -454,17 +454,17 @@ class DataCube(DomainMixin):
         self.to_netcdf(path)
         return path
 
-    def to_dict(self, unique_values=False) -> dict:
-        return {
+    def to_dict(self, unique_values=False, json_serializable=False) -> dict:
+        res = {
             "domain": self.domain.to_dict(unique_values),
             "fields": list(self.fields.keys()),
         }
-
-    def to_json(self, unique_values=False):
-        return json.dumps(
-            self.to_dict(unique_values),
-            cls=util_methods.GeokubeDetailsJSONEncoder,
-        )
+        if json_serializable:
+            return json.loads(
+                json.dumps(res, util_methods.GeokubeDetailsJSONEncoder)
+            )
+        else:
+            return res
 
     def assert_not_empty(self):
         if not len(self):

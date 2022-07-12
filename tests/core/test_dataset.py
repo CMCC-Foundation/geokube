@@ -3,7 +3,6 @@ import pytest
 from zipfile import ZipFile
 
 from geokube.backend.netcdf import open_dataset
-from geokube.utils.util_methods import GeokubeDetailsJSONEncoder
 
 from tests.fixtures import *
 from tests import RES_PATH, RES_DIR, clear_test_res
@@ -29,11 +28,19 @@ def test_select_fields_by_ncvar(dataset_idpattern):
     assert len(tp) == 1
 
 
-def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
+def test_if_to_dict_produces_json_serializable_or_not(
+    dataset, dataset_single_att
+):
     import json
 
-    _ = json.dumps(dataset.to_dict(), cls=GeokubeDetailsJSONEncoder)
-    _ = json.dumps(dataset_single_att.to_dict(), cls=GeokubeDetailsJSONEncoder)
+    with pytest.raises(
+        TypeError, match=r"Object of type float32 is not JSON serializable"
+    ):
+        _ = json.dumps(dataset.to_dict())
+        _ = json.dumps(dataset_single_att.to_dict())
+
+    _ = json.dumps(dataset.to_dict(json_serializable=True))
+    _ = json.dumps(dataset_single_att.to_dict(json_serializable=True))
 
 
 def test_nbytes_estimation(dataset_single_att):

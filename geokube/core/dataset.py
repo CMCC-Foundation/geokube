@@ -184,7 +184,7 @@ class Dataset:
         else:
             return None
 
-    def to_dict(self, unique_values=False) -> dict:
+    def to_dict(self, unique_values=False, json_serializable=False) -> dict:
         res = self.__data.drop(
             labels=Dataset.FILES_COL, inplace=False, axis=1
         ).apply(
@@ -193,13 +193,13 @@ class Dataset:
             unique_values=unique_values,
             axis=1,
         )
-        return list(res)
-
-    def to_json(self, unique_values=False):
-        return json.dumps(
-            self.to_dict(unique_values),
-            cls=util_methods.GeokubeDetailsJSONEncoder,
-        )
+        res = list(res)
+        if json_serializable:
+            return json.loads(
+                json.dumps(res, cls=util_methods.GeokubeDetailsJSONEncoder)
+            )
+        else:
+            return res
 
     @staticmethod
     def _row_to_dict(row, attrs, unique_values):
