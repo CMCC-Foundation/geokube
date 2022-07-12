@@ -283,7 +283,7 @@ class Dataset:
         if self.__load_files_on_persistance:
             dcube = dataframe_item[self.DATACUBE_COL]
             if isinstance(dcube, Delayed):
-                dcube.compute()
+                dcube = dcube.compute()
             try:
                 return dcube.persist(path)
             except EmptyDataCubeError:
