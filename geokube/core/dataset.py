@@ -2,6 +2,7 @@ from __future__ import annotations
 import warnings
 
 import os
+import json
 import uuid
 import tempfile
 import shutil
@@ -193,6 +194,12 @@ class Dataset:
             axis=1,
         )
         return list(res)
+
+    def to_json(self, unique_values=False):
+        return json.dumps(
+            self.to_dict(unique_values),
+            cls=util_methods.GeokubeDetailsJSONEncoder,
+        )
 
     @staticmethod
     def _row_to_dict(row, attrs, unique_values):

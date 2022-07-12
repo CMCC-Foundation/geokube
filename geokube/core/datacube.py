@@ -29,6 +29,7 @@ import xarray as xr
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
+from ..utils import util_methods
 from .errs import EmptyDataCubeError
 from .axis import Axis, AxisType
 from .coord_system import RegularLatLon
@@ -458,6 +459,12 @@ class DataCube(DomainMixin):
             "domain": self.domain.to_dict(unique_values),
             "fields": list(self.fields.keys()),
         }
+
+    def to_json(self, unique_values=False):
+        return json.dumps(
+            self.to_dict(unique_values),
+            cls=util_methods.GeokubeDetailsJSONEncoder,
+        )
 
     def assert_not_empty(self):
         if not len(self):
