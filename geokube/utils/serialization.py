@@ -1,6 +1,7 @@
 import json
 
 import numpy as np
+import dask.array as da
 
 
 class GeokubeDetailsJSONEncoder(json.JSONEncoder):
@@ -20,6 +21,8 @@ def maybe_convert_to_json_serializable(obj):
             return list(obj.astype(str))
         else:
             return list(obj)
+    elif isinstance(obj, da.Array):
+        return maybe_convert_to_json_serializable(np.array(obj))
     elif isinstance(obj, dict):
         return {
             k: maybe_convert_to_json_serializable(v) for k, v in obj.items()
