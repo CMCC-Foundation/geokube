@@ -97,6 +97,7 @@ class Coordinate(Variable, Axis):
             encoding=self.encoding,
         )
         # Coordinates are always stored as NumPy data
+        # import pdb;pdb.set_trace()
         self._data = np.array(self._data)
         self.bounds = bounds
         self._update_properties_and_encoding()
@@ -337,6 +338,14 @@ class Coordinate(Variable, Axis):
         else:
             bounds = {}
         return xr.Dataset(coords={da.name: da, **bounds})
+
+    def to_dict(self, unique_values=False):
+        return {
+            "name": self.name,
+            "values": list(np.unique(self.data))
+            if unique_values
+            else list(np.atleast_1d(self.data)),
+        }
 
     @classmethod
     @geokube_logging

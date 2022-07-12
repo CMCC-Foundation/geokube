@@ -3,6 +3,7 @@ import pytest
 from zipfile import ZipFile
 
 from geokube.backend.netcdf import open_dataset
+from geokube.utils.util_methods import GeokubeDetailsJSONEncoder
 
 from tests.fixtures import *
 from tests import RES_PATH, RES_DIR, clear_test_res
@@ -31,8 +32,8 @@ def test_select_fields_by_ncvar(dataset_idpattern):
 def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
     import json
 
-    _ = json.dumps(dataset.to_dict())
-    _ = json.dumps(dataset_single_att.to_dict())
+    _ = json.dumps(dataset.to_dict(), cls=GeokubeDetailsJSONEncoder)
+    _ = json.dumps(dataset_single_att.to_dict(), cls=GeokubeDetailsJSONEncoder)
 
 
 def test_nbytes_estimation(dataset_single_att):
@@ -120,3 +121,64 @@ def test_attr_str_for_persistance(dataset):
             == f"dataset=era5-vars=2_mdt-{os.path.basename(file)}"
         )
     clear_test_res()
+
+
+def test_to_dict_contains_proper_keys(dataset):
+    details = dataset.to_dict()
+    assert isinstance(details, list)
+    assert len(details) == 4
+    for d in details:
+        assert isinstance(d, dict)
+        assert "datacube" in d
+        assert "attributes" in d
+
+
+def test_to_dict_contain_attributes(dataset):
+    details = dataset.to_dict()
+    for d in details:
+        assert "attributes" in d
+        assert len(d["attributes"]) == 2
+        assert d["attributes"]["vars"] in {"total_precipitation", "2_mdt"}
+        assert d["attributes"]["dataset"] in {"other-era5", "era5"}
+
+
+def test_to_dict_contains_proper_datacube_fields_rot(dataset_rotated):
+    details = dataset_rotated.to_dict()
+    d = details[0]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, list)
+    assert len(fields) == 1
+    assert fields[0] == "air_temperature"
+
+    d = details[1]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, list)
+    assert len(fields) == 1
+    assert fields[0] == "lwe_thickness_of_moisture_content_of_soil_layer"
+
+
+def test_to_dict_contains_proper_datacube_fields(dataset):
+    details = dataset.to_dict()
+    d = details[0]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, list)
+    assert len(fields) == 1
+    assert fields[0] == "d2m"
+
+    d = details[1]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, list)
+    assert len(fields) == 1
+    assert fields[0] == "tp"
+
+    d = details[2]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, list)
+    assert len(fields) == 1
+    assert fields[0] == "d2m"
+
+    d = details[3]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, list)
+    assert len(fields) == 1
+    assert fields[0] == "tp"

@@ -110,6 +110,9 @@ class CoordSystem(metaclass=ABCMeta):
 
         return globe
 
+    def to_dict(self):
+        return {"name": self.grid_mapping_name, **self.__dict__}
+
     @abstractmethod
     def as_cartopy_crs(self):
         """

@@ -16,6 +16,14 @@ def dataset():
 
 
 @pytest.fixture
+def dataset_rotated():
+    yield open_dataset(
+        "tests//resources//rlat-rlon-*",
+        pattern="tests//resources//rlat-rlon-{vars}.nc",
+    )
+
+
+@pytest.fixture
 def dataset_single_att():
     yield open_dataset(
         "tests//resources//*-single-levels-reanalysis_*",

@@ -1,4 +1,6 @@
+from datetime import datetime
 import re
+import json
 from collections.abc import Iterable
 from itertools import product
 from numbers import Number
@@ -12,10 +14,13 @@ from dask import is_dask_collection
 from ..core.axis import Axis
 
 
-def to_dict_if_possible(object):
-    if (to_dict := getattr(object, "to_dict", None)) is not None:
-        return to_dict() if callable(to_dict) else object
-    return object
+class GeokubeDetailsJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.float32):
+            return float(obj)
+        if isinstance(obj, np.datetime64):
+            return str(obj)
+        return json.JSONEncoder.default(self, obj)
 
 
 def are_dims_compliant(provided_shape, expected_shape):
