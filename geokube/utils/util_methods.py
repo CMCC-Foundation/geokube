@@ -1,6 +1,5 @@
 from datetime import datetime
 import re
-import json
 from collections.abc import Iterable
 from itertools import product
 from numbers import Number
@@ -12,15 +11,6 @@ import xarray as xr
 from dask import is_dask_collection
 
 from ..core.axis import Axis
-
-
-class GeokubeDetailsJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, np.float32):
-            return float(obj)
-        if isinstance(obj, np.datetime64):
-            return str(obj)
-        return json.JSONEncoder.default(self, obj)
 
 
 def are_dims_compliant(provided_shape, expected_shape):
