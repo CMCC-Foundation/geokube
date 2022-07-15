@@ -66,14 +66,13 @@ class CellMethod:
             par_close_index,
         ]
 
-        axis, method = (
-            val.split(": ")
-            if np.isnan(idx_list).all()
-            else (
+        if np.isnan(idx_list).all():
+            *axis, method = val.split(": ")
+        else:
+            *axis, method = (
                 item.strip()
                 for item in val[: int(np.nanmin(idx_list))].split(": ")
             )
-        )
 
         if not np.isnan(where_start_idx):
             # The case like `time: max where land`
@@ -106,7 +105,7 @@ class CellMethod:
     def __str__(self) -> str:
         res_str = str(self.method)
         if self.axis is not None:
-            res_str = ": ".join([self.axis, res_str])
+            res_str = ": ".join([*self.axis, res_str])
         if self.where is not None:
             res_str = " ".join([res_str, f"where {self.where}"])
         if (self.interval is not None) and (self.comment is not None):
