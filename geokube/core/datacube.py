@@ -2,8 +2,8 @@ import os
 import json
 import logging
 import re
-import uuid
 import tempfile
+import uuid
 import warnings
 from collections import defaultdict
 from enum import Enum
@@ -29,6 +29,7 @@ import xarray as xr
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
+from ..utils import util_methods
 from .errs import EmptyDataCubeError
 from .axis import Axis, AxisType
 from .coord_system import RegularLatLon
@@ -453,13 +454,10 @@ class DataCube(DomainMixin):
         self.to_netcdf(path)
         return path
 
-    @geokube_logging
-    def to_dict(self) -> dict:
-        # NOTE: it should return concise dict representation without returning each lat/lon/time value
-        dset = self.to_xarray(encoding=True)
+    def to_dict(self, unique_values=False) -> dict:
         return {
-            "variables": list(dset.data_vars.keys()),
-            "coordinates": list(dset.coords.keys()),
+            "domain": self.domain.to_dict(unique_values),
+            "fields": {k: v.to_dict() for k, v in self.fields.items()},
         }
 
     def assert_not_empty(self):

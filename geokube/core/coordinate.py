@@ -10,6 +10,7 @@ import xarray as xr
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from ..utils.attrs_encoding import CFAttributes
+from ..utils.serialization import maybe_convert_to_json_serializable
 from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
@@ -97,6 +98,7 @@ class Coordinate(Variable, Axis):
             encoding=self.encoding,
         )
         # Coordinates are always stored as NumPy data
+        # import pdb;pdb.set_trace()
         self._data = np.array(self._data)
         self.bounds = bounds
         self._update_properties_and_encoding()
@@ -337,6 +339,15 @@ class Coordinate(Variable, Axis):
         else:
             bounds = {}
         return xr.Dataset(coords={da.name: da, **bounds})
+
+    def to_dict(self, unique_values=False):
+        return {
+            "values": maybe_convert_to_json_serializable(np.unique(self.data))
+            if unique_values
+            else maybe_convert_to_json_serializable(np.atleast_1d(self.data)),
+            "units": str(self.units),
+            "axis": self.axis_type.name,
+        }
 
     @classmethod
     @geokube_logging

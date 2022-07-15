@@ -19,6 +19,8 @@ import cartopy.crs as ccrs
 import numpy as np
 import xarray as xr
 
+from ..utils.serialization import maybe_convert_to_json_serializable
+
 
 def _arg_default(value, default, cast_as=float):
     """Apply a default value and type for an optional kwarg."""
@@ -109,6 +111,12 @@ class CoordSystem(metaclass=ABCMeta):
             globe = globe_default
 
         return globe
+
+    def to_dict(self):
+        return {
+            "name": self.grid_mapping_name,
+            **maybe_convert_to_json_serializable(self.__dict__),
+        }
 
     @abstractmethod
     def as_cartopy_crs(self):

@@ -4,6 +4,8 @@ from collections.abc import Sequence
 import functools as ft
 import json
 import os
+import uuid
+import tempfile
 import warnings
 from html import escape
 from itertools import chain
@@ -1790,6 +1792,30 @@ class Field(Variable, DomainMixin):
             data_vars[var_name].attrs["__geo_domtype"] = domain_type
 
         return xr.Dataset(data_vars=data_vars, coords=coords)
+
+    def persist(self, path=None) -> str:
+        if path is None:
+            path = os.path.join(
+                tempfile.gettempdir(), f"{str(uuid.uuid4())}.nc"
+            )
+        if os.path.isdir(path):
+            path = os.path.join(path, f"{str(uuid.uuid4())}.nc")
+        if not path.endswith(".nc"):
+            self._LOG.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            warnings.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            path = path + ".nc"
+        self.assert_not_empty()
+        self.to_netcdf(path)
+        return path
+
+    def to_dict(self):
+        return {"units": str(self.units)}
 
     @classmethod
     @geokube_logging

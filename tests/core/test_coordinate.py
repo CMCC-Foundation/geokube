@@ -594,3 +594,32 @@ def test_era5_check_if_independent_when_name_encoding_set(era5_netcdf):
     era5_netcdf["latitude"].encoding["name"] = "lat"
     coord = Coordinate.from_xarray(era5_netcdf, "latitude")
     assert coord.is_independent
+
+
+def test_to_dict_store_proper_keys(nemo_ocean_16):
+    details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict()
+    assert isinstance(details, dict)
+    assert "values" in details
+    assert "units" in details
+    assert "axis" in details
+
+
+def test_to_dict_use_standard_name(nemo_ocean_16):
+    details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict()
+    assert isinstance(details["values"], list)
+    assert details["units"] == "degrees_east"
+    assert details["axis"] == "LONGITUDE"
+
+
+def test_to_dict_store_all_values(nemo_ocean_16):
+    details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict()
+    assert isinstance(details["values"], list)
+    assert np.all(np.array(details["values"]) == nemo_ocean_16.nav_lon.values)
+
+
+def test_to_dict_store_unique_values(nemo_ocean_16):
+    details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict(True)
+    assert isinstance(details["values"], list)
+    assert np.all(
+        np.array(details["values"]) == np.unique(nemo_ocean_16.nav_lon.values)
+    )

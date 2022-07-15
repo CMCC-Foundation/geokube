@@ -120,3 +120,64 @@ def test_attr_str_for_persistance(dataset):
             == f"dataset=era5-vars=2_mdt-{os.path.basename(file)}"
         )
     clear_test_res()
+
+
+def test_to_dict_contains_proper_keys(dataset):
+    details = dataset.to_dict()
+    assert isinstance(details, list)
+    assert len(details) == 4
+    for d in details:
+        assert isinstance(d, dict)
+        assert "datacube" in d
+        assert "attributes" in d
+
+
+def test_to_dict_contain_attributes(dataset):
+    details = dataset.to_dict()
+    for d in details:
+        assert "attributes" in d
+        assert len(d["attributes"]) == 2
+        assert d["attributes"]["vars"] in {"total_precipitation", "2_mdt"}
+        assert d["attributes"]["dataset"] in {"other-era5", "era5"}
+
+
+def test_to_dict_contains_proper_datacube_fields_rot(dataset_rotated):
+    details = dataset_rotated.to_dict()
+    d = details[0]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, dict)
+    assert len(fields) == 1
+    assert "air_temperature" in fields.keys()
+
+    d = details[1]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, dict)
+    assert len(fields) == 1
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in fields.keys()
+
+
+def test_to_dict_contains_proper_datacube_fields(dataset):
+    details = dataset.to_dict()
+    d = details[0]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, dict)
+    assert len(fields) == 1
+    assert "d2m" in fields.keys()
+
+    d = details[1]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, dict)
+    assert len(fields) == 1
+    assert "tp" in fields.keys()
+
+    d = details[2]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, dict)
+    assert len(fields) == 1
+    assert "d2m" in fields.keys()
+
+    d = details[3]
+    fields = d["datacube"]["fields"]
+    assert isinstance(fields, dict)
+    assert len(fields) == 1
+    assert "tp" in fields.keys()

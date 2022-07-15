@@ -403,6 +403,15 @@ class Domain(DomainMixin):
             )
         return grid
 
+    def to_dict(self, unique_values=False):
+        return {
+            "crs": self._crs.to_dict(),
+            "coordinates": {
+                name: coord.to_dict(unique_values)
+                for name, coord in self._coords.items()
+            },
+        }
+
     @classmethod
     def _make_domain_from_coords_dict_dims_and_crs(
         cls, coords, dims, crs=None

@@ -2,6 +2,7 @@ from __future__ import annotations
 import warnings
 
 import os
+import json
 import uuid
 import tempfile
 import shutil
@@ -183,14 +184,23 @@ class Dataset:
         else:
             return None
 
-    def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
-        # NOTE: List of files is not hashable and it can be extremely large
-        res = (
-            self.__data.drop(labels=Dataset.FILES_COL, inplace=False, axis=1)
-            .applymap(util_methods.to_dict_if_possible)
-            .to_dict("records")
+    def to_dict(self, unique_values=False) -> dict:
+        res = self.__data.drop(
+            labels=Dataset.FILES_COL, inplace=False, axis=1
+        ).apply(
+            Dataset._row_to_dict,
+            attrs=self.__attrs,
+            unique_values=unique_values,
+            axis=1,
         )
-        return res
+        return list(res)
+
+    @staticmethod
+    def _row_to_dict(row, attrs, unique_values):
+        return {
+            "datacube": row[Dataset.DATACUBE_COL].to_dict(unique_values),
+            "attributes": {attr_name: row[attr_name] for attr_name in attrs},
+        }
 
     def _drop_empty(self) -> Dataset:
         mask = self.__data[self.FIELD_COL].astype(dtype=np.bool_)

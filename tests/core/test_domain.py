@@ -318,3 +318,71 @@ def test_using_geo_domtype_attribute_for_domain_type(era5_globe_netcdf):
     era5_globe_netcdf["tp"].attrs["__geo_domtype"] = "gridded"
     domain = Domain.from_xarray(era5_globe_netcdf, ncvar="tp")
     assert domain.type is DomainType.GRIDDED
+
+
+def test_to_dict_store_proper_keys(era5_globe_netcdf):
+    details = Domain.from_xarray(era5_globe_netcdf, ncvar="tp").to_dict()
+    assert isinstance(details, dict)
+    assert "crs" in details
+    assert "coordinates" in details
+
+
+def test_to_dict_store_reg_crs_with_names_and_attributes(era5_globe_netcdf):
+    details = Domain.from_xarray(era5_globe_netcdf, ncvar="tp").to_dict()
+    crs = details["crs"]
+    assert isinstance(crs, dict)
+    assert crs["name"] == "latitude_longitude"
+    assert "semi_major_axis" in crs
+    assert crs["semi_major_axis"] == 6371229.0
+    assert "semi_minor_axis" in crs
+    assert crs["semi_minor_axis"] == 6371229.0
+    assert "inverse_flattening" in crs
+    assert crs["inverse_flattening"] == 0.0
+    assert "longitude_of_prime_meridian" in crs
+    assert crs["longitude_of_prime_meridian"] == 0.0
+
+
+def test_to_dict_store_rotated_crs_with_names_and_attributes(
+    era5_rotated_netcdf,
+):
+    details = Domain.from_xarray(era5_rotated_netcdf, ncvar="W_SO").to_dict()
+    crs = details["crs"]
+    assert isinstance(crs, dict)
+    assert crs["name"] == "rotated_latitude_longitude"
+    assert "grid_north_pole_latitude" in crs
+    assert crs["grid_north_pole_latitude"] == 47.0
+    assert "grid_north_pole_longitude" in crs
+    assert crs["grid_north_pole_longitude"] == -168.0
+    assert "north_pole_grid_longitude" in crs
+    assert crs["north_pole_grid_longitude"] == 0
+    assert "ellipsoid" in crs
+    assert crs["ellipsoid"] is None
+
+
+def test_to_dict_store_coords_reg_crs(era5_globe_netcdf):
+    details = Domain.from_xarray(era5_globe_netcdf, ncvar="tp").to_dict()
+    coords = details["coordinates"]
+    assert len(coords) == 3
+    assert isinstance(coords, dict)
+    assert set(coords.keys()) == {"time", "latitude", "longitude"}
+    for k in coords.values():
+        assert "values" in k
+        assert isinstance(k["values"], list)
+
+
+def test_to_dict_store_coords_rot_crs(era5_rotated_netcdf):
+    details = Domain.from_xarray(era5_rotated_netcdf, ncvar="W_SO").to_dict()
+    coords = details["coordinates"]
+    assert len(coords) == 6
+    assert isinstance(coords, dict)
+    assert set(coords.keys()) == {
+        "depth",
+        "time",
+        "grid_latitude",
+        "grid_longitude",
+        "latitude",
+        "longitude",
+    }
+    for k in coords.values():
+        assert "values" in k
+        assert isinstance(k["values"], list)
