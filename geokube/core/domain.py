@@ -406,9 +406,10 @@ class Domain(DomainMixin):
     def to_dict(self, unique_values=False):
         return {
             "crs": self._crs.to_dict(),
-            "coordinates": [
-                coord.to_dict(unique_values) for coord in self._coords.values()
-            ],
+            "coordinates": {
+                name: coord.to_dict(unique_values)
+                for name, coord in self._coords.items()
+            },
         }
 
     @classmethod
