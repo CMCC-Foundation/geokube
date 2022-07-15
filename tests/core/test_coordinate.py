@@ -599,13 +599,16 @@ def test_era5_check_if_independent_when_name_encoding_set(era5_netcdf):
 def test_to_dict_store_proper_keys(nemo_ocean_16):
     details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict()
     assert isinstance(details, dict)
-    assert "name" in details
     assert "values" in details
+    assert "units" in details
+    assert "axis" in details
 
 
 def test_to_dict_use_standard_name(nemo_ocean_16):
     details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict()
-    assert details["name"] == "longitude"
+    assert isinstance(details["values"], list)
+    assert details["units"] == "degrees_east"
+    assert details["axis"] == "LONGITUDE"
 
 
 def test_to_dict_store_all_values(nemo_ocean_16):

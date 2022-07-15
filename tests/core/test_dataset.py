@@ -145,39 +145,39 @@ def test_to_dict_contains_proper_datacube_fields_rot(dataset_rotated):
     details = dataset_rotated.to_dict()
     d = details[0]
     fields = d["datacube"]["fields"]
-    assert isinstance(fields, list)
+    assert isinstance(fields, dict)
     assert len(fields) == 1
-    assert fields[0] == "air_temperature"
+    assert "air_temperature" in fields.keys()
 
     d = details[1]
     fields = d["datacube"]["fields"]
-    assert isinstance(fields, list)
+    assert isinstance(fields, dict)
     assert len(fields) == 1
-    assert fields[0] == "lwe_thickness_of_moisture_content_of_soil_layer"
+    assert "lwe_thickness_of_moisture_content_of_soil_layer" in fields.keys()
 
 
 def test_to_dict_contains_proper_datacube_fields(dataset):
     details = dataset.to_dict()
     d = details[0]
     fields = d["datacube"]["fields"]
-    assert isinstance(fields, list)
+    assert isinstance(fields, dict)
     assert len(fields) == 1
-    assert fields[0] == "d2m"
+    assert "d2m" in fields.keys()
 
     d = details[1]
     fields = d["datacube"]["fields"]
-    assert isinstance(fields, list)
+    assert isinstance(fields, dict)
     assert len(fields) == 1
-    assert fields[0] == "tp"
+    assert "tp" in fields.keys()
 
     d = details[2]
     fields = d["datacube"]["fields"]
-    assert isinstance(fields, list)
+    assert isinstance(fields, dict)
     assert len(fields) == 1
-    assert fields[0] == "d2m"
+    assert "d2m" in fields.keys()
 
     d = details[3]
     fields = d["datacube"]["fields"]
-    assert isinstance(fields, list)
+    assert isinstance(fields, dict)
     assert len(fields) == 1
-    assert fields[0] == "tp"
+    assert "tp" in fields.keys()

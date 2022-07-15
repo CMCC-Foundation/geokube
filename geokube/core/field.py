@@ -1814,6 +1814,9 @@ class Field(Variable, DomainMixin):
         self.to_netcdf(path)
         return path
 
+    def to_dict(self):
+        return {"units": str(self.units)}
+
     @classmethod
     @geokube_logging
     def from_xarray(

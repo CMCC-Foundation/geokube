@@ -457,7 +457,7 @@ class DataCube(DomainMixin):
     def to_dict(self, unique_values=False) -> dict:
         return {
             "domain": self.domain.to_dict(unique_values),
-            "fields": list(self.fields.keys()),
+            "fields": {k: v.to_dict() for k, v in self.fields.items()},
         }
 
     def assert_not_empty(self):

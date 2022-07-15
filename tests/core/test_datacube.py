@@ -226,3 +226,11 @@ def test_persist_with_no_extension(rotated_pole_datacube):
 def test_persist_no_path_passed(rotated_pole_datacube):
     path = rotated_pole_datacube.persist()
     assert os.path.exists(path)
+
+
+def test_to_dict_store_propen_keys(era5_netcdf):
+    details = DataCube.from_xarray(era5_netcdf).to_dict()
+    assert "domain" in details
+    assert isinstance(details["domain"], dict)
+    assert "fields" in details
+    assert isinstance(details["fields"], dict)

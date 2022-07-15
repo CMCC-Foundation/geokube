@@ -342,10 +342,11 @@ class Coordinate(Variable, Axis):
 
     def to_dict(self, unique_values=False):
         return {
-            "name": self.name,
             "values": maybe_convert_to_json_serializable(np.unique(self.data))
             if unique_values
             else maybe_convert_to_json_serializable(np.atleast_1d(self.data)),
+            "units": str(self.units),
+            "axis": self.axis_type.name,
         }
 
     @classmethod
