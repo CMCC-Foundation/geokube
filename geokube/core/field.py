@@ -1070,7 +1070,7 @@ class Field(Variable, DomainMixin):
         # then `reduce` results in time axis for 1st, 2nd, and 3rd
         # passing for missing dates `NaN`s
         da = da.reduce(func=func, dim=self.time.name, keep_attrs=True).dropna(
-            dim=self.time.name, how='all'
+            dim=self.time.name, how="all"
         )
         # NOTE: `reduce` removes all `encoding` properties
         da[self.name].encoding = ds[self.name].encoding
