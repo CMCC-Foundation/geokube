@@ -30,8 +30,11 @@ DATACUBE_COL = geokube.core.dataset.Dataset.DATACUBE_COL
 
 
 def _get_engine(path: list | str):
-    if isinstance(path, list) and len(path) > 0:
-        path = path[0]
+    if isinstance(path, list):
+        if len(path) > 0:
+            path = path[0]
+        else:
+            raise ValueError("empty path list provided!")
     if isinstance(path, str):
         _, ext = os.path.splitext(path)
     else:
