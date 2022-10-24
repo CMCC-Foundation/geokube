@@ -927,6 +927,10 @@ def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
     )
 
 
+@pytest.mark.skipif(
+    xr.__version__ > "2022.1.0",
+    reason="Subsetting does not support empty indexers",
+)
 def test_nemo_sel_time_empty_result(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     res = vt.sel(time={"hour": 13}, method="nearest")
