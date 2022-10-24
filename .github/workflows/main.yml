@@ -43,11 +43,9 @@ jobs:
           conda run pip install black==22.3.0
 
       - name: Check formatting in `tests` catalog
-        shell: bash -l {0}
         run: conda run black -l 79 --preview tests
 
       - name: Check formatting in `geokube` catalog
-        shell: bash -l {0}
         run: conda run black -l 79 --preview geokube
 
       - name: Check for modified files
