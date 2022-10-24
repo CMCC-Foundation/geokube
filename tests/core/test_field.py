@@ -6,7 +6,7 @@ import pandas as pd
 import cf_units as cf
 
 import geokube.core.coord_system as crs
-from geokube.backend.netcdf import open_datacube, open_dataset
+from geokube.backend import open_datacube, open_dataset
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import GeogCS, RegularLatLon
 from geokube.core.coordinate import Coordinate, CoordinateType

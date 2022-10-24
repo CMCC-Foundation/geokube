@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __all__ = (
     "open_datacube",
     "open_dataset",
@@ -14,6 +16,7 @@ import dask
 import pandas as pd
 import xarray as xr
 from intake.source.utils import reverse_format
+import rioxarray
 
 import geokube.backend.base
 import geokube.core.datacube
@@ -24,6 +27,23 @@ LOG = HCubeLogger(name="netcdf.py")
 
 FILES_COL = geokube.core.dataset.Dataset.FILES_COL
 DATACUBE_COL = geokube.core.dataset.Dataset.DATACUBE_COL
+
+
+def _get_engine(path: list | str):
+    if isinstance(path, list) and len(path) > 0:
+        path = path[0]
+    if isinstance(path, str):
+        _, ext = os.path.splitext(path)
+    else:
+        raise TypeError(f"unsupported path type: `{type(path)}`")
+    if ext == ".tif":
+        return "rasterio"
+    elif ext == ".nc":
+        return "netcdf4"
+    else:
+        raise ValueError(
+            f"there is not engine associated with the extension `{ext}`"
+        )
 
 
 def _read_cache(cache_path: str):
@@ -55,10 +75,11 @@ def open_datacube(
         ds = _read_cache(metadata_cache_path)
         if ds is not None:
             return ds
-    if "decode_coords" not in kwargs:
-        kwargs.update(decode_coords="all")
+    engine = _get_engine(path)
+    if engine == "netcdf4":
+        kwargs.setdefault("decode_coords", "all")
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, **kwargs),
+        xr.open_mfdataset(path, engine=engine, **kwargs),
         id_pattern=id_pattern,
         mapping=mapping,
     )

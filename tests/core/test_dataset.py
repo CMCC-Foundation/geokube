@@ -2,7 +2,7 @@ import os
 import pytest
 from zipfile import ZipFile
 
-from geokube.backend.netcdf import open_dataset
+from geokube.backend import open_dataset
 
 from tests.fixtures import *
 from tests import RES_PATH, RES_DIR, clear_test_res
