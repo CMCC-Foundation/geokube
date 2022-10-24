@@ -60,5 +60,4 @@ jobs:
             core.setFailed('`geokube` or `tests` directory is not well formatted! Use command `black -l 79 --preview geokube` and `black -l 79 --preview tests`')
 
       - name: Run pytest
-        shell: bash -l {0}
         run: conda run pytest tests
