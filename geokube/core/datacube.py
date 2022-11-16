@@ -349,8 +349,8 @@ class DataCube(DomainMixin):
                     "units": units,
                     "features": [],
                 }
-                grid_x = 0.5
-                grid_y = 0.5
+                grid_x = 0.125 # this is hardcoded for ERA5 grid resolution (0.25) - we need a method to infer this!
+                grid_y = 0.125 # this is hardcoded for ERA5 grid resolution (0.25) - we need a method to infer this!
                 for lat in cube.latitude.values.flat:
                     for lon in cube.longitude.values.flat:
                         idx = {

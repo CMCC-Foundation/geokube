@@ -1384,8 +1384,8 @@ class Field(Variable, DomainMixin):
                     "units": {self.name: str(self.units)},
                     "features": [],
                 }
-                grid_x = 0.5
-                grid_y = 0.5
+                grid_x = 0.0625 # this is hardcoded for ERA5 grid resolution (0.25) - we need a method to infer this!
+                grid_y = 0.0625 # this is hardcoded for ERA5 grid resolution (0.25) - we need a method to infer this!
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
                         idx = {
