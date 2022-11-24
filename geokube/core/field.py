@@ -1815,7 +1815,12 @@ class Field(Variable, DomainMixin):
         return path
 
     def to_dict(self):
-        return {"units": str(self.units)}
+        return {
+            "units": str(self.units),
+            "description": self.properties.get(
+                "description", self.properties.get("long_name")
+            ),
+        }
 
     @classmethod
     @geokube_logging
