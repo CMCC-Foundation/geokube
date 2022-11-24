@@ -1337,7 +1337,7 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-    def to_geojson(self, target=None):
+    def to_geojson(self, target=None, grid_x=0.0625, grid_y=0.0625):
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
@@ -1366,7 +1366,7 @@ class Field(Variable, DomainMixin):
             result = {"data": []}
             field = (
                 self
-                if isinstance(self.domain.crs, RegularLatLon)
+                if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
             axis_names = field.domain._axis_to_name
@@ -1384,8 +1384,6 @@ class Field(Variable, DomainMixin):
                     "units": {self.name: str(self.units)},
                     "features": [],
                 }
-                grid_x = 0.0625 # this is hardcoded for ERA5 grid resolution (0.25) - we need a method to infer this!
-                grid_y = 0.0625 # this is hardcoded for ERA5 grid resolution (0.25) - we need a method to infer this!
                 for lat in field.latitude.values.flat:
                     for lon in field.longitude.values.flat:
                         idx = {
