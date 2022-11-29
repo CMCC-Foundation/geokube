@@ -138,7 +138,7 @@ class DataCube(DomainMixin):
                 )
             return item
 
-    def __iter__(self):
+    def __next__(self):
         for f in self._fields.values():
             yield f
         raise StopIteration

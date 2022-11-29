@@ -926,6 +926,7 @@ def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
         | (res["vertical"].values == nemo_ocean_16.depthv.values[-2])
     )
 
+
 @pytest.mark.skipif(
     xr.__version__ > "2022.1.0",
     reason="Subsetting does not support empty indexers",
