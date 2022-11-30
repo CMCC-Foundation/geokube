@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 
 import geokube.core.coord_system as crs
-from geokube.backend.netcdf import open_datacube
+from geokube.backend import open_datacube
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate

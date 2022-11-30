@@ -1,7 +1,7 @@
 import pytest
 import xarray as xr
 
-from geokube.backend.netcdf import open_dataset
+from geokube.backend import open_dataset
 from geokube.core.datacube import DataCube
 
 

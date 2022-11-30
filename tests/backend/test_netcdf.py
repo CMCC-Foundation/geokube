@@ -6,7 +6,7 @@ import pytest
 from dask.delayed import Delayed
 
 from geokube.core.field import Field
-from geokube.backend.netcdf import open_dataset, open_datacube
+from geokube.backend import open_dataset, open_datacube
 
 from tests import *
 
