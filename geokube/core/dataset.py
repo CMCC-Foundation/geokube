@@ -198,7 +198,9 @@ class Dataset:
     @staticmethod
     def _row_to_dict(row, attrs, unique_values):
         return {
-            "datacube": row[Dataset.DATACUBE_COL].to_dict(unique_values),
+            "datacube": None
+            if isinstance(row[Dataset.DATACUBE_COL], Delayed)
+            else row[Dataset.DATACUBE_COL].to_dict(unique_values),
             "attributes": {attr_name: row[attr_name] for attr_name in attrs},
         }
 
