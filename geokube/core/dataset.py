@@ -289,6 +289,11 @@ class Dataset:
 
     @property
     def nbytes(self) -> int:
+        if any(isinstance(cube, Delayed) for cube in self.cubes):
+            return sum(
+                sum(os.path.getsize(f) for f in files)
+                for files in self.__data[Dataset.FILES_COL]
+            )
         return sum(cube.nbytes for cube in self.cubes)
 
     def _persist_datacube(self, dataframe_item, path):
