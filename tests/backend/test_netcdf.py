@@ -39,3 +39,9 @@ def test_open_dataset_with_load_files_on_persistance_set_to_false():
     dset.persist(RES_DIR)
     assert len(os.listdir(RES_DIR)) == 2
     clear_test_res()
+
+
+def test_open_geotif():
+    open_datacube(
+        path=os.path.join("tests", "resources", "geotiff_sample.tif")
+    )

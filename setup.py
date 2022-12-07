@@ -29,6 +29,7 @@ setuptools.setup(
         "metpy",
         "plotly",
         "pyarrow",
+        "rioxarray",
     ],
     classifiers=[
         "Development Status :: 3 - Alpha",
