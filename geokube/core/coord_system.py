@@ -216,9 +216,7 @@ class GeogCS(CoordSystem):
             inverse_flattening = 0.0
 
         # Calculate semi_major_axis? (0 1 1)
-        elif semi_major_axis is None and (
-            semi_minor_axis is not None and inverse_flattening is not None
-        ):
+        elif semi_minor_axis is not None and inverse_flattening is not None:
             semi_major_axis_ = -semi_minor_axis / (
                 (1.0 - inverse_flattening) / inverse_flattening
             )
@@ -230,9 +228,7 @@ class GeogCS(CoordSystem):
             semi_major_axis = semi_major_axis_
 
         # Calculate semi_minor_axis? (1 0 1)
-        elif semi_minor_axis is None and (
-            semi_major_axis is not None and inverse_flattening is not None
-        ):
+        elif semi_major_axis is not None and inverse_flattening is not None:
             semi_minor_axis_ = semi_major_axis - (
                 (1.0 / inverse_flattening) * semi_major_axis
             )
