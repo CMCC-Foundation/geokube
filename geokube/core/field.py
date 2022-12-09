@@ -690,7 +690,14 @@ class Field(Variable, DomainMixin):
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
 
-        indexers = {self.domain[k].name: v for k, v in indexers.items()}
+        if len(
+            (
+                common_axes := set(indexers.keys())
+                & set(self.domain._axis_to_name.keys())
+            )
+        ) != len(indexers):
+            warnings.warn("there are indexers not found among available axes")
+        indexers = {self.domain[k].name: v for k, v in common_axes.items()}
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails

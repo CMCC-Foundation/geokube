@@ -5,6 +5,7 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 import dask.array as da
 import numpy as np
 import pandas as pd
+from pandas.tseries.frequencies import to_offset
 import xarray as xr
 
 from ..utils.decorators import geokube_logging
@@ -27,6 +28,14 @@ class CoordinateType(Enum):
 # NOTE: coordinate is a dimension or axis with data and units
 # NOTE: coordinate name is dimension/axis name
 # NOTE: coordinate axis type is dimension/axis type
+
+FREQ_CODES = {
+    "T": "minute",
+    "H": "hour",
+    "D": "day",
+    "M": "month",
+    "Y": "year",
+}
 
 
 class Coordinate(Variable, Axis):
@@ -341,13 +350,41 @@ class Coordinate(Variable, Axis):
         return xr.Dataset(coords={da.name: da, **bounds})
 
     def to_dict(self, unique_values=False):
-        return {
-            "values": maybe_convert_to_json_serializable(np.unique(self.data))
-            if unique_values
-            else maybe_convert_to_json_serializable(np.atleast_1d(self.data)),
-            "units": str(self.units),
-            "axis": self.axis_type.name,
-        }
+        axis_specific_details = {}
+        if self.axis_type is AxisType.TIME:
+            time_unit = time_step = None
+            if len(self.data) > 1:
+                values = np.datetime64(self.data)
+                time_offset = to_offset(pd.Series(values).diff().mode().item())
+                time_unit = time_offset.name
+                time_step = time_offset.n
+            axis_specific_details = {
+                "time_unit": FREQ_CODES[time_unit],
+                "time_step": time_step,
+            }
+        elif (
+            self.axis_type is AxisType.VERTICAL
+            or self.axis_type is AxisType.GENERIC
+        ):
+            # numpy.float32 is not JSON serializable
+            axis_specific_details = {
+                "values": maybe_convert_to_json_serializable(
+                    np.unique(np.array(self.data))
+                )
+                if unique_values
+                else maybe_convert_to_json_serializable(
+                    np.array(self.data).astype(float)
+                )
+            }
+        return dict(
+            **{
+                "min": maybe_convert_to_json_serializable(np.min(self.data)),
+                "max": maybe_convert_to_json_serializable(np.max(self.data)),
+                "units": str(self.units),
+                "axis": self.axis_type.name,
+            },
+            **axis_specific_details,
+        )
 
     @classmethod
     @geokube_logging
@@ -406,3 +443,25 @@ class ArrayCoordinate(Coordinate):
 
 class ParametricCoordinate(Coordinate):
     pass
+
+
+def maybe_convert_to_json_serializable(obj):
+    if isinstance(obj, np.ndarray):
+        if np.issubdtype(obj.dtype, np.float32):
+            return obj.astype(float).tolist()
+        elif np.issubdtype(obj.dtype, np.datetime64):
+            return obj.astype(str).tolist()
+        else:
+            return obj.tolist()
+    elif isinstance(obj, da.Array):
+        return maybe_convert_to_json_serializable(np.array(obj))
+    elif isinstance(obj, dict):
+        return {
+            k: maybe_convert_to_json_serializable(v) for k, v in obj.items()
+        }
+    elif isinstance(obj, np.float32):
+        return float(obj)
+    elif isinstance(obj, np.datetime64):
+        return str(obj)
+    else:
+        return obj
