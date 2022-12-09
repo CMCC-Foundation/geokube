@@ -95,8 +95,8 @@ class Coordinate(Variable, Axis):
                     )
                 if len(dims_tuple) == 1 and dims_tuple[0] != self.name:
                     raise ValueError(
-                        f"`dims` parameter for dimension coordinate should"
-                        f" have the same name as axis name!"
+                        "`dims` parameter for dimension coordinate should"
+                        " have the same name as axis name!"
                     )
         Variable.__init__(
             self,
@@ -351,17 +351,18 @@ class Coordinate(Variable, Axis):
 
     def to_dict(self, unique_values=False):
         axis_specific_details = {}
+        values = self.data
         if self.axis_type is AxisType.TIME:
+            values = np.array(values, dtype=np.datetime64)
             time_unit = time_step = None
             if len(self.data) > 1:
-                values = np.datetime64(self.data)
                 time_offset = to_offset(pd.Series(values).diff().mode().item())
                 time_unit = time_offset.name
                 time_step = time_offset.n
-            axis_specific_details = {
-                "time_unit": FREQ_CODES[time_unit],
-                "time_step": time_step,
-            }
+                axis_specific_details = {
+                    "time_unit": FREQ_CODES[time_unit],
+                    "time_step": time_step,
+                }
         elif (
             self.axis_type is AxisType.VERTICAL
             or self.axis_type is AxisType.GENERIC
@@ -369,17 +370,17 @@ class Coordinate(Variable, Axis):
             # numpy.float32 is not JSON serializable
             axis_specific_details = {
                 "values": maybe_convert_to_json_serializable(
-                    np.unique(np.array(self.data))
+                    np.unique(np.array(values))
                 )
                 if unique_values
                 else maybe_convert_to_json_serializable(
-                    np.array(self.data).astype(float)
+                    np.array(np.atleast_1d(values))
                 )
             }
         return dict(
             **{
-                "min": maybe_convert_to_json_serializable(np.min(self.data)),
-                "max": maybe_convert_to_json_serializable(np.max(self.data)),
+                "min": maybe_convert_to_json_serializable(np.min(values)),
+                "max": maybe_convert_to_json_serializable(np.max(values)),
                 "units": str(self.units),
                 "axis": self.axis_type.name,
             },
