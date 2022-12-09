@@ -233,11 +233,11 @@ class GeogCS(CoordSystem):
                 (1.0 / inverse_flattening) * semi_major_axis
             )
             if (
-                semi_minor_axis_ is not None
+                semi_minor_axis is not None
                 and abs(semi_minor_axis_ - semi_minor_axis) > TOL
             ):
                 raise ValueError("Ellipsoid is overspecified")
-            semi_minor_axis_ = semi_minor_axis
+            semi_minor_axis = semi_minor_axis_
 
         # Calculate inverse_flattening? (1 1 0)
         elif inverse_flattening is None and (
