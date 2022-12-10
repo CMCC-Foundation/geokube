@@ -697,7 +697,11 @@ class Field(Variable, DomainMixin):
             )
         ) != len(indexers):
             warnings.warn("there are indexers not found among available axes")
-        indexers = {self.domain[k].name: v for k, v in common_axes.items()}
+        indexers = {
+            self.domain[k].name: v
+            for k, v in indexers.items()
+            if k in common_axes
+        }
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
