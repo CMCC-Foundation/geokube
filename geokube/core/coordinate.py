@@ -444,29 +444,3 @@ class ArrayCoordinate(Coordinate):
 
 class ParametricCoordinate(Coordinate):
     pass
-
-
-def maybe_convert_to_json_serializable(obj):
-    if isinstance(obj, np.ndarray):
-        if np.issubdtype(obj.dtype, np.float32):
-            return obj.astype(float).tolist()
-        elif np.issubdtype(obj.dtype, np.int32):
-            return obj.astype(int).tolist()
-        elif np.issubdtype(obj.dtype, np.datetime64):
-            return obj.astype(str).tolist()
-        else:
-            return obj.tolist()
-    elif isinstance(obj, da.Array):
-        return maybe_convert_to_json_serializable(np.array(obj))
-    elif isinstance(obj, dict):
-        return {
-            k: maybe_convert_to_json_serializable(v) for k, v in obj.items()
-        }
-    elif isinstance(obj, np.float32):
-        return float(obj)
-    elif isinstance(obj, np.int32):
-        return int(obj)
-    elif isinstance(obj, np.datetime64):
-        return str(obj)
-    else:
-        return obj
