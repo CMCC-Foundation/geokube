@@ -15,9 +15,13 @@ class GeokubeDetailsJSONEncoder(json.JSONEncoder):
 
 def maybe_convert_to_json_serializable(obj):
     if isinstance(obj, np.ndarray):
-        if np.issubdtype(obj.dtype, np.float32):
+        if np.issubdtype(obj.dtype, np.float32) or np.issubdtype(
+            obj.dtype, np.float64
+        ):
             return obj.astype(float).tolist()
-        elif np.issubdtype(obj.dtype, np.int32):
+        elif np.issubdtype(obj.dtype, np.int32) or np.issubdtype(
+            obj.dtype, np.int64
+        ):
             return obj.astype(int).tolist()
         elif np.issubdtype(obj.dtype, np.datetime64):
             return obj.astype(str).tolist()
