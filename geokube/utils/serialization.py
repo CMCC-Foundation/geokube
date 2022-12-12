@@ -33,9 +33,9 @@ def maybe_convert_to_json_serializable(obj):
         return {
             k: maybe_convert_to_json_serializable(v) for k, v in obj.items()
         }
-    elif isinstance(obj, np.float32):
+    elif isinstance(obj, np.float32) or isinstance(obj, np.float64):
         return float(obj)
-    elif isinstance(obj, np.int32):
+    elif isinstance(obj, np.int32) or isinstance(obj, np.int64):
         return int(obj)
     elif isinstance(obj, np.datetime64):
         return str(obj)
