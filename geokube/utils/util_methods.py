@@ -13,6 +13,16 @@ from dask import is_dask_collection
 from ..core.axis import Axis
 
 
+def convert_cftimes_to_numpy(obj):
+    for key in obj.coords:
+        if obj[key].dtype == np.dtype("O"):
+            try:
+                obj[key] = obj.indexes[key].to_datetimeindex()
+            except AttributeError:
+                pass
+    return obj
+
+
 def are_dims_compliant(provided_shape, expected_shape):
     return provided_shape == expected_shape
 

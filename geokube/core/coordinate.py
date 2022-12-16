@@ -353,7 +353,7 @@ class Coordinate(Variable, Axis):
         axis_specific_details = {}
         values = self.data
         if self.axis_type is AxisType.TIME:
-            values = np.array(values, dtype=np.datetime64)
+            values = np.array(values).astype(np.datetime64)
             time_unit = time_step = None
             if len(self.data) > 1:
                 time_offset = to_offset(pd.Series(values).diff().mode().item())
