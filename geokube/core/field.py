@@ -38,6 +38,7 @@ from xarray.core.options import OPTIONS
 
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import geokube_logging
+from ..utils.util_methods import convert_cftimes_to_numpy
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .cell_methods import CellMethod
@@ -1840,7 +1841,7 @@ class Field(Variable, DomainMixin):
             raise TypeError(
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
             )
-
+        ds = convert_cftimes_to_numpy(ds)
         domain = Domain.from_xarray(
             ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
         )

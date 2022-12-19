@@ -16,7 +16,6 @@ import xarray as xr
 from ..utils import util_methods
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
-from ..utils.util_methods import convert_cftimes_to_numpy
 from .axis import Axis, AxisType
 from .coord_system import (
     CoordSystem,
@@ -333,7 +332,6 @@ class Domain(DomainMixin):
         mapping: Optional[Mapping[str, str]] = None,
     ) -> "Domain":
         da = ds[ncvar]
-        da = convert_cftimes_to_numpy(da)
         coords = set()
         for dim_name in da.dims:
             if dim_name in da.coords:
