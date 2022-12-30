@@ -35,6 +35,7 @@ FREQ_CODES = {
     "D": "day",
     "M": "month",
     "Y": "year",
+    "N": "nanosecond"
 }
 
 
@@ -359,6 +360,11 @@ class Coordinate(Variable, Axis):
                 time_offset = to_offset(pd.Series(values).diff().mode().item())
                 time_unit = time_offset.name
                 time_step = time_offset.n
+                if time_unit in {"L","U","N"}: #skip mili, micro, and nanoseconds
+                    values = values.astype("datetime64[m]") # with minute resoluton
+                    time_offset = to_offset(pd.Series(values).diff().mode().item())
+                    time_unit = time_offset.name
+                    time_step = time_offset.n
                 axis_specific_details = {
                     "time_unit": FREQ_CODES[time_unit],
                     "time_step": time_step,
@@ -367,7 +373,7 @@ class Coordinate(Variable, Axis):
             self.axis_type is AxisType.VERTICAL
             or self.axis_type is AxisType.GENERIC
         ):
-            # numpy.float32 is not JSON serializable
+            # e.g. numpy.float32 is not JSON serializable
             axis_specific_details = {
                 "values": maybe_convert_to_json_serializable(
                     np.unique(np.array(values))
