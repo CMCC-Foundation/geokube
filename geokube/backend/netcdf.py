@@ -151,13 +151,15 @@ def open_dataset(
             cached_files = [
                 item for sublist in cached_files for item in sublist
             ]
-            files = glob.glob(path)  # all files
-            not_cached_files = list(set(files) - set(cached_files))
-            if len(not_cached_files) == 0:  # there are no new files
-                return geokube.core.dataset.Dataset(
-                    hcubes=cached_ds.reset_index(),
-                    load_files_on_persistance=load_files_on_persistance,
-                )
+            # TODO: below glob takes too much time
+            # while cache loading, e.g. for gutta-visir
+            # files = glob.glob(path)  # all files
+            # not_cached_files = list(set(files) - set(cached_files))
+            # if len(not_cached_files) == 0:  # there are no new files
+            return geokube.core.dataset.Dataset(
+                hcubes=cached_ds.reset_index(),
+                load_files_on_persistance=load_files_on_persistance,
+            )
 
             # there are new files we need to update the cache
             # we consider the case we only add files
