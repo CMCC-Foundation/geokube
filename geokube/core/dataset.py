@@ -299,10 +299,11 @@ class Dataset:
     def _persist_datacube(self, dataframe_item, path):
         if self.__load_files_on_persistance:
             dcube = dataframe_item[self.DATACUBE_COL]
+            attr_str = self._form_attr_str(dataframe_item)
             if isinstance(dcube, Delayed):
                 dcube = dcube.compute()
             try:
-                return dcube.persist(path)
+                return dcube.persist(os.path.join(path, f"{attr_str}.nc"))
             except EmptyDataCubeError:
                 self._LOG.warn(f"Skipping empty Dataset item!")
                 return None
