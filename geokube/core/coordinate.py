@@ -416,7 +416,12 @@ class Coordinate(Variable, Axis):
 
         axis_name = Variable._get_name(da, mapping, id_pattern)
         # `axis` attribute cannot be used below, as e.g for EOBS `latitude` has axis `Y`, so wrong AxisType is chosen
-        axistype = AxisType.parse(da.attrs.get("standard_name", ncvar))
+        axistype_name = None
+        if mapping is not None and da.name in mapping:
+            axistype_name = mapping[da.name].get("axis")
+        if axistype_name is None:
+            axistype_name = da.attrs.get("standard_name", ncvar)
+        axistype = AxisType.parse(axistype_name)
         axis = Axis(
             name=axis_name,
             is_dim=ncvar in da.dims,
