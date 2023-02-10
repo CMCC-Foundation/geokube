@@ -72,7 +72,6 @@ class AxisType(Enum):
 
 
 class Axis:
-
     _LOG = HCubeLogger(name="Axis")
 
     def __init__(

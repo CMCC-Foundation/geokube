@@ -50,7 +50,6 @@ class DomainType(Enum):
 
 
 class Domain(DomainMixin):
-
     __slots__ = (
         "_coords",
         "_crs",
@@ -504,7 +503,6 @@ class GeodeticPoints(Domain):
 
 class GeodeticGrid(Domain):
     def __init__(self, latitude, longitude, vertical=None):
-
         latitude = np.array(latitude, dtype=np.float64, ndmin=1)
         longitude = np.array(longitude, dtype=np.float64, ndmin=1)
         if vertical != None:

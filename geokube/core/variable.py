@@ -29,7 +29,6 @@ from .unit import Unit
 
 
 class Variable(xr.Variable):
-
     __slots__ = (
         "_dimensions",
         "_units",

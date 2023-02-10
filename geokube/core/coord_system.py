@@ -332,7 +332,6 @@ class GeogCS(CoordSystem):
 
 
 class RegularLatLon(GeogCS):
-
     grid_mapping_name = "latitude_longitude"
 
     def __init__(self, *args, **kwargs):
@@ -810,7 +809,6 @@ class Geostationary(CoordSystem):
         *args,
         **kwargs
     ):
-
         """
         Constructs a Geostationary coord system.
 
@@ -1369,7 +1367,6 @@ class AlbersEqualArea(CoordSystem):
 
 
 class CurvilinearGrid(CoordSystem):
-
     grid_mapping_name = "curvilinear_grid"
 
     def __init__(self, *args, **kwargs):

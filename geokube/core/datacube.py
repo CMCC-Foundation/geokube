@@ -51,7 +51,6 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 # dc['latitude']
 #
 class DataCube(DomainMixin):
-
     __slots__ = (
         "_fields",
         "_domain",

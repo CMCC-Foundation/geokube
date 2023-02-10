@@ -70,7 +70,6 @@ def open_datacube(
     metadata_cache_path: str = None,
     **kwargs,  # optional kw args for xr.open_mfdataset
 ) -> geokube.core.datacube.DataCube:
-
     # TODO: incremental metadata caching
     # we could load the cache file and compare the files from the paths with the files
     # in the dataframe cached and read only the files that are not in the cache

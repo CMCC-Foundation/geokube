@@ -65,7 +65,6 @@ _CARTOPY_FEATURES = {
 
 
 class Field(Variable, DomainMixin):
-
     __slots__ = (
         "_name",
         "_domain",
@@ -103,7 +102,6 @@ class Field(Variable, DomainMixin):
             Mapping[Hashable, Union[np.ndarray, Variable]]
         ] = None,
     ) -> None:
-
         super().__init__(
             data=data,
             units=units,
@@ -371,7 +369,9 @@ class Field(Variable, DomainMixin):
         latitude: Number | Sequence[Number],
         longitude: Number | Sequence[Number],
         vertical: Number | Sequence[Number] | None = None,
-    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+    ) -> (
+        Field
+    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
         """
         Select points with given coordinates from a field.
 
@@ -1820,11 +1820,20 @@ class Field(Variable, DomainMixin):
         return path
 
     def to_dict(self):
+        description = None
+        if self.ncvar in self._mapping:
+            var_map = self._mapping[self.ncvar]
+            if "description" in var_map:
+                description = var_map["description"]
+            elif "name" in var_map:
+                description = var_map["name"]
+        if description is None:
+            description = self.properties.get(
+                "description", self.properties.get("long_name")
+            )
         return {
             "units": str(self.units),
-            "description": self.properties.get(
-                "description", self.properties.get("long_name")
-            ),
+            "description": description,
         }
 
     @classmethod

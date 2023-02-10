@@ -35,7 +35,7 @@ FREQ_CODES = {
     "D": "day",
     "M": "month",
     "Y": "year",
-    "N": "nanosecond"
+    "N": "nanosecond",
 }
 
 
@@ -360,9 +360,17 @@ class Coordinate(Variable, Axis):
                 time_offset = to_offset(pd.Series(values).diff().mode().item())
                 time_unit = time_offset.name
                 time_step = time_offset.n
-                if time_unit in {"L","U","N"}: #skip mili, micro, and nanoseconds
-                    values = values.astype("datetime64[m]") # with minute resoluton
-                    time_offset = to_offset(pd.Series(values).diff().mode().item())
+                if time_unit in {
+                    "L",
+                    "U",
+                    "N",
+                }:  # skip mili, micro, and nanoseconds
+                    values = values.astype(
+                        "datetime64[m]"
+                    )  # with minute resoluton
+                    time_offset = to_offset(
+                        pd.Series(values).diff().mode().item()
+                    )
                     time_unit = time_offset.name
                     time_step = time_offset.n
                 axis_specific_details = {
@@ -403,7 +411,6 @@ class Coordinate(Variable, Axis):
         mapping: Optional[Mapping[str, str]] = None,
         copy: Optional[bool] = False,
     ) -> "Coordinate":
-
         if not isinstance(ds, xr.Dataset):
             raise TypeError(
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
