@@ -1821,7 +1821,7 @@ class Field(Variable, DomainMixin):
 
     def to_dict(self):
         description = None
-        if self.ncvar in self._mapping:
+        if self._mapping is not None and self.ncvar in self._mapping:
             var_map = self._mapping[self.ncvar]
             if "description" in var_map:
                 description = var_map["description"]
