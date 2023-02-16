@@ -193,7 +193,7 @@ class Variable(xr.Variable):
         id_pattern: str,
     ) -> str:
         if mapping is not None and da.name in mapping:
-            return mapping[da.name]["name"]
+            return mapping[da.name].get("name", da.name)
         if id_pattern is None:
             return da.attrs.get("standard_name", da.name)
         fmt = Formatter()
