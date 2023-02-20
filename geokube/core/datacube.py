@@ -207,18 +207,23 @@ class DataCube(DomainMixin):
         roll_if_needed: bool = True,
         **indexers_kwargs: Any,
     ) -> "DataCube":  # this can be only independent variables
-        return DataCube(
-            fields=[
-                self._fields[k].sel(
-                    indexers=indexers,
-                    roll_if_needed=roll_if_needed,
-                    method=method,
-                    tolerance=tolerance,
-                    drop=drop,
-                    **indexers_kwargs,
+        fields = []
+        for k in self._fields.keys():
+            try:
+                fields.append(
+                    self._fields[k].sel(
+                        indexers=indexers,
+                        roll_if_needed=roll_if_needed,
+                        method=method,
+                        tolerance=tolerance,
+                        drop=drop,
+                        **indexers_kwargs,)                
                 )
-                for k in self._fields.keys()
-            ],
+            except EmptyDataError as err:
+                DataCube._LOG.info("skipping field `{k}` due to `{err}`")
+                continue
+        return DataCube(
+            fields=fields,
             properties=self.properties,
             encoding=self.encoding,
         )
@@ -319,10 +324,14 @@ class DataCube(DomainMixin):
                     "properties": {"time": time_},
                 }
                 for field in self.fields.values():
-                    value = (
-                        field.sel(time=time_) if field.time.size > 1 else field
-                    )
-                    feature["properties"][field.name] = float(value)
+                    try:
+                        value = (
+                            field.sel(time=time_) if field.time.size > 1 else field
+                        )
+                    except EmptyDataError:
+                        continue
+                    else:
+                        feature["properties"][field.name] = float(value)
                 result["features"].append(feature)
         elif (
             self.domain.type is DomainType.GRIDDED or self.domain.type is None
@@ -373,8 +382,12 @@ class DataCube(DomainMixin):
                             "properties": {},
                         }
                         for field in self.fields.values():
-                            value = field.sel(indexers=idx)
-                            feature["properties"][field.name] = float(value)
+                            try:
+                                value = field.sel(indexers=idx)
+                            except EmptyDataError:
+                                continue
+                            else:                                
+                                feature["properties"][field.name] = float(value)
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
         else:
