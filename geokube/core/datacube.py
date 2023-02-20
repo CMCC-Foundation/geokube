@@ -220,7 +220,7 @@ class DataCube(DomainMixin):
                         **indexers_kwargs,)                
                 )
             except EmptyDataError as err:
-                DataCube._LOG.info("skipping field `{k}` due to `{err}`")
+                DataCube._LOG.info(f"skipping field `{k}` due to `{err}`")
                 continue
         return DataCube(
             fields=fields,

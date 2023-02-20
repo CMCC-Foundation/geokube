@@ -690,7 +690,7 @@ class Field(Variable, DomainMixin):
             if isinstance(idx['time'], np.ndarray) and len(idx['time']) == 0:
                 Field._LOG.warn("empty `time` indexer")
                 raise EmptyDataError("empty `time` indexer")
-            ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
+            ds = ds.isel(idx, drop=drop)
             del indexers[Axis("time")]
 
         if roll_if_needed:
