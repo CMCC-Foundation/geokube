@@ -41,6 +41,7 @@ from ..utils.decorators import geokube_logging
 from ..utils.util_methods import convert_cftimes_to_numpy
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
+from .errs import EmptyDataError
 from .cell_methods import CellMethod
 from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
@@ -685,6 +686,10 @@ class Field(Variable, DomainMixin):
             time_ind := indexers.get(Axis("time"))
         ) is not None and util_methods.is_time_combo(time_ind):
             # NOTE: time is always independent coordinate
+            idx = self.domain._process_time_combo(time_ind)
+            if isinstance(idx['time'], np.ndarray) and len(idx['time']) == 0:
+                Field._LOG.warn("empty `time` indexer")
+                raise EmptyDataError("empty `time` indexer")
             ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
             del indexers[Axis("time")]
 
@@ -1815,7 +1820,6 @@ class Field(Variable, DomainMixin):
                 " Adding automatically!"
             )
             path = path + ".nc"
-        self.assert_not_empty()
         self.to_netcdf(path)
         return path
 

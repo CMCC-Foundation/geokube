@@ -274,6 +274,12 @@ class Variable(xr.Variable):
             if self.units.is_time_reference():
                 nc_encoding["units"] = self.units.cftime_unit
                 nc_encoding["calendar"] = self.units.calendar
+            elif np.issubdtype(self.dtype, np.timedelta64) or \
+                np.issubdtype(self.dtype, np.datetime64):
+                # NOTE: issue while using xarray.to_netcdf if units
+                # are stored as attributes, 
+                # example: fapar/10-daily/LENGTH_AFTER
+                nc_encoding["units"] = str(self.units)
             else:
                 nc_attrs["units"] = str(self.units)
 

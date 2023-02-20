@@ -18,7 +18,7 @@ from zipfile import ZipFile
 from ..utils.decorators import geokube_logging
 from ..utils import util_methods
 from ..utils.hcube_logger import HCubeLogger
-from .errs import EmptyDataCubeError
+from .errs import EmptyDataError
 from .axis import Axis
 from .datacube import DataCube
 
@@ -304,7 +304,7 @@ class Dataset:
                 dcube = dcube.compute()
             try:
                 return dcube.persist(os.path.join(path, f"{attr_str}.nc"))
-            except EmptyDataCubeError:
+            except EmptyDataError:
                 self._LOG.warn(f"Skipping empty Dataset item!")
                 return None
         else:

@@ -1,4 +1,4 @@
-class EmptyDataCubeError(ValueError):
+class EmptyDataError(ValueError):
     """Empty DataCube"""
 
 
