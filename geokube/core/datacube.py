@@ -23,6 +23,7 @@ from typing import (
 
 import pandas as pd
 import xarray as xr
+import math
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
@@ -382,6 +383,8 @@ class DataCube(DomainMixin):
                             value = field.sel(indexers=idx)
                             try:
                                 value_ = float(value)
+                                if math.isnan(value):
+                                    value_ = None
                             except ValueError:
                                 try:
                                     value_ = value.item()
