@@ -380,7 +380,14 @@ class DataCube(DomainMixin):
                         }
                         for field in self.fields.values():
                             value = field.sel(indexers=idx)
-                            feature["properties"][field.name] = float(value)
+                            try:
+                                value_ = float(value)
+                            except ValueError:
+                                try:
+                                    value_ = value.item()
+                                except AttributeError:
+                                    value_ = value
+                            feature["properties"][field.name] = value_
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
         else:
