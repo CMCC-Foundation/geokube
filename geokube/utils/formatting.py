@@ -254,8 +254,7 @@ def inline_dask_repr(array):
 
 
 def inline_sparse_repr(array):
-    """Similar to sparse.COO.__repr__, but without the redundant shape/dtype.
-    """
+    """Similar to sparse.COO.__repr__, but without the redundant shape/dtype."""
     assert isinstance(array, sparse_array_type), array
     return "<{}: nnz={:d}, fill_value={!s}>".format(
         type(array).__name__, array.nnz, array.fill_value
