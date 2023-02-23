@@ -687,7 +687,7 @@ class Field(Variable, DomainMixin):
         ) is not None and util_methods.is_time_combo(time_ind):
             # NOTE: time is always independent coordinate
             idx = self.domain._process_time_combo(time_ind)
-            if isinstance(idx['time'], np.ndarray) and len(idx['time']) == 0:
+            if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
                 Field._LOG.warn("empty `time` indexer")
                 raise EmptyDataError("empty `time` indexer")
             ds = ds.isel(idx, drop=drop)

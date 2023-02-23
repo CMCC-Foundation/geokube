@@ -217,7 +217,8 @@ class DataCube(DomainMixin):
                         method=method,
                         tolerance=tolerance,
                         drop=drop,
-                        **indexers_kwargs,)                
+                        **indexers_kwargs,
+                    )
                 )
             except EmptyDataError as err:
                 DataCube._LOG.info(f"skipping field `{k}` due to `{err}`")
@@ -326,7 +327,9 @@ class DataCube(DomainMixin):
                 for field in self.fields.values():
                     try:
                         value = (
-                            field.sel(time=time_) if field.time.size > 1 else field
+                            field.sel(time=time_)
+                            if field.time.size > 1
+                            else field
                         )
                     except EmptyDataError:
                         continue
@@ -386,8 +389,10 @@ class DataCube(DomainMixin):
                                 value = field.sel(indexers=idx)
                             except EmptyDataError:
                                 continue
-                            else:                                
-                                feature["properties"][field.name] = float(value)
+                            else:
+                                feature["properties"][field.name] = float(
+                                    value
+                                )
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
         else:
