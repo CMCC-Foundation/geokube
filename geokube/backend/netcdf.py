@@ -146,10 +146,10 @@ def open_dataset(
             )
         cached_ds = _read_cache(metadata_cache_path)
         if cached_ds is not None:
-            cached_files = list(cached_ds.reset_index()[FILES_COL])
-            cached_files = [
-                item for sublist in cached_files for item in sublist
-            ]
+            # cached_files = list(cached_ds.reset_index()[FILES_COL])
+            # cached_files = [
+            #     item for sublist in cached_files for item in sublist
+            # ]
             # TODO: below glob takes too much time
             # while cache loading, e.g. for gutta-visir
             # files = glob.glob(path)  # all files
