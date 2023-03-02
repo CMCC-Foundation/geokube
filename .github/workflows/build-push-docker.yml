@@ -10,6 +10,11 @@ jobs:
     - uses: actions/checkout@v3
     - name: Set Docker image tag name
       run: echo "TAG=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+    - uses: actions/setup-python@v1
+      with:
+        python-version: 3.11
+    - name: Build WHEEL file
+      run: python setup.py bdist_wheel
     - name: Log in to the docker repo
       run: docker login ${{ secrets.DOCKER_DEV_REPO_URL }} -u nologin -p ${{ secrets.DOCKER_PASSWORD }}
     - name: Build the Docker image
