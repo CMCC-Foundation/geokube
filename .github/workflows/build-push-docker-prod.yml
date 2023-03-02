@@ -10,7 +10,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Get release tag
-      id: vars
       run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
     - name: Log in to the docker repo
       run: docker login ${{ secrets.DOCKER_DEV_REPO_URL }} -u nologin -p ${{ secrets.DOCKER_REPO_PASSWORD }}
