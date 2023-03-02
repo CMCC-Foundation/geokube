@@ -13,6 +13,6 @@ jobs:
     - name: Log in to the docker repo
       run: docker login ${{ secrets.DOCKER_DEV_REPO_URL }} -u nologin -p ${{ secrets.DOCKER_REPO_PASSWORD }}
     - name: Build the Docker image
-      run: docker build -t ${{ secrets.DOCKER_DEV_REPO_URL }}/geodds-executor:${{ env.TAG }} -f Dockerfile .
+      run: docker build -t ${{ secrets.DOCKER_DEV_REPO_URL }}/geokube:${{ env.TAG }} -f Dockerfile .
     - name: Push docker image
-      run: docker push ${{ secrets.DOCKER_DEV_REPO_URL }}/geodds-executor:${{ env.TAG }}
+      run: docker push ${{ secrets.DOCKER_DEV_REPO_URL }}/geokube:${{ env.TAG }}
