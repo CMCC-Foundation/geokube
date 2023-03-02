@@ -20,6 +20,9 @@ def convert_cftimes_to_numpy(obj):
                 obj[key] = obj.indexes[key].to_datetimeindex()
             except AttributeError:
                 pass
+            except KeyError:
+                # NOTE: we skipp non-indexable cooridnates, like time_bnds
+                pass            
     return obj
 
 
