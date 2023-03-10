@@ -4,7 +4,16 @@ import warnings
 from html import escape
 from numbers import Number
 from string import Formatter, Template
-from typing import Any, Hashable, Iterable, Mapping, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    Hashable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import dask.array as da
 import numpy as np
@@ -12,16 +21,14 @@ import xarray as xr
 import pandas as pd
 from xarray.core.options import OPTIONS
 
-from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .unit import Unit
 
 
 class Variable(xr.Variable):
-
     __slots__ = (
         "_dimensions",
         "_units",
@@ -45,12 +52,15 @@ class Variable(xr.Variable):
             or isinstance(data, Variable)
             or isinstance(data, Number)
         ):
-            raise ex.HCubeTypeError(
-                f"Expected argument is one of the following types `number.Number`, `numpy.ndarray`, `dask.array.Array`, or `xarray.Variable`, but provided {type(data)}",
-                logger=Variable._LOG,
+            raise TypeError(
+                "Expected argument is one of the following types"
+                " `number.Number`, `numpy.ndarray`, `dask.array.Array`, or"
+                f" `xarray.Variable`, but provided {type(data)}"
             )
+        _is_scalar = False
         if isinstance(data, Number):
-            data = np.array(data)
+            data = np.array(data, ndmin=1)
+            _is_scalar = True
         if isinstance(data, Variable):
             self._dimensions = data._dimensions
             self._units = data._units
@@ -65,10 +75,11 @@ class Variable(xr.Variable):
             if dims is not None:
                 dims = self._as_dimension_tuple(dims)
                 dims = np.array(dims, ndmin=1, dtype=Axis)
-                if len(dims) != data.ndim:
-                    raise ex.HCubeValueError(
-                        f"Provided data have {data.ndim} dimension(s) but {len(dims)} Dimension(s) provided in `dims` argument",
-                        logger=Variable._LOG,
+                if (not _is_scalar) and len(dims) != data.ndim:
+                    raise ValueError(
+                        f"Provided data have {data.ndim} dimension(s) but"
+                        f" {len(dims)} Dimension(s) provided in `dims`"
+                        " argument"
                     )
 
                 self._dimensions = dims
@@ -81,7 +92,9 @@ class Variable(xr.Variable):
                 fastpath=True,
             )
             self._units = (
-                Unit(units) if isinstance(units, str) or units is None else units
+                Unit(units)
+                if isinstance(units, str) or units is None
+                else units
             )
 
     def _as_dimension_tuple(self, dims) -> Tuple[Axis, ...]:
@@ -97,18 +110,22 @@ class Variable(xr.Variable):
                 if isinstance(d, str):
                     _dims.append(Axis(name=d, is_dim=True))
                 elif isinstance(d, AxisType):
-                    _dims.append(Axis(name=d.axis_type_name, axistype=d, is_dim=True))
+                    _dims.append(
+                        Axis(name=d.axis_type_name, axistype=d, is_dim=True)
+                    )
                 elif isinstance(d, Axis):
                     _dims.append(d)
                 else:
-                    raise ex.HCubeTypeError(
-                        f"Expected argument of collection item is one of the following types `str` or `geokube.Axis`, but provided {type(d)}",
-                        logger=Variable._LOG,
+                    raise TypeError(
+                        "Expected argument of collection item is one of the"
+                        " following types `str` or `geokube.Axis`, but"
+                        f" provided {type(d)}"
                     )
             return tuple(_dims)
-        raise ex.HCubeValueError(
-            f"Expected argument is one of the following types `str`, `iterable of str`, `iterable of geokub.Axis`, or `iterable of str`, but provided {type(dims)}",
-            logger=Variable._LOG,
+        raise ValueError(
+            "Expected argument is one of the following types `str`, `iterable"
+            " of str`, `iterable of geokub.Axis`, or `iterable of str`, but"
+            f" provided {type(dims)}"
         )
 
     @property
@@ -149,9 +166,12 @@ class Variable(xr.Variable):
         unit = Unit(unit) if isinstance(unit, str) else unit
         if not isinstance(self.data, np.ndarray):
             Variable._LOG.warn(
-                "Converting units is supported only for np.ndarray inner data type. Data will be loaded into the memory!"
+                "Converting units is supported only for np.ndarray inner data"
+                " type. Data will be loaded into the memory!"
             )
-            self.data = np.array(self.data)  # TODO: inplace for cf.Unit doesn't work!
+            self.data = np.array(
+                self.data
+            )  # TODO: inplace for cf.Unit doesn't work!
         res = self.units.convert(self.data, unit, inplace)
         if not inplace:
             return Variable(
@@ -165,7 +185,7 @@ class Variable(xr.Variable):
         self.units = unit
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def _get_name(
         cls,
         da: Union[xr.Dataset, xr.DataArray],
@@ -173,7 +193,7 @@ class Variable(xr.Variable):
         id_pattern: str,
     ) -> str:
         if mapping is not None and da.name in mapping:
-            return mapping[da.name]["name"]
+            return mapping[da.name].get("name", da.name)
         if id_pattern is None:
             return da.attrs.get("standard_name", da.name)
         fmt = Formatter()
@@ -183,7 +203,8 @@ class Variable(xr.Variable):
         for k in field_names:
             if k not in da.attrs:
                 warnings.warn(
-                    f"Requested id_pattern component - `{k}` is not present among provided attributes!"
+                    f"Requested id_pattern component - `{k}` is not present"
+                    " among provided attributes!"
                 )
                 return da.name
             id_pattern = id_pattern.replace(
@@ -193,7 +214,7 @@ class Variable(xr.Variable):
         return template.substitute(**da.attrs)
 
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         da: xr.DataArray,
@@ -202,9 +223,9 @@ class Variable(xr.Variable):
         mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
     ):
         if not isinstance(da, xr.DataArray):
-            raise ex.HCubeTypeError(
-                f"Expected argument of the following type `xarray.DataArray`, but provided {type(da)}",
-                logger=Variable._LOG,
+            raise TypeError(
+                "Expected argument of the following type `xarray.DataArray`,"
+                f" but provided {type(da)}"
             )
         data = da.data.copy() if copy else da.data
         dims = []
@@ -241,7 +262,7 @@ class Variable(xr.Variable):
             encoding=encoding,
         )
 
-    @log_func_debug
+    @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Variable:
         nc_attrs = self.properties
         nc_encoding = self.encoding
@@ -253,6 +274,13 @@ class Variable(xr.Variable):
             if self.units.is_time_reference():
                 nc_encoding["units"] = self.units.cftime_unit
                 nc_encoding["calendar"] = self.units.calendar
+            elif np.issubdtype(self.dtype, np.timedelta64) or np.issubdtype(
+                self.dtype, np.datetime64
+            ):
+                # NOTE: issue while using xarray.to_netcdf if units
+                # are stored as attributes,
+                # example: fapar/10-daily/LENGTH_AFTER
+                nc_encoding["units"] = str(self.units)
             else:
                 nc_attrs["units"] = str(self.units)
 

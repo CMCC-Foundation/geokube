@@ -1,7 +1,11 @@
 from __future__ import annotations
+import warnings
 
 import os
+import json
+import uuid
 import tempfile
+import shutil
 from collections.abc import Callable, Mapping, Sequence
 from numbers import Number
 from typing import Any, List, Optional, Tuple, Union
@@ -9,15 +13,24 @@ from typing import Any, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 from dask.delayed import Delayed
+from zipfile import ZipFile
 
-from ..utils import exceptions as ex
+from ..utils.decorators import geokube_logging
+from ..utils import util_methods
 from ..utils.hcube_logger import HCubeLogger
+from .errs import EmptyDataError
 from .axis import Axis
 from .datacube import DataCube
 
 
 class Dataset:
-    __slots__ = ("__data", "__metadata", "__attrs", "__cube_idx")
+    __slots__ = (
+        "__data",
+        "__metadata",
+        "__attrs",
+        "__cube_idx",
+        "__load_files_on_persistance",
+    )
 
     _LOG = HCubeLogger(name="Dataset")
 
@@ -30,7 +43,11 @@ class Dataset:
         hcubes: Mapping[tuple[str, ...], DataCube] | pd.DataFrame,
         attrs: Sequence[str] = None,
         metadata: Mapping[str, str] | None = None,
+        load_files_on_persistance: None | bool = True,
     ) -> None:
+        # NOTE: to support Dataset operations
+        # for not-netcdf files
+        self.__load_files_on_persistance = load_files_on_persistance
         # TODO: Make `attrs` capable of taking `np.ndarray`.
         if attrs is None:
             attrs = []
@@ -48,9 +65,7 @@ class Dataset:
                 and attr != self.FIELD_COL
             ]
         else:
-            raise ex.HCubeTypeError(
-                "'hcubes' must be mapping or pandas DataFrame", logger=self._LOG
-            )
+            raise TypeError("'hcubes' must be mapping or pandas DataFrame")
 
         self.__data[self.FIELD_COL] = [
             None
@@ -58,7 +73,6 @@ class Dataset:
             else list(hcube._fields.keys())
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
-
         self.__cube_idx = len(self.__attrs) + 1
         self.__metadata = dict(metadata) if metadata is not None else {}
 
@@ -72,7 +86,9 @@ class Dataset:
             else Dataset._get_eligible_fields_for_datacube(hcube, key)
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
-        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        dset = Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
         return dset._drop_empty()
 
     def __len__(self):
@@ -80,7 +96,9 @@ class Dataset:
 
     @staticmethod
     def _get_eligible_fields_for_datacube(hcube, key: set):
-        return hcube[(key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())]
+        return hcube[
+            (key & hcube._fields.keys()) | (key & hcube._ncvar_to_name.keys())
+        ]
 
     def geobbox(
         self,
@@ -103,7 +121,9 @@ class Dataset:
                 bottom=bottom,
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def locations(
         self,
@@ -118,7 +138,9 @@ class Dataset:
                 latitude=latitude, longitude=longitude, vertical=vertical
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def sel(
         self,
@@ -140,7 +162,9 @@ class Dataset:
                 **indexers_kwargs,
             )
         )
-        return Dataset(attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
 
     def update_metadata(self, metadata: dict):
         self.__metadata.update(metadata)
@@ -155,20 +179,40 @@ class Dataset:
 
     @property
     def cubes(self) -> List[DataCube]:
-        return self.__data[self.DATACUBE_COL].tolist()
+        if self.__load_files_on_persistance:
+            return self.__data[self.DATACUBE_COL].tolist()
+        else:
+            return None
 
-    def to_dict(self) -> dict[Tuple[str, ...], DataCube]:
+    def to_dict(self, unique_values=False) -> dict:
+        res = self.__data.drop(
+            labels=Dataset.FILES_COL, inplace=False, axis=1
+        ).apply(
+            Dataset._row_to_dict,
+            attrs=self.__attrs,
+            unique_values=unique_values,
+            axis=1,
+        )
+        return list(res)
+
+    @staticmethod
+    def _row_to_dict(row, attrs, unique_values):
         return {
-            row[: self.__cube_idx]: row[self.__cube_idx]
-            for row in self.__data.itertuples(index=False, name=None)
+            "datacube": None
+            if isinstance(row[Dataset.DATACUBE_COL], Delayed)
+            else row[Dataset.DATACUBE_COL].to_dict(unique_values),
+            "attributes": {attr_name: row[attr_name] for attr_name in attrs},
         }
 
     def _drop_empty(self) -> Dataset:
         mask = self.__data[self.FIELD_COL].astype(dtype=np.bool_)
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
-        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
 
+    @geokube_logging
     def filter(
         self, indexers: Optional[Mapping[str, str]] = None, **indexers_kwargs
     ) -> Dataset:
@@ -176,18 +220,16 @@ class Dataset:
             params = indexers_kwargs
         else:
             if intersect := sorted(indexers.keys() & indexers_kwargs.keys()):
-                raise ex.HCubeValueError(
-                    "'indexers' and 'indexers_kwargs' have common parameters: "
-                    f"{intersect}",
-                    logger=self._LOG,
+                raise ValueError(
+                    "'indexers' and 'indexers_kwargs' have common parameters:"
+                    " {intersect}"
                 )
             params = {**indexers, **indexers_kwargs}
 
         if not (idx := params.keys()) <= (attrs := set(self.__attrs)):
             # TODO: Make better message.
-            raise ex.HCubeValueError(
-                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}",
-                logger=self._LOG,
+            raise ValueError(
+                f"'filter' cannot use the argument(s): {sorted(idx - attrs)}"
             )
 
         mask = np.full(shape=len(self.__data), fill_value=True, dtype=np.bool_)
@@ -196,7 +238,12 @@ class Dataset:
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
 
-        return Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        return Dataset(
+            attrs=self.__attrs,
+            hcubes=data,
+            metadata=self.__metadata,
+            load_files_on_persistance=self.__load_files_on_persistance,
+        )
 
     def apply(
         self,
@@ -210,27 +257,82 @@ class Dataset:
             for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
         ]
         data.index = np.arange(len(data))
-        dset = Dataset(attrs=self.__attrs, hcubes=data, metadata=self.__metadata)
+        dset = Dataset(
+            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        )
         return dset._drop_empty() if drop_empty else dset
 
-    def persist(self, path=None):
+    def persist(self, path=None, zip_if_many=False) -> str:
         if path is None:
-            path = tempfile.gettempdir()
+            path = os.path.join(tempfile.gettempdir(), str(uuid.uuid4()))
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-        self.data.apply(self._persist_datacube, path=path, axis=1)
+        paths = self.data.apply(self._persist_datacube, path=path, axis=1)
+        # NOTE: omit None paths -- results of empty DataCube persistance
+        paths = paths[~paths.isna()]
+        if len(paths) == 0:
+            warnings.warn(
+                "No files were created while geokube.Dataset persisting!"
+            )
+            return None
+        elif len(paths) == 1:
+            return paths.iloc[0]
+        if zip_if_many:
+            path = os.path.join(path, f"{str(uuid.uuid4())}.zip")
+            with ZipFile(path, "w") as archive:
+                for file in paths:
+                    archive.write(file, arcname=os.path.basename(file))
+            for file in paths:
+                os.remove(file)
+        return path
 
-    def get_nbytes(self) -> int:
-        return sum(cube.get_nbytes() for cube in self.cubes)
+    @property
+    def nbytes(self) -> int:
+        if any(isinstance(cube, Delayed) for cube in self.cubes):
+            return sum(
+                sum(os.path.getsize(f) for f in files)
+                for files in self.__data[Dataset.FILES_COL]
+            )
+        return sum(cube.nbytes for cube in self.cubes)
 
     def _persist_datacube(self, dataframe_item, path):
-        path_to_store = os.path.join(
-            path, os.path.basename(dataframe_item[self.FILES_COL][0])
+        if self.__load_files_on_persistance:
+            dcube = dataframe_item[self.DATACUBE_COL]
+            attr_str = self._form_attr_str(dataframe_item)
+            if isinstance(dcube, Delayed):
+                dcube = dcube.compute()
+            try:
+                return dcube.persist(os.path.join(path, f"{attr_str}.nc"))
+            except EmptyDataError:
+                self._LOG.warn(f"Skipping empty Dataset item!")
+                return None
+        else:
+            attr_str = self._form_attr_str(dataframe_item)
+            if len(dataframe_item[Dataset.FILES_COL]) > 1:
+                raise ValueError(
+                    "Too many files! Copying source files is supported for"
+                    " `1` but provided"
+                    f" `{len(dataframe_item[Dataset.FILES_COL])}`"
+                )
+            for file in dataframe_item[Dataset.FILES_COL]:
+                dst_path = os.path.join(
+                    path,
+                    self._convert_attributes_to_file_name(attr_str, file),
+                )
+                shutil.copyfile(file, dst_path)
+                return dst_path
+
+    def _form_attr_str(self, dataframe_item):
+        return "-".join(
+            [
+                f"{attr_name}={dataframe_item[attr_name]}"
+                for attr_name in self.__attrs
+            ]
         )
-        persisted = (
-            dataframe_item[self.DATACUBE_COL].to_xarray().to_netcdf(path_to_store)
-        )
-        if isinstance(persisted, Delayed):
-            persisted.compute()
+
+    def _convert_attributes_to_file_name(self, attr_str, file):
+        return f"{attr_str}-{os.path.basename(file)}"
 
 
 def _apply(

@@ -2,30 +2,48 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import functools as ft
+import json
 import os
+import uuid
+import tempfile
 import warnings
 from html import escape
 from itertools import chain
 from numbers import Number
-from typing import Any, Callable, Hashable, List, Mapping, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Hashable,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
 import dask.array as da
 import numpy as np
+import pandas as pd
+import plotly.express as px
 import pyarrow as pa
+from shapely.geometry import MultiPolygon, Polygon
+from shapely.vectorized import contains as sv_contains
 import xarray as xr
+import hvplot.xarray  # noqa
 import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
-from ..utils import exceptions as ex
 from ..utils import formatting, formatting_html, util_methods
-from ..utils.decorators import log_func_debug
+from ..utils.decorators import geokube_logging
+from ..utils.util_methods import convert_cftimes_to_numpy
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
+from .errs import EmptyDataError
 from .cell_methods import CellMethod
-from .coord_system import CoordSystem, RegularLatLon, RotatedGeogCS
+from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
 from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
@@ -48,7 +66,6 @@ _CARTOPY_FEATURES = {
 
 
 class Field(Variable, DomainMixin):
-
     __slots__ = (
         "_name",
         "_domain",
@@ -70,7 +87,10 @@ class Field(Variable, DomainMixin):
                 Domain,
                 Mapping[str, Union[Number, np.ndarray, da.Array]],
                 Mapping[
-                    str, Tuple[Tuple[str, ...], Union[Number, np.ndarray, da.Array]]
+                    str,
+                    Tuple[
+                        Tuple[str, ...], Union[Number, np.ndarray, da.Array]
+                    ],
                 ],
             ]
         ] = None,
@@ -79,11 +99,16 @@ class Field(Variable, DomainMixin):
         properties: Optional[Mapping[Hashable, str]] = None,
         encoding: Optional[Mapping[Hashable, str]] = None,
         cell_methods: Optional[CellMethod] = None,
-        ancillary: Optional[Mapping[Hashable, Union[np.ndarray, Variable]]] = None,
+        ancillary: Optional[
+            Mapping[Hashable, Union[np.ndarray, Variable]]
+        ] = None,
     ) -> None:
-
         super().__init__(
-            data=data, units=units, dims=dims, properties=properties, encoding=encoding
+            data=data,
+            units=units,
+            dims=dims,
+            properties=properties,
+            encoding=encoding,
         )
         self._ancillary = None
         self._name = name
@@ -98,23 +123,27 @@ class Field(Variable, DomainMixin):
         self._cell_methods = cell_methods
         if ancillary is not None:
             if not isinstance(ancillary, dict):
-                raise ex.HCubeTypeError(
-                    f"Expected type of `ancillary` argument is dict, but the provided one if {type(ancillary)}",
-                    logger=Field._LOG,
+                raise TypeError(
+                    "Expected type of `ancillary` argument is dict, but the"
+                    f" provided one if {type(ancillary)}"
                 )
             res_anc = {}
             for k, v in ancillary.items():
                 if not isinstance(v, (np.ndarray, da.Array, Variable, Number)):
-                    raise ex.HCubeTypeError(
-                        f"Expected type of single ancillary variable is: `numpy.ndarray`, `dask.Array`, `geokube.Variable`, or `Number`, but the provided one if {type(v)}",
-                        logger=Field._LOG,
+                    raise TypeError(
+                        "Expected type of single ancillary variable is:"
+                        " `numpy.ndarray`, `dask.Array`, `geokube.Variable`,"
+                        f" or `Number`, but the provided one if {type(v)}"
                     )
                 # TODO: what should be axis and dims for ancillary variables? SHould it be `Variable`?
                 res_anc[k] = Variable(data=v)
             self._ancillary = res_anc
 
     def __str__(self) -> str:
-        return f"Field {self.name}:{self.ncvar} with cell method: {self.cell_methods}"
+        return (
+            f"Field {self.name}:{self.ncvar} with cell method:"
+            f" {self.cell_methods}"
+        )
 
     @property
     def name(self) -> str:
@@ -165,7 +194,7 @@ class Field(Variable, DomainMixin):
     # geobbox and locations operates also on dependent coordinates
     # they refer only to GeoCoordinates (lat/lon)
     # TODO: Add Vertical
-    @log_func_debug
+    @geokube_logging
     def geobbox(
         self,
         north: Number | None = None,
@@ -196,16 +225,16 @@ class Field(Variable, DomainMixin):
 
         Raises
         ------
-        HCubeKeyError
+        KeyError
             If no bound is provided.
 
         """
         if not util_methods.is_atleast_one_not_none(
             north, south, west, east, top, bottom
         ):
-            raise ex.HCubeKeyError(
-                "At least on of the following must be defined: [north, south, west, east, top, bottom]!",
-                logger=Field._LOG,
+            raise KeyError(
+                "At least on of the following must be defined: [north, south,"
+                " west, east, top, bottom]!"
             )
         return self._geobbox_idx(
             south=south,
@@ -283,7 +312,7 @@ class Field(Variable, DomainMixin):
         if top is not None or bottom is not None:
             try:
                 vert = field.vertical
-            except ex.HCubeKeyError:
+            except KeyError:
                 vert = None
             # TODO: Reconsider `not vert.shape`.
             if vert is None or not vert.shape:
@@ -341,7 +370,9 @@ class Field(Variable, DomainMixin):
         latitude: Number | Sequence[Number],
         longitude: Number | Sequence[Number],
         vertical: Number | Sequence[Number] | None = None,
-    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+    ) -> (
+        Field
+    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
         """
         Select points with given coordinates from a field.
 
@@ -440,9 +471,10 @@ class Field(Variable, DomainMixin):
                     self.y.name: xr.DataArray(data=y, dims="points"),
                 }
             else:
-                lon_2d, lat_2d = np.meshgrid(lon, lat)
+                if lat.ndim == lon.ndim == 1:
+                    lon, lat = np.meshgrid(lon, lat)
                 pts = self.domain.crs.as_cartopy_crs().transform_points(
-                    src_crs=ccrs.PlateCarree(), x=lon_2d, y=lat_2d
+                    src_crs=ccrs.PlateCarree(), x=lon, y=lat
                 )
                 x, y = pts[..., 0], pts[..., 1]
                 dims = (domain.latitude.name, domain.longitude.name)
@@ -450,7 +482,9 @@ class Field(Variable, DomainMixin):
                     data_vars={self.x.name: (dims, x), self.y.name: (dims, y)},
                     coords=domain.to_xarray(encoding=False),
                 )
-                dset = dset.drop(labels=(self.latitude.name, self.longitude.name))
+                dset = dset.drop(
+                    labels=(self.latitude.name, self.longitude.name)
+                )
                 interp_coords = {
                     self.x.name: grid[self.x.name],
                     self.y.name: grid[self.y.name],
@@ -458,10 +492,27 @@ class Field(Variable, DomainMixin):
             dset_interp = dset.interp(coords=interp_coords, method=method)
             dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
-        # dset_interp[self.name].encoding.update(dset[self.name].encoding)
-        dset_interp[self.name].encoding[
-            "coordinates"
-        ] = f"{domain.latitude.name} {domain.longitude.name}"
+        dset_interp[self.name].encoding.update(dset[self.name].encoding)
+
+        encoding_coords = " ".join(
+            coord_name
+            for coord_name, coord in domain.coords.items()
+            if not coord.is_dimension
+        )
+        # NOTE: we need to manually append scalar coordinates
+        # NOTE: as they are not affected by interpolation
+        encoding_coords = " ".join(
+            chain(
+                [encoding_coords],
+                [
+                    coord_name
+                    for coord_name, coord in self.domain.coords.items()
+                    if coord.type is CoordinateType.SCALAR
+                ],
+            )
+        )
+        if encoding_coords:
+            dset_interp[self.name].encoding["coordinates"] = encoding_coords
         # TODO: Fill value should depend on the data type.
         # TODO: Add xarray fillna into Field.to_xarray.
         dset_interp[self.name].encoding["_FillValue"] = -9.0e-20
@@ -474,7 +525,8 @@ class Field(Variable, DomainMixin):
             mapping=self._mapping,
         )
 
-        field.domain.type = DomainType.POINTS
+        field.domain.type = domain.type
+        field.domain.crs = domain.crs
         return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
@@ -506,7 +558,9 @@ class Field(Variable, DomainMixin):
             }
 
         return Field.from_xarray(
-            ds=self.to_xarray(encoding=False).sel(indexers=idx, method="nearest"),
+            ds=self.to_xarray(encoding=False).sel(
+                indexers=idx, method="nearest"
+            ),
             ncvar=self.name,
             copy=False,
             id_pattern=self._id_pattern,
@@ -522,7 +576,7 @@ class Field(Variable, DomainMixin):
         n = lats.size
         if lons.size != n:
             raise ValueError(
-                "'latitude' and 'longitude' must have the same number of " "items"
+                "'latitude' and 'longitude' must have the same number of items"
             )
 
         # Vertical
@@ -608,7 +662,7 @@ class Field(Variable, DomainMixin):
 
     # consider only independent coordinates
     # TODO: we should use metpy approach (user can also specify - units)
-    @log_func_debug
+    @geokube_logging
     def sel(
         self,
         indexers: Mapping[Union[Axis, str], Any] = None,
@@ -618,7 +672,9 @@ class Field(Variable, DomainMixin):
         drop: bool = False,  # TODO: check if should be always True or False in out case
         **indexers_kwargs: Any,
     ) -> "Field":
-        indexers = xr.core.utils.either_dict_or_kwargs(indexers, indexers_kwargs, "sel")
+        indexers = xr.core.utils.either_dict_or_kwargs(
+            indexers, indexers_kwargs, "sel"
+        )
         # TODO:
         indexers = self.domain.map_indexers(indexers)
         # TODO: indexers from this place should be always of type -> Mapping[Axis, Any]
@@ -629,14 +685,22 @@ class Field(Variable, DomainMixin):
         if (
             time_ind := indexers.get(Axis("time"))
         ) is not None and util_methods.is_time_combo(time_ind):
-            # time is always independent coordinate
-            ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
+            # NOTE: time is always independent coordinate
+            idx = self.domain._process_time_combo(time_ind)
+            if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
+                Field._LOG.warn("empty `time` indexer")
+                raise EmptyDataError("empty `time` indexer")
+            ds = ds.isel(idx, drop=drop)
             del indexers[Axis("time")]
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
 
-        indexers = {self.domain[k].name: v for k, v in indexers.items()}
+        indexers = {
+            self.domain[k].name: v
+            for k, v in indexers.items()
+            if k in self.domain
+        }
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
@@ -645,19 +709,25 @@ class Field(Variable, DomainMixin):
         lost_dims = ds_dims - set(ds.dims)
         Field._update_coordinates(ds[self.name], lost_dims)
         return Field.from_xarray(
-            ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping
+            ds,
+            ncvar=self.name,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
         )
 
-    @log_func_debug
+    @geokube_logging
     def _check_and_roll_longitude(self, ds, indexers) -> xr.Dataset:
         # `ds` here is passed as an argument to avoid one redundent to_xarray call
         if Axis("longitude") not in indexers:
             return ds
-        if self.domain[Axis("longitude")].type is not CoordinateType.INDEPENDENT:
+        if (
+            self.domain[Axis("longitude")].type
+            is not CoordinateType.INDEPENDENT
+        ):
             # TODO: implement for dependent coordinate
-            raise ex.HCubeNotImplementedError(
-                "Rolling longitude is currently supported only for independent coordinate!",
-                logger=Field._LOG,
+            raise NotImplementedError(
+                "Rolling longitude is currently supported only for independent"
+                " coordinate!"
             )
         first_el, last_el = (
             self.domain[Axis("longitude")].min(),
@@ -725,8 +795,60 @@ class Field(Variable, DomainMixin):
             domain=GeodeticGrid(latitude=lat, longitude=lon), method="nearest"
         )
 
+    def extract_polygons(self, geometry, crop=True, return_mask=False):
+        # Preparing geometry.
+        polygons = []
+        for polygon in np.asarray(geometry).flat:
+            if isinstance(polygon, Polygon):
+                polygons.append(polygon)
+            elif isinstance(polygon, MultiPolygon):
+                polygons += list(polygon.geoms)
+            else:
+                raise TypeError(
+                    "'geometry' must contain one or more instances of "
+                    f"'Polygon' or'MultiPolygon', not {type(polygon)}"
+                )
+        multi_polygon = MultiPolygon(polygons=polygons)
+
+        # Preparing masks.
+        # HACK: Check against `None` is provided temporarily.
+        if (
+            self.domain.type is not DomainType.GRIDDED
+            and self.domain.type is not None
+        ):
+            raise NotImplementedError(
+                "'self.domain.type' must be 'DomainType.GRIDDED'"
+            )
+        field = (
+            self if isinstance(self.domain.crs, GeogCS) else self.to_regular()
+        )
+        lat, lon = field.latitude.values, field.longitude.values
+        coords = {"latitude": lat, "longitude": lon}
+        mask = xr.DataArray(coords=coords, dims=coords.keys(), name="mask")
+        lon_, lat_ = np.meshgrid(lon, lat, indexing="xy")
+        mask.values = sv_contains(geometry=multi_polygon, x=lon_, y=lat_)
+
+        # Applying mask.
+        data = field.to_xarray(encoding=False).where(mask, other=np.nan)
+
+        # Cropping.
+        if crop:
+            lon_min, lat_min, lon_max, lat_max = multi_polygon.bounds
+            lat_order = 1 if lat[0] <= lat[-1] else -1
+            lon_order = 1 if lon[0] <= lon[-1] else -1
+            idx = {
+                field.latitude.name: np.s_[lat_min:lat_max:lat_order],
+                field.longitude.name: np.s_[lon_min:lon_max:lon_order],
+            }
+            data = data.sel(indexers=idx)
+
+        # Converting back to field.
+        result = Field.from_xarray(data, ncvar=field.name)
+
+        return (result, mask) if return_mask else result
+
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def regrid(
         self,
         target: Union[Domain, "Field"],
@@ -758,73 +880,98 @@ class Field(Variable, DomainMixin):
         ...     target_domain=target_domain,
         ...     method='bilinear'
         ... )
+
         """
-        if isinstance(target, Domain):
-            target_domain = target
-        elif isinstance(target, Field):
-            target_domain = target.domain
-        else:
-            raise ex.HCubeTypeError(
-                "'target' must be an instance of Domain or Field", logger=Field._LOG
-            )
+        if not isinstance(target, Domain):
+            if isinstance(target, Field):
+                target = target.domain
+            else:
+                raise TypeError(
+                    "'target' must be an instance of Domain or Field"
+                )
 
         if not isinstance(method, RegridMethod):
             method = RegridMethod[str(method).upper()]
 
-        if reuse_weights and (weights_path is None or not os.path.exists(weights_path)):
+        if reuse_weights and (
+            weights_path is None or not os.path.exists(weights_path)
+        ):
             Field._LOG.warn("`weights_path` is None or file does not exist!")
             Field._LOG.info("`reuse_weights` turned off")
             reuse_weights = False
 
-        # Input domain
-        lat_in = self.domain[Axis.LATITUDE]
-        lon_in = self.domain[Axis.LONGITUDE]
-        name_map_in = {lat_in.axis.name: "lat", lon_in.axis.name: "lon"}
+        names_in = {self.latitude.name: "lat", self.longitude.name: "lon"}
+        names_out = {target.latitude.name: "lat", target.longitude.name: "lon"}
+        coords_in = coords_out = None
 
-        # Output domain
-        lat_out = target_domain[Axis.LATITUDE]
-        lon_out = target_domain[Axis.LONGITUDE]
-        name_map_out = {lat_out.axis.name: "lat", lon_out.axis.name: "lon"}
+        if method in {
+            RegridMethod.CONSERVATIVE,
+            RegridMethod.CONSERVATIVE_NORMED,
+        }:
+            self.domain.compute_bounds()
+            lat_b_name = next(iter(self.latitude.bounds))
+            lat_b = next(iter(self.latitude.bounds.values())).values
+            lat_b = Domain.convert_bounds_2d_to_1d(lat_b)
+            lon_b_name = next(iter(self.longitude.bounds))
+            lon_b = next(iter(self.longitude.bounds.values())).values
+            lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
+            names_in.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
+            coords_in = {"lat_b": lat_b, "lon_b": lon_b}
 
-        conserv_methods = {RegridMethod.CONSERVATIVE, RegridMethod.CONSERVATIVE_NORMED}
-        if method in conserv_methods:
-            self.domain.compute_bounds(Axis.LATITUDE)
-            self.domain.compute_bounds(Axis.LONGITUDE)
-            name_map_in.update(
-                {lat_in.bounds.name: "lat_b", lon_in.bounds.name: "lon_b"}
-            )
-            target_domain.compute_bounds(lat_out.axis.name)
-            target_domain.compute_bounds(lon_out.axis.name)
-            name_map_out.update(
-                {lat_out.bounds.name: "lat_b", lon_out.bounds.name: "lon_b"}
-            )
+            target.compute_bounds()
+            lat_b_name = next(iter(target.latitude.bounds))
+            lat_b = next(iter(target.latitude.bounds.values())).values
+            lat_b = Domain.convert_bounds_2d_to_1d(lat_b)
+            lon_b_name = next(iter(target.longitude.bounds))
+            lon_b = next(iter(target.longitude.bounds.values())).values
+            lon_b = Domain.convert_bounds_2d_to_1d(lon_b)
+            names_out.update({lat_b_name: "lat_b", lon_b_name: "lon_b"})
+            coords_out = {"lat_b": lat_b, "lon_b": lon_b}
 
         # Regridding
+        in_ = self.to_xarray(encoding=False).rename(names_in)
+        if coords_in:
+            in_ = in_.assign_coords(coords=coords_in)
+        out = target.to_xarray(encoding=False).to_dataset().rename(names_out)
+        if coords_out:
+            out = out.assign_coords(coords=coords_out)
         regrid_kwa = {
-            "ds_in": self.domain.to_xarray_dataset().rename(name_map_in),
-            "ds_out": target_domain.to_xarray_dataset().rename(name_map_out),
+            "ds_in": in_,
+            "ds_out": out,
             "method": method.value,
             "unmapped_to_nan": True,
             "filename": weights_path,
         }
-
         try:
             regridder = xe.Regridder(**regrid_kwa, reuse_weights=reuse_weights)
         except PermissionError:
             regridder = xe.Regridder(**regrid_kwa)
-        xr_ds = self.to_xarray(encoding=False)
-        result = regridder(xr_ds, keep_attrs=True, skipna=False)
-        result = result.rename({"lat": lat_in.axis.name, "lon": lon_in.axis.name})
-        result[self.variable.name].encoding = xr_ds[self.variable.name].encoding
+        result = regridder(in_, keep_attrs=True, skipna=False)
+        result = result.rename({v: k for k, v in names_in.items()})
+        result[self.name].encoding = in_[self.name].encoding
+        if not isinstance(target.crs, GeogCS):
+            missing_coords = {
+                coord.name: out.coords[coord.name]
+                for coord in (target.x, target.y)
+                if coord.name not in result.coords
+            }
+            result = result.assign_coords(coords=missing_coords)
+            result[self.name].encoding["coordinates"] = "latitude longitude"
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
-        field_out = Field.from_xarray_dataset(result, field_name=self.variable.name)
-        # Take `crs`` from `target_domain` as in `result` there can be still the coordinate responsible for CRS
-        field_out.domain._crs = target_domain.crs
+        field_out = Field.from_xarray(
+            ds=result,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
+        )
+        field_out.domain._crs = target.crs
+        field_out.domain._type = target.type
         return field_out
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def resample(
         self,
         operator: Union[Callable, MethodType, str],
@@ -868,27 +1015,25 @@ class Field(Variable, DomainMixin):
             elif isinstance(operator, MethodType):
                 operator_func = operator
             else:
-                raise ex.HCubeTypeError(
-                    "Operator must be `str`, `MethodType`, or `callable`. "
-                    f"Provided `{type(operator)}`",
-                    logger=Field._LOG,
+                raise TypeError(
+                    "Operator must be `str`, `MethodType`, or `callable`."
+                    " Provided `{type(operator)}`"
                 )
             if operator_func is MethodType.UNDEFINED:
                 methods = {
                     method.value[0]
                     for method in MethodType.__members__.values()
                 }
-                methods.discard('<undefined>')
-                raise ex.HCubeValueError(
-                    f"Provided operator '{operator}' was not found! Available "
-                    f"operators are: {sorted(methods)}!",
-                    logger=Field._LOG,
+                methods.discard("<undefined>")
+                raise ValueError(
+                    f"Provided operator '{operator}' was not found! Available"
+                    f" operators are: {sorted(methods)}!"
                 )
             func = (
                 operator_func.dask_operator
-                if is_dask_collection(self) else
-                operator_func.numpy_operator
-            ) 
+                if is_dask_collection(self)
+                else operator_func.numpy_operator
+            )
 
         # ################## Temporary solution for time bounds adjustmnent ######################
 
@@ -896,15 +1041,16 @@ class Field(Variable, DomainMixin):
         # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
         ds = self.to_xarray(encoding=False)
         if (time_bnds := self.time.bounds) is None:
-            bnds_name, bnds = f'{self.time.name}_bnds', None
+            bnds_name, bnds = f"{self.time.name}_bnds", None
         else:
-            (bnds_name, bnds), = time_bnds.items()
-
+            ((bnds_name, bnds),) = time_bnds.items()
         if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
             resample_kwargs.update({"closed": "right"})
-            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            da = ds.resample(
+                indexer={self.time.name: frequency}, **resample_kwargs
+            )
             new_bnds = np.empty(
                 shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
@@ -912,20 +1058,35 @@ class Field(Variable, DomainMixin):
                 new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
             # TODO: Check if this is redundant
             if bnds is None:
-                Field._LOG.warn("Time bounds not defined for the cell methods!")
+                Field._LOG.warn(
+                    "Time bounds not defined for the cell methods!"
+                )
                 warnings.warn("Time bounds not defined for the cell methods!")
         else:
-            da = ds.resample(indexer={self.time.name: frequency}, **resample_kwargs)
+            da = ds.resample(
+                indexer={self.time.name: frequency}, **resample_kwargs
+            )
             new_bnds = np.empty(
                 shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
             )
             for i, v in enumerate(da.groups.values()):
-                new_bnds[i] = [self.time.values[v].min(), self.time.values[v].max()]
+                new_bnds[i] = [
+                    self.time.values[v].min(),
+                    self.time.values[v].max(),
+                ]
 
-        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True)
+        # NOTE: `reduce` spans result for all intermediate values
+        # if 1st and 3rd day os selected and 1D freq is used
+        # then `reduce` results in time axis for 1st, 2nd, and 3rd
+        # passing for missing dates `NaN`s
+        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True).dropna(
+            dim=self.time.name, how="all"
+        )
+        # NOTE: `reduce` removes all `encoding` properties
+        da[self.name].encoding = ds[self.name].encoding
         res = xr.Dataset(
-             da,
-             coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
+            da,
+            coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
         )
         field = Field.from_xarray(res, ncvar=self.name)
         field.time.bounds = new_bnds
@@ -937,12 +1098,12 @@ class Field(Variable, DomainMixin):
         # #########################################################################################
         return field
 
-    @log_func_debug
+    @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
     # TO CHECK
-    @log_func_debug
+    @geokube_logging
     def plot(
         self,
         features=None,
@@ -952,8 +1113,80 @@ class Field(Variable, DomainMixin):
         projection=None,
         figsize=None,
         robust=None,
+        aspect=None,
         **kwargs,
     ):
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        # Resolving time series and layers because they do not require most of
+        # processing other plot types do:
+        if self._domain._type is DomainType.POINTS:
+            if figsize is not None:
+                kwargs["figsize"] = figsize
+            n_pts = lat.size
+            n_time = time.size if (time is not None and time.is_dim) else 0
+            n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            with np.nditer((lat.values, lon.values)) as it:
+                # points = [
+                #     f"{lat.name}={lat_.item():.2f} {lat.units}, "
+                #     f"{lon.name}={lon_.item():.2f} {lon.units}"
+                #     for lat_, lon_ in it
+                # ]
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
+            if aspect is None:
+                # Integers determine the priority in the case of equal sizes:
+                # greater number means higher priority.
+                aspect = max(
+                    (n_time, 1, "time_series"),
+                    (n_vert, 2, "profile"),
+                    (n_pts, 3, "points"),
+                )[2]
+            if aspect not in {"time_series", "profile", "points"}:
+                raise ValueError(
+                    "'aspect' must be 'time_series', 'profile', 'points', or"
+                    " None"
+                )
+            if aspect == "time_series":
+                data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
+                kwargs["x"] = time.name
+                if n_vert > 1 or (vert is not None and vert.name in data.dims):
+                    kwargs.setdefault("row", vert.name)
+                if "crs" in data.coords:
+                    data = data.drop("crs")
+                plot = data.plot.line(**kwargs)
+                if "row" not in kwargs and "col" not in kwargs:
+                    for line in plot:
+                        line.axes.set_title("Point Time Series")
+                return plot
+            if aspect == "profile":
+                data = self.to_xarray(encoding=False)[self.name]
+                data = data.assign_coords(points=points)
+                if vert.attrs.get("positive") == "down":
+                    data = data.reindex(
+                        indexers={vert.name: data.coords[vert.name][::-1]},
+                        copy=False,
+                    )
+                    data.coords[vert.name] = -data.coords[vert.name]
+                    # vert.values = -vert.values[::-1]
+                kwargs["y"] = vert.name
+                if n_time > 1 or (time is not None and time.name in data.dims):
+                    kwargs.setdefault("col", time.name)
+                if "crs" in data.coords:
+                    data = data.drop("crs")
+                plot = data.plot.line(**kwargs)
+                if "row" not in kwargs and "col" not in kwargs:
+                    for line in plot:
+                        line.axes.set_title("Point Layers")
+                return plot
+
         # Resolving Cartopy features and gridlines:
         if features:
             features = [_CARTOPY_FEATURES[feature] for feature in features]
@@ -966,38 +1199,37 @@ class Field(Variable, DomainMixin):
         has_cartopy_items = bool(features or gridlines)
 
         # Resolving dimensions, coordinates, and coordinate system:
-        crs = self._domain.crs
         dims = set()
-        time = self._domain[Axis.TIME]
         if time is not None:
             dims.add(time.name)
-        vert = self._domain[Axis.VERTICAL]
         if vert is not None:
             dims.add(vert.name)
-        lat = self._domain[Axis.LATITUDE]
         if lat is not None:
             dims.add(lat.name)
-            kwargs.setdefault("y", lat.name)
-        lon = self._domain[Axis.LONGITUDE]
+            if lat.is_dim:
+                kwargs.setdefault("y", lat.name)
         if lon is not None:
             dims.add(lon.name)
+            if lon.is_dim:
+                kwargs.setdefault("x", lon.name)
+        crs = self._domain.crs
+        try:
+            transform = (
+                crs.as_cartopy_projection() if crs is not None else None
+            )
+        except NotImplementedError:
+            # HACK: This is used in the cases where obtaining Cartopy
+            # projections is not implemented.
+            transform = None
             kwargs.setdefault("x", lon.name)
-        n_dims = len(dims)
-        transform = crs.as_cartopy_projection() if crs is not None else None
+            kwargs.setdefault("y", lat.name)
         plate = ccrs.PlateCarree
 
-        if n_dims in {3, 4}:
-            # n_cols = None
-            if time is not None and time.name in dims and time.values.size > 1:
+        if len(dims) in {3, 4}:
+            if time is not None and time.name in dims and time.size > 1:
                 kwargs.setdefault("col", time.name)
-                # if time.size == 4:
-                #     n_cols = 2
-                # if time.size >= 5:
-                #     n_cols = 3
-            if vert is not None and vert.name in dims and vert.values.size > 1:
+            if vert is not None and vert.name in dims and vert.size > 1:
                 kwargs.setdefault("row", vert.name)
-            # elif all(('col' in kwargs, n_cols, not has_cartopy_items)):
-            #     kwargs.setdefault('col_wrap', n_cols)
 
         # Resolving subplot keyword arguments including `projection`:
         subplot_kwa = {} if subplot_kwargs is None else {**subplot_kwargs}
@@ -1029,10 +1261,35 @@ class Field(Variable, DomainMixin):
                 kwargs[name] = arg
 
         # Creating plot:
-        darr = self.to_xarray()
-        if isinstance(darr, xr.Dataset):
-            darr = darr[self.name]
-        plot = darr.plot(**kwargs)
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            data = dset[self.name]
+            plot = data.plot(**kwargs)
+        elif self._domain._type is DomainType.POINTS:
+            data = xr.Dataset(
+                data_vars={
+                    self.name: dset[self.name],
+                    "lat": dset.coords["latitude"],
+                    "lon": dset.coords["longitude"],
+                }
+            )
+            kwargs.update(
+                {"x": "lon", "y": "lat", "hue": self.name, "zorder": np.inf}
+            )
+            plot = data.plot.scatter(**kwargs)
+        else:
+            raise NotImplementedError(
+                "'domain.type' of must be 'DomainType.GRIDDED' or "
+                "'DomainType.POINTS'"
+            )
 
         # Adding and modifying axis elements:
         # axes = np.array(getattr(plot, 'axes', plot), copy=False, ndmin=1)
@@ -1059,7 +1316,7 @@ class Field(Variable, DomainMixin):
                 and lon is not None
                 and not gridline_labels
             ):
-                coords = darr.coords
+                coords = data.coords
 
                 lat_coord = coords[lat.name]
                 lat_attrs = lat_coord.attrs
@@ -1109,20 +1366,422 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-    @log_func_debug
+    def to_geojson(self, target=None):
+        if self.domain.type is DomainType.POINTS:
+            if self.latitude.size != 1 or self.longitude.size != 1:
+                raise NotImplementedError(
+                    "'self.domain' must have exactly 1 point"
+                )
+            coords = [self.longitude.item(), self.latitude.item()]
+            result = {
+                "type": "FeatureCollection",
+                "units": {self.name: str(self.units)},
+                "features": [],
+            }
+            for time in self.time.values.flat:
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
+                value = self.sel(time=time_) if self.time.size > 1 else self
+                feature = {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": coords},
+                    "properties": {"time": time_, self.name: float(value)},
+                }
+                result["features"].append(feature)
+        elif (
+            self.domain.type is DomainType.GRIDDED or self.domain.type is None
+        ):
+            # HACK: The case `self.domain.type is None` is included to be able
+            # to handle undefined domain types temporarily.
+            result = {"data": []}
+            field = (
+                self
+                if isinstance(self.domain.crs, RegularLatLon)
+                else self.to_regular()
+            )
+            axis_names = field.domain._axis_to_name
+            for time in self.time.values.flat:
+                time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
+                time_data = {
+                    "type": "FeatureCollection",
+                    "date": time_,
+                    "bbox": [
+                        self.longitude.min().item(),  # West
+                        self.latitude.min().item(),  # South
+                        self.longitude.max().item(),  # East
+                        self.latitude.max().item(),  # North
+                    ],
+                    "units": {self.name: str(self.units)},
+                    "features": [],
+                }
+                for lat in field.latitude.values.flat:
+                    for lon in field.longitude.values.flat:
+                        idx = {
+                            axis_names[AxisType.LATITUDE]: lat,
+                            axis_names[AxisType.LONGITUDE]: lon,
+                        }
+                        # if self.time.shape:
+                        if self.time.size > 1:
+                            idx[axis_names[AxisType.TIME]] = time_
+                        # TODO: Check whether this works now:
+                        # this gives an error if only 1 time is selected before to_geojson()
+                        value = field.sel(**idx)
+                        feature = {
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [lon.item(), lat.item()],
+                            },
+                            "properties": {self.name: float(value)},
+                        }
+                        time_data["features"].append(feature)
+                result["data"].append(time_data)
+        else:
+            raise NotImplementedError(
+                f"'self.domain.type' is {self.domain.type}, which is currently"
+                " not supported"
+            )
+
+        if target is not None:
+            with open(target, mode="w") as file:
+                json.dump(result, file, indent=4)
+
+        return result
+
+    @geokube_logging
+    def hvplot(self, aspect=None, boxplot=False, **kwargs):
+        # NOTE: See https://hvplot.holoviz.org/user_guide/Customization.html
+        # for the details on what can be passed with `kwargs`.
+
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        kwargs.setdefault("widget_location", "bottom")
+
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        if (
+            vert is not None
+            and vert.is_dim
+            and vert.attrs.get("positive") == "down"
+        ):
+            dset = dset.reindex(
+                indexers={vert.name: dset.coords[vert.name][::-1]},
+                copy=False,
+            )
+            dset.coords[vert.name] = -dset.coords[vert.name]
+
+        # Considering the case when boxplot is required.
+        if boxplot:
+            group = kwargs.get("groupby")
+            if group == "vertical":
+                kwargs["groupby"] = vert.name
+            elif group and not isinstance(group, str) and "vertical" in group:
+                group = list(group)
+                idx = group.index("vertical")
+                group[idx] = vert.name
+                kwargs["groupby"] = group
+
+            data = dset[self.name]
+
+            if self._domain._type is DomainType.POINTS:
+                with np.nditer((lat.values, lon.values)) as it:
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                        for lat_, lon_ in it
+                    ]
+                data = data.assign_coords(points=points)
+
+            return data.hvplot.box(y=self.name, **kwargs)
+
+        # Working with `DomainType.POINTS`.
+        if self._domain._type is DomainType.POINTS:
+            n_pts = lat.size
+            n_time = time.size if (time is not None and time.is_dim) else 0
+            n_vert = vert.size if (vert is not None and vert.is_dim) else 0
+            if vert is None or vert.is_dim:
+                # NOTE: Case when vertical is given as a profile.
+                vals = (lat.values, lon.values)
+                with np.nditer(vals) as it:
+                    # NOTE: This approach might result in an error when the
+                    # string representations of multiple points are equal.
+                    # points = [
+                    #     f'{lat.name}={lat_.item():.2f} {lat.units}, '
+                    #     f'{lon.name}={lon_.item():.2f} {lon.units}'
+                    #     for lat_, lon_ in it
+                    # ]
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                        for lat_, lon_ in it
+                    ]
+                if aspect is None:
+                    # Integers determine the priority in the case of equal:
+                    # sizes greater number means higher priority.
+                    aspect = max(
+                        (n_time, 1, "time_series"),
+                        (n_vert, 2, "profile"),
+                        (n_pts, 3, "points"),
+                    )[2]
+            else:
+                # NOTE: Case when vertical is given as points.
+                # NOTE: This approach might result in an error when the
+                # string representations of multiple points are equal.
+                dset.coords[vert.name] = -dset.coords[vert.name]
+                vals = (lat.values, lon.values, dset.coords[vert.name].values)
+                with np.nditer(vals) as it:
+                    points = [
+                        f"{lat_.item():.2f}°, {lon_.item():.2f}° "
+                        f"{vert_.item():.2f} {vert.units}"
+                        for lat_, lon_, vert_ in it
+                    ]
+                if aspect is None:
+                    # Integers determine the priority in the case of equal:
+                    # sizes greater number means higher priority.
+                    aspect = max(
+                        (n_time, 1, "time_series"),
+                        (n_pts, 2, "points"),
+                    )[2]
+            if aspect == "time_series":
+                data = dset[self.name]
+                data = data.assign_coords(points=points)
+                kwargs.update({"geo": False, "tiles": False})
+                return data.hvplot(x=time.name, by="points", **kwargs)
+            if aspect == "profile":
+                data = dset[self.name]
+                data = data.assign_coords(points=points)
+                kwargs.update({"geo": False, "tiles": False})
+                return data.hvplot(y=vert.name, by="points", **kwargs)
+            if aspect == "points":
+                data_vars = {
+                    self.name: dset[self.name],
+                    "lat": dset.coords["latitude"],
+                    "lon": dset.coords["longitude"],
+                }
+                if (vert is not None) and (not vert.is_dim):
+                    data_vars["vert"] = dset.coords[vert.name]
+                    if "groupby" not in kwargs:
+                        kwargs["groupby"] = sorted(
+                            self.coords.keys() - {"latitude", "longitude"}
+                        )
+                data = xr.Dataset(data_vars=data_vars)
+                return data.hvplot.scatter(
+                    x="lon",
+                    y="lat",
+                    c=self.name,
+                    cmap=kwargs.pop("cmap", "coolwarm"),
+                    colorbar=kwargs.pop("colorbar", True),
+                    **kwargs,
+                )
+            raise ValueError(
+                "'aspect' must be 'time_series', 'profile', 'points', or None"
+            )
+
+        # Working with `DomainType.GRIDDED`.
+        # HACK: This should be only:
+        # `if self._domain._type is DomainType.GRIDDED:`
+        # Checking against `None` is provided temporary for testing.
+        if (
+            self._domain._type is DomainType.GRIDDED
+            or self._domain._type is None
+        ):
+            crs = self._domain.crs
+            if crs is not None:
+                try:
+                    crs = crs.as_cartopy_projection()
+                except NotImplementedError:
+                    # HACK: This is used in the cases where obtaining Cartopy
+                    # projections is not implemented.
+                    crs = None
+                    kwargs.setdefault("x", lon.name)
+                    kwargs.setdefault("y", lat.name)
+
+            proj = kwargs.get("projection")
+            if isinstance(proj, CoordSystem):
+                kwargs["projection"] = proj = proj.as_cartopy_projection()
+
+            if aspect is not None:
+                if aspect == "time_series":
+                    kwargs.update({"x": time.name, "y": self.name})
+                    kwargs.update({"geo": False, "tiles": False})
+                elif aspect == "profile":
+                    kwargs.update({"x": self.name, "y": vert.name})
+                    kwargs.update({"geo": False, "tiles": False})
+                if crs is not None and not isinstance(crs, ccrs.PlateCarree):
+                    dset = self.to_regular().to_xarray(encoding=False)
+
+            plot_call = dset[self.name].hvplot
+
+            if lat is not None and lat.is_dim:
+                kwargs.setdefault("y", lat.name)
+            if lon is not None and lon.is_dim:
+                kwargs.setdefault("x", lon.name)
+
+            if (
+                crs is None
+                and lat is not None
+                and lon is not None
+                and (lat.size > 1 or lon.size > 1)
+                and aspect is None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
+
+            if (
+                not (
+                    (proj is None or isinstance(proj, ccrs.PlateCarree))
+                    and (crs is None or isinstance(crs, ccrs.PlateCarree))
+                )
+                and "x" not in kwargs
+                and "y" not in kwargs
+                and lat is not None
+                and lon is not None
+            ):
+                plot_call = plot_call.quadmesh
+                kwargs["crs"] = crs
+                kwargs.setdefault("rasterize", True)
+                kwargs.setdefault("project", True)
+                lat_name = lat.attrs.get("long_name", lat.name)
+                if (lat_units := lat.attrs.get("units")) is not None:
+                    lat_name = f"{lat_name} ({lat_units})"
+                lon_name = lon.attrs.get("long_name", lon.name)
+                if (lon_units := lon.attrs.get("units")) is not None:
+                    lon_name = f"{lon_name} ({lon_units})"
+                kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
+
+            # TODO: Consider improving the logic (handling conditions).
+            if (
+                kwargs.get("tiles")
+                and lat is not None
+                and lon is not None
+                and kwargs.get("x") == lon.name
+                and kwargs.get("y") == lat.name
+                and aspect is None
+            ):
+                lat_name = lat.attrs.get("long_name", lat.name)
+                if (lat_units := lat.attrs.get("units")) is not None:
+                    lat_name = f"{lat_name} ({lat_units})"
+                lon_name = lon.attrs.get("long_name", lon.name)
+                if (lon_units := lon.attrs.get("units")) is not None:
+                    lon_name = f"{lon_name} ({lon_units})"
+                kwargs.update({"xlabel": lon_name, "ylabel": lat_name})
+
+            return plot_call(**kwargs)
+
+        raise NotImplementedError(
+            "'domain.type' must be 'DomainType.GRIDDED' or 'DomainType.POINTS'"
+        )
+
+    @geokube_logging
+    def box_plot(self, by=None, orientation="vertical", **kwargs):
+        # NOTE: `kwargs` are passed directly or in a slightly modified form
+        # to `plotly.express.box`. For more details, see the official
+        # documentation:
+        # * https://plotly.github.io/plotly.py-docs/generated/plotly.express.box.html
+        # * https://plotly.com/python/box-plots/
+
+        axis_names = self.domain._axis_to_name
+        time = self.coords.get(axis_names.get(AxisType.TIME))
+        vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
+        lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
+        lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        if by is None:
+            by_ = None
+        elif by == "points" and self._domain._type is DomainType.POINTS:
+            by_ = "points"
+        else:
+            if by in (dim_types := {ax.value[0] for ax in axis_names.keys()}):
+                by_ = getattr(self, by).name
+            elif by not in (dim_names := {*axis_names.values()}):
+                raise ValueError(
+                    "'by' must be 'None' or one of the following: "
+                    f"{sorted(dim_types | dim_names)}"
+                )
+
+        if orientation in {"h", "horizontal"}:
+            kwargs.setdefault("x", self.name)
+            if by_:
+                kwargs.setdefault("y", by_)
+        elif orientation in {"v", "vertical"}:
+            kwargs.setdefault("y", self.name)
+            if by_:
+                kwargs.setdefault("x", by_)
+        else:
+            raise ValueError(
+                "'orientation' must be either 'horizontal' ('h') or "
+                "'vertical' ('v')"
+            )
+
+        dset = self.to_xarray(encoding=False)
+        if "crs" in dset.coords:
+            dset = dset.drop("crs")
+        if (
+            vert is not None
+            and vert.is_dim
+            and vert.attrs.get("positive") == "down"
+        ):
+            dset = dset.reindex(
+                indexers={vert.name: dset.coords[vert.name][::-1]},
+                copy=False,
+            )
+            dset.coords[vert.name] = -dset.coords[vert.name]
+
+        darr = dset[self.name]
+        if self._domain._type is DomainType.POINTS:
+            with np.nditer((lat.values, lon.values)) as it:
+                points = [
+                    f"{lat_.item():.2f}°, {lon_.item():.2f}°"
+                    for lat_, lon_ in it
+                ]
+                darr = darr.assign_coords(points=points)
+
+        df = darr.to_dataframe()
+        df_ = df.index.to_frame()
+        df_.index = np.arange(df_.shape[0])
+        for col_name in df.columns.to_numpy().flat:
+            df_[col_name] = df[col_name].to_numpy()
+        af = kwargs.get("animation_frame")
+        if af and af == time.name:
+            kwargs["animation_frame"] = animation_name = af + "_"
+            df_[animation_name] = df_[af].astype(str)
+
+        fig = px.box(df_, **kwargs)
+
+        if af:
+            min_, max_ = np.nanmin(self.values), np.nanmax(self.values)
+            margin = 0.05 * (np.nanmax(self.values) - np.nanmin(self.values))
+            bounds = [min_ - margin, max_ + margin]
+            name = f"{'x' if orientation[0] == 'h' else 'y'}axis_range"
+            kwa = {name: bounds}
+            fig.update_layout(**kwa)
+            # for f in fig.frames:
+            #     f.layout.update(**kwa)
+
+        return fig
+
+    @geokube_logging
     def to_xarray(self, encoding=True) -> xr.Dataset:
         data_vars = {}
         var_name = self.ncvar if encoding else self.name
 
-        data_vars[var_name] = super().to_xarray(encoding)  # use Variable to_array
+        data_vars[var_name] = super().to_xarray(
+            encoding
+        )  # use Variable to_array
 
         coords = self.domain.aux_coords
-
         if coords:
             if encoding:
-                coords_names = " ".join([self.domain.coords[x].ncvar for x in coords])
+                coords_names = " ".join(
+                    [self.domain.coords[x].ncvar for x in coords]
+                )
             else:
-                coords_names = " ".join([self.domain.coords[x].name for x in coords])
+                coords_names = " ".join(
+                    [self.domain.coords[x].name for x in coords]
+                )
             data_vars[var_name].encoding["coordinates"] = coords_names
 
         coords = self.domain.to_xarray(encoding)
@@ -1136,10 +1795,53 @@ class Field(Variable, DomainMixin):
             for a in self.ancillary:
                 data_vars[a] = a.to_xarray(encoding)
 
+        # NOTE: a workaround for keeping domaintype
+        # Issue: https://github.com/geokube/geokube/issues/147
+        # If saved in .nc file, domain_type should be converted to str
+        if (domain_type := self.domain.type) is not None and (not encoding):
+            data_vars[var_name].attrs["__geo_domtype"] = domain_type
+
         return xr.Dataset(data_vars=data_vars, coords=coords)
 
+    def persist(self, path=None) -> str:
+        if path is None:
+            path = os.path.join(
+                tempfile.gettempdir(), f"{str(uuid.uuid4())}.nc"
+            )
+        if os.path.isdir(path):
+            path = os.path.join(path, f"{str(uuid.uuid4())}.nc")
+        if not path.endswith(".nc"):
+            self._LOG.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            warnings.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            path = path + ".nc"
+        self.to_netcdf(path)
+        return path
+
+    def to_dict(self):
+        description = None
+        if self._mapping is not None and self.ncvar in self._mapping:
+            var_map = self._mapping[self.ncvar]
+            if "description" in var_map:
+                description = var_map["description"]
+            elif "name" in var_map:
+                description = var_map["name"]
+        if description is None:
+            description = self.properties.get(
+                "description", self.properties.get("long_name")
+            )
+        return {
+            "units": str(self.units),
+            "description": description,
+        }
+
     @classmethod
-    @log_func_debug
+    @geokube_logging
     def from_xarray(
         cls,
         ds: xr.Dataset,
@@ -1149,21 +1851,20 @@ class Field(Variable, DomainMixin):
         copy=False,
     ):
         if not isinstance(ds, xr.Dataset):
-            raise ex.HCubeTypeError(
-                f"Expected type `xarray.Dataset` but provided `{type(ds)}`",
-                logger=cls._LOG,
+            raise TypeError(
+                f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
             )
-
-        da = ds[ncvar].copy(copy)  # TODO: TO CHECK
-        cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
-        var = Variable.from_xarray(da, id_pattern, mapping=mapping)
-        # We need to update `encoding` of var, as `Variable` doesn't contain `name`
-
+        ds = convert_cftimes_to_numpy(ds)
         domain = Domain.from_xarray(
             ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
         )
+        da = ds[ncvar].copy(copy)  # TODO: TO CHECK
+        cell_methods = CellMethod.parse(da.attrs.pop("cell_methods", None))
+        var = Variable.from_xarray(da, id_pattern, mapping=mapping)
+
         name = Variable._get_name(da, mapping=mapping, id_pattern=id_pattern)
 
+        # We need to update `encoding` of var, as `Variable` doesn't contain `name`
         var.encoding.update(name=da.encoding.get("name", ncvar))
         # TODO ancillary variables
         field = Field(
@@ -1185,7 +1886,9 @@ class Field(Variable, DomainMixin):
         if coords is None or len(coords) == 0:
             return
         if "coordinates" in da.attrs:
-            da.attrs["coordinates"] = " ".join(chain([da.attrs["coordinates"]], coords))
+            da.attrs["coordinates"] = " ".join(
+                chain([da.attrs["coordinates"]], coords)
+            )
         elif "coordinates" in da.encoding:
             da.encoding["coordinates"] = " ".join(
                 chain([da.encoding["coordinates"]], coords)

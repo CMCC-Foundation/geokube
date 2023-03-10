@@ -35,11 +35,12 @@ def format_dims(dims, coord_names):
         return ""
 
     dim_css_map = {
-        k: " class='xr-has-index'" if k in coord_names else "" for k, v in dims.items()
+        k: " class='xr-has-index'" if k in coord_names else ""
+        for k, v in dims.items()
     }
 
     dims_li = "".join(
-        f"<li><span{dim_css_map[dim]}>" f"{escape(str(dim))}</span>: {size}</li>"
+        f"<li><span{dim_css_map[dim]}>{escape(str(dim))}</span>: {size}</li>"
         for dim, size in dims.items()
     )
 
@@ -48,7 +49,7 @@ def format_dims(dims, coord_names):
 
 def summarize_attrs(attrs):
     attrs_dl = "".join(
-        f"<dt><span>{escape(str(k))} :</span></dt>" f"<dd>{escape(str(v))}</dd>"
+        f"<dt><span>{escape(str(k))} :</span></dt><dd>{escape(str(v))}</dd>"
         for k, v in attrs.items()
     )
 
@@ -58,10 +59,9 @@ def summarize_attrs(attrs):
 def _icon(icon_name):
     # icon_name should be defined in xarray/static/html/icon-svg-inline.html
     return (
-        "<svg class='icon xr-{0}'>"
-        "<use xlink:href='#{0}'>"
-        "</use>"
-        "</svg>".format(icon_name)
+        "<svg class='icon xr-{0}'><use xlink:href='#{0}'></use></svg>".format(
+            icon_name
+        )
     )
 
 
@@ -91,7 +91,9 @@ def summarize_coords(variables):
     for k, v in variables.items():
         coords.update(**summarize_coord(k, v))
 
-    vars_li = "".join(f"<li class='xr-var-item'>{v}</li>" for v in coords.values())
+    vars_li = "".join(
+        f"<li class='xr-var-item'>{v}</li>" for v in coords.values()
+    )
 
     return f"<ul class='xr-var-list'>{vars_li}</ul>"
 
@@ -143,7 +145,12 @@ def summarize_vars(variables):
 
 
 def collapsible_section(
-    name, inline_details="", details="", n_items=None, enabled=True, collapsed=False
+    name,
+    inline_details="",
+    details="",
+    n_items=None,
+    enabled=True,
+    collapsed=False,
 ):
     # "unique" id to expand/collapse the section
     data_id = "section-" + str(uuid.uuid4())
@@ -165,7 +172,12 @@ def collapsible_section(
 
 
 def _mapping_section(
-    mapping, name, details_func, max_items_collapse, expand_option_name, enabled=True
+    mapping,
+    name,
+    details_func,
+    max_items_collapse,
+    expand_option_name,
+    enabled=True,
 ):
     n_items = len(mapping)
     expanded = _get_boolean_with_default(
@@ -204,12 +216,11 @@ def array_section(obj):
     data_icon = _icon("icon-database")
 
     return (
-        "<div class='xr-array-wrap'>"
-        f"<input id='{data_id}' class='xr-array-in' type='checkbox' {collapsed}>"
-        f"<label for='{data_id}' title='Show/hide data repr'>{data_icon}</label>"
-        f"<div class='xr-array-preview xr-preview'><span>{preview}</span></div>"
-        f"<div class='xr-array-data'>{data_repr}</div>"
-        "</div>"
+        f"<div class='xr-array-wrap'><input id='{data_id}' class='xr-array-in'"
+        f" type='checkbox' {collapsed}><label for='{data_id}' title='Show/hide"
+        f" data repr'>{data_icon}</label><div class='xr-array-preview"
+        f" xr-preview'><span>{preview}</span></div><div"
+        f" class='xr-array-data'>{data_repr}</div></div>"
     )
 
 
@@ -244,8 +255,12 @@ def _obj_repr(obj, header_components, sections):
     """Return HTML repr of an xarray object.
     If CSS is not injected (untrusted notebook), fallback to the plain text repr.
     """
-    header = f"<div class='xr-header'>{''.join(h for h in header_components)}</div>"
-    sections = "".join(f"<li class='xr-section-item'>{s}</li>" for s in sections)
+    header = (
+        f"<div class='xr-header'>{''.join(h for h in header_components)}</div>"
+    )
+    sections = "".join(
+        f"<li class='xr-section-item'>{s}</li>" for s in sections
+    )
 
     icons_svg, css_style = _load_static_files()
     return (

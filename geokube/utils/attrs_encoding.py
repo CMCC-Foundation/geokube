@@ -3,7 +3,6 @@ from typing import List, Mapping, Tuple
 
 
 class CFAttributes(Enum):
-
     # encoding for names and dims
     NETCDF_NAME = "name"
     NETCDF_DIMS = "dims"
@@ -50,7 +49,9 @@ class CFAttributes(Enum):
         cls, attrs: Mapping[str, str]
     ) -> Tuple[Mapping[str, str], Mapping[str, str]]:
         properties = attrs.copy()
-        cf_encoding = {k: properties.pop(k) for k in cls.get_names() if k in attrs}
+        cf_encoding = {
+            k: properties.pop(k) for k in cls.get_names() if k in attrs
+        }
         return (properties, cf_encoding)
 
 

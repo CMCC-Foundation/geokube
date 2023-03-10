@@ -1,10 +1,11 @@
+import os
 import cartopy.crs as ccrs
 import numpy as np
 import pytest
 import xarray as xr
 
 import geokube.core.coord_system as crs
-from geokube.backend.netcdf import open_datacube
+from geokube.backend import open_datacube
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import RegularLatLon
 from geokube.core.coordinate import Coordinate
@@ -13,9 +14,8 @@ from geokube.core.field import Field
 from geokube.core.domain import Domain
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
-import geokube.utils.exceptions as ex
 
-from tests import RES_PATH, clear_test_res
+from tests import RES_PATH, RES_DIR, clear_test_res
 from tests.fixtures import *
 
 
@@ -38,7 +38,9 @@ def test_from_xarray_regular_lat_lon_with_id_pattern(era5_netcdf):
     assert dc["total_precipitation"].units == Unit("m")
 
 
-def test_to_xarray_regular_lat_lon_with_id_pattern_without_encoding(era5_netcdf):
+def test_to_xarray_regular_lat_lon_with_id_pattern_without_encoding(
+    era5_netcdf,
+):
     dc = DataCube.from_xarray(era5_netcdf, id_pattern="{__ddsapi_name}")
     xr_res = dc.to_xarray(encoding=False)
     assert "2_metre_dewpoint_temperature" in xr_res.data_vars
@@ -90,24 +92,34 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert res["air_temperature"].domain.crs == crs.RotatedGeogCS(
         grid_north_pole_latitude=47, grid_north_pole_longitude=-168
     )
-    W = np.prod(res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.shape)
+    W = np.prod(
+        res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.shape
+    )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.values >= 38
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].latitude.values
+            >= 38
         )
         / W
         > 0.95
     )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].latitude.values <= 40
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].latitude.values
+            <= 40
         )
         / W
         > 0.95
     )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].longitude.values
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].longitude.values
             >= 16
         )
         / W
@@ -115,7 +127,9 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     )
     assert (
         np.sum(
-            res["lwe_thickness_of_moisture_content_of_soil_layer"].longitude.values
+            res[
+                "lwe_thickness_of_moisture_content_of_soil_layer"
+            ].longitude.values
             <= 19
         )
         / W
@@ -199,3 +213,24 @@ def test_get_single_field_by_standard_name(rotated_pole_datacube):
     assert isinstance(res, Field)
     assert res.name == "air_temperature"
     assert res.ncvar == "TMIN_2M"
+
+
+def test_persist_with_no_extension(rotated_pole_datacube):
+    clear_test_res()
+    with pytest.warns(UserWarning, match=r"Provided persistance path*"):
+        path = rotated_pole_datacube.persist(RES_DIR)
+        assert path == RES_DIR + ".nc"
+    clear_test_res()
+
+
+def test_persist_no_path_passed(rotated_pole_datacube):
+    path = rotated_pole_datacube.persist()
+    assert os.path.exists(path)
+
+
+def test_to_dict_store_propen_keys(era5_netcdf):
+    details = DataCube.from_xarray(era5_netcdf).to_dict()
+    assert "domain" in details
+    assert isinstance(details["domain"], dict)
+    assert "fields" in details
+    assert isinstance(details["fields"], dict)

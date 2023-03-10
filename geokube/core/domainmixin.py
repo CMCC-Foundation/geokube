@@ -1,6 +1,9 @@
 from typing import Union
 
-from ..utils import exceptions as ex
+
+from ..utils.decorators import geokube_logging
+import numpy as np
+
 from .axis import Axis, AxisType
 from .coordinate import Coordinate, CoordinateType
 from .enums import LatitudeConvention, LongitudeConvention
@@ -36,8 +39,15 @@ class DomainMixin:
 
     @property
     def longitude_convention(self) -> LongitudeConvention:
-        if AxisType.LONGITUDE in self._Axis_to_name:
-            return self[AxisType.LONGITUDE].convention
+        if np.all(self.longitude.values >= 0.0) and np.all(
+            self.longitude.values <= 360.0
+        ):
+            return LongitudeConvention.POSITIVE_WEST
+        if np.all(self.longitude.values >= -180.0) and np.all(
+            self.longitude.values <= 180.0
+        ):
+            return LongitudeConvention.NEGATIVE_WEST
+        raise ValueError("Wrong longitude values")
 
     @property
     def latitude_convention(self) -> LatitudeConvention:
@@ -52,24 +62,24 @@ class DomainMixin:
     def is_longitude_independent(self):
         return self[AxisType.LONGITUDE].type is CoordinateType.INDEPENDENT
 
+    @geokube_logging
     def __getitem__(self, key: Union[AxisType, Axis, str]) -> Coordinate:
         if isinstance(key, str):
             return self.coords[key]
         elif isinstance(key, AxisType):
             if key not in self._axis_to_name:
-                raise ex.HCubeKeyError(
-                    f"Axis of type `{key}` does not exist in the domain!",
-                    logger=self._LOG,
+                raise KeyError(
+                    f"Axis of type `{key}` does not exist in the domain!"
                 )
             return self.coords[self._axis_to_name.get(key)]
         elif isinstance(key, Axis):
             if key.type not in self._axis_to_name:
-                raise ex.HCubeKeyError(
-                    f"Axis of type `{key}` does not exist in the domain!",
-                    logger=self._LOG,
+                raise KeyError(
+                    f"Axis of type `{key}` does not exist in the domain!"
                 )
             return self.coords[self._axis_to_name.get(key.type)]
-        raise ex.HCubeTypeError(
-            f"Indexing coordinates for Domain is supported only for object of types [str, geokube.Axis, geokub.AxisType]. Provided type: {type(key)}",
-            logger=self._LOG,
+        raise TypeError(
+            "Indexing coordinates for Domain is supported only for object of"
+            " types [str, geokube.Axis, geokub.AxisType]. Provided type:"
+            f" {type(key)}"
         )

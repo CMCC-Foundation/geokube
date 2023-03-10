@@ -19,6 +19,10 @@ import cartopy.crs as ccrs
 import numpy as np
 import xarray as xr
 
+from ..utils.serialization import maybe_convert_to_json_serializable
+
+TOL = 1e-5
+
 
 def _arg_default(value, default, cast_as=float):
     """Apply a default value and type for an optional kwarg."""
@@ -80,7 +84,9 @@ class CoordSystem(metaclass=ABCMeta):
         xml_element_name = type(self).__name__
         # lower case the first char
         first_char = xml_element_name[0]
-        xml_element_name = xml_element_name.replace(first_char, first_char.lower(), 1)
+        xml_element_name = xml_element_name.replace(
+            first_char, first_char.lower(), 1
+        )
 
         coord_system_xml_element = doc.createElement(xml_element_name)
 
@@ -107,6 +113,12 @@ class CoordSystem(metaclass=ABCMeta):
             globe = globe_default
 
         return globe
+
+    def to_dict(self):
+        return {
+            "name": self.grid_mapping_name,
+            **maybe_convert_to_json_serializable(self.__dict__),
+        }
 
     @abstractmethod
     def as_cartopy_crs(self):
@@ -196,14 +208,6 @@ class GeogCS(CoordSystem):
         ):
             raise ValueError("No ellipsoid specified")
 
-        # Ellipsoid over-specified? (1 1 1)
-        if (
-            (semi_major_axis is not None)
-            and (semi_minor_axis is not None)
-            and (inverse_flattening is not None)
-        ):
-            raise ValueError("Ellipsoid is overspecified")
-
         # Perfect sphere (semi_major_axis only)? (1 0 0)
         elif semi_major_axis is not None and (
             semi_minor_axis is None and inverse_flattening is None
@@ -212,20 +216,28 @@ class GeogCS(CoordSystem):
             inverse_flattening = 0.0
 
         # Calculate semi_major_axis? (0 1 1)
-        elif semi_major_axis is None and (
-            semi_minor_axis is not None and inverse_flattening is not None
-        ):
-            semi_major_axis = -semi_minor_axis / (
+        elif semi_minor_axis is not None and inverse_flattening is not None:
+            semi_major_axis_ = -semi_minor_axis / (
                 (1.0 - inverse_flattening) / inverse_flattening
             )
+            if (
+                semi_major_axis is not None
+                and abs(semi_major_axis_ - semi_major_axis) > TOL
+            ):
+                raise ValueError("Ellipsoid is overspecified")
+            semi_major_axis = semi_major_axis_
 
         # Calculate semi_minor_axis? (1 0 1)
-        elif semi_minor_axis is None and (
-            semi_major_axis is not None and inverse_flattening is not None
-        ):
-            semi_minor_axis = semi_major_axis - (
+        elif semi_major_axis is not None and inverse_flattening is not None:
+            semi_minor_axis_ = semi_major_axis - (
                 (1.0 / inverse_flattening) * semi_major_axis
             )
+            if (
+                semi_minor_axis is not None
+                and abs(semi_minor_axis_ - semi_minor_axis) > TOL
+            ):
+                raise ValueError("Ellipsoid is overspecified")
+            semi_minor_axis = semi_minor_axis_
 
         # Calculate inverse_flattening? (1 1 0)
         elif inverse_flattening is None and (
@@ -252,7 +264,9 @@ class GeogCS(CoordSystem):
         self.inverse_flattening = float(inverse_flattening)
 
         #: Describes 'zero' on the ellipsoid in degrees.
-        self.longitude_of_prime_meridian = _arg_default(longitude_of_prime_meridian, 0)
+        self.longitude_of_prime_meridian = _arg_default(
+            longitude_of_prime_meridian, 0
+        )
 
     def _pretty_attrs(self):
         attrs = [("semi_major_axis", self.semi_major_axis)]
@@ -273,7 +287,9 @@ class GeogCS(CoordSystem):
         if len(attrs) == 1 and attrs[0][0] == "semi_major_axis":
             return "GeogCS(%r)" % self.semi_major_axis
         else:
-            return "GeogCS(%s)" % ", ".join(["%s=%r" % (k, v) for k, v in attrs])
+            return "GeogCS(%s)" % ", ".join(
+                ["%s=%r" % (k, v) for k, v in attrs]
+            )
 
     def __str__(self):
         attrs = self._pretty_attrs()
@@ -316,7 +332,6 @@ class GeogCS(CoordSystem):
 
 
 class RegularLatLon(GeogCS):
-
     grid_mapping_name = "latitude_longitude"
 
     def __init__(self, *args, **kwargs):
@@ -378,7 +393,9 @@ class RotatedGeogCS(CoordSystem):
         self.grid_north_pole_longitude = float(grid_north_pole_longitude)
 
         #: Longitude of true north pole in rotated grid in degrees.
-        self.north_pole_grid_longitude = _arg_default(north_pole_grid_longitude, 0)
+        self.north_pole_grid_longitude = _arg_default(
+            north_pole_grid_longitude, 0
+        )
 
         #: Ellipsoid definition (:class:`GeogCS` or None).
         self.ellipsoid = ellipsoid
@@ -389,7 +406,9 @@ class RotatedGeogCS(CoordSystem):
             ("grid_north_pole_longitude", self.grid_north_pole_longitude),
         ]
         if self.north_pole_grid_longitude != 0.0:
-            attrs.append(("north_pole_grid_longitude", self.north_pole_grid_longitude))
+            attrs.append(
+                ("north_pole_grid_longitude", self.north_pole_grid_longitude)
+            )
         if self.ellipsoid is not None:
             attrs.append(("ellipsoid", self.ellipsoid))
         return attrs
@@ -399,7 +418,9 @@ class RotatedGeogCS(CoordSystem):
 
     def __repr__(self):
         attrs = self._pretty_attrs()
-        result = "RotatedGeogCS(%s)" % ", ".join(["%s=%r" % (k, v) for k, v in attrs])
+        result = "RotatedGeogCS(%s)" % ", ".join(
+            ["%s=%r" % (k, v) for k, v in attrs]
+        )
         # Extra prettiness
         result = result.replace("grid_north_pole_latitude=", "")
         result = result.replace("grid_north_pole_longitude=", "")
@@ -499,10 +520,14 @@ class TransverseMercator(CoordSystem):
 
         """
         #: True latitude of planar origin in degrees.
-        self.latitude_of_projection_origin = float(latitude_of_projection_origin)
+        self.latitude_of_projection_origin = float(
+            latitude_of_projection_origin
+        )
 
         #: True longitude of planar origin in degrees.
-        self.longitude_of_central_meridian = float(longitude_of_central_meridian)
+        self.longitude_of_central_meridian = float(
+            longitude_of_central_meridian
+        )
 
         #: X offset from planar origin in metres.
         self.false_easting = _arg_default(false_easting, 0)
@@ -613,10 +638,14 @@ class Orthographic(CoordSystem):
 
         """
         #: True latitude of planar origin in degrees.
-        self.latitude_of_projection_origin = float(latitude_of_projection_origin)
+        self.latitude_of_projection_origin = float(
+            latitude_of_projection_origin
+        )
 
         #: True longitude of planar origin in degrees.
-        self.longitude_of_projection_origin = float(longitude_of_projection_origin)
+        self.longitude_of_projection_origin = float(
+            longitude_of_projection_origin
+        )
 
         #: X offset from planar origin in metres.
         self.false_easting = _arg_default(false_easting, 0)
@@ -706,10 +735,14 @@ class VerticalPerspective(CoordSystem):
 
         """
         #: True latitude of planar origin in degrees.
-        self.latitude_of_projection_origin = float(latitude_of_projection_origin)
+        self.latitude_of_projection_origin = float(
+            latitude_of_projection_origin
+        )
 
         #: True longitude of planar origin in degrees.
-        self.longitude_of_projection_origin = float(longitude_of_projection_origin)
+        self.longitude_of_projection_origin = float(
+            longitude_of_projection_origin
+        )
 
         #: Altitude of satellite in metres.
         self.perspective_point_height = float(perspective_point_height)
@@ -776,7 +809,6 @@ class Geostationary(CoordSystem):
         *args,
         **kwargs
     ):
-
         """
         Constructs a Geostationary coord system.
 
@@ -807,14 +839,19 @@ class Geostationary(CoordSystem):
 
         """
         #: True latitude of planar origin in degrees.
-        self.latitude_of_projection_origin = float(latitude_of_projection_origin)
+        self.latitude_of_projection_origin = float(
+            latitude_of_projection_origin
+        )
         if self.latitude_of_projection_origin != 0.0:
             raise ValueError(
-                "Non-zero latitude of projection currently not" " supported by Cartopy."
+                "Non-zero latitude of projection currently not"
+                " supported by Cartopy."
             )
 
         #: True longitude of planar origin in degrees.
-        self.longitude_of_projection_origin = float(longitude_of_projection_origin)
+        self.longitude_of_projection_origin = float(
+            longitude_of_projection_origin
+        )
 
         #: Altitude of satellite in metres.
         self.perspective_point_height = float(perspective_point_height)
@@ -926,7 +963,9 @@ class Stereographic(CoordSystem):
         self.false_northing = _arg_default(false_northing, 0)
 
         #: Latitude of true scale.
-        self.true_scale_lat = _arg_default(true_scale_lat, None, cast_as=_float_or_None)
+        self.true_scale_lat = _arg_default(
+            true_scale_lat, None, cast_as=_float_or_None
+        )
         # N.B. the way we use this parameter, we need it to default to None,
         # and *not* to 0.0 .
 
@@ -1328,7 +1367,6 @@ class AlbersEqualArea(CoordSystem):
 
 
 class CurvilinearGrid(CoordSystem):
-
     grid_mapping_name = "curvilinear_grid"
 
     def __init__(self, *args, **kwargs):

@@ -2,7 +2,6 @@ from .variable import Variable
 
 
 class Bounds(Variable):
-
     __slots__ = ("_name",)
 
     @property

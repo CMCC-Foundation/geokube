@@ -2,7 +2,6 @@ import logging
 
 
 class HCubeLogger:
-
     __slots__ = ("_logger",)
 
     def __init__(self, name):
