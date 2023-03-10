@@ -17,10 +17,15 @@ jobs:
     - name: Install WHEEL tool
       run: pip install wheel
     - name: Build WHEEL file
-      run: python setup.py bdist_wheel      
-    - name: Log in to the docker repo
-      run: docker login ${{ secrets.DOCKER_PROD_REPO_URL }} -u nologin -p ${{ secrets.DOCKER_PASSWORD }}
-    - name: Build the Docker image
-      run: docker build -t ${{ secrets.DOCKER_PROD_REPO_URL }}/geokube:${{ env.RELEASE_TAG }} -f Dockerfile .
-    - name: Push docker image
-      run: docker push ${{ secrets.DOCKER_PROD_REPO_URL }}/geokube:${{ env.RELEASE_TAG }}
+      run: python setup.py bdist_wheel
+    - name: Login to Docker registry
+      run: echo ${{ secrets.DOCKER_PASSWORD }}  | docker login ${{ secrets.DOCKER_PROD_REPO_URL }} -u nologin --password-stdin      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2        
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ secrets.DOCKER_PROD_REPO_URL }}/geokube:${{ env.RELEASE_TAG }}      
