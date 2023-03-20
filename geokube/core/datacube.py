@@ -447,8 +447,8 @@ class DataCube(DomainMixin):
         return dset
 
     @geokube_logging
-    def to_netcdf(self, path):
-        self.to_xarray(encoding=True).to_netcdf(path=path)
+    def to_netcdf(self, path, encoding: bool = True):
+        self.to_xarray(encoding=encoding).to_netcdf(path=path)
 
     def persist(self, path=None) -> str:
         if path is None:
