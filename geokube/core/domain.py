@@ -394,10 +394,11 @@ class Domain(DomainMixin):
             grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
+            crs_name = self.domain.crs.grid_mapping_name
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid.update(
-                {"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)}
+                {crs_name: xr.DataArray(1, name=crs_name, attrs=not_none_attrs)}
             )
         return grid
 
