@@ -692,10 +692,11 @@ class Field(Variable, DomainMixin):
                 self._LOG.warn(
                     "time axis is not present in the domain."
                 )
-            if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
-                Field._LOG.warn("empty `time` indexer")
-                raise EmptyDataError("empty `time` indexer")
-            ds = ds.isel(idx, drop=drop)
+            else:
+                if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
+                    Field._LOG.warn("empty `time` indexer")
+                    raise EmptyDataError("empty `time` indexer")
+                ds = ds.isel(idx, drop=drop)
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
