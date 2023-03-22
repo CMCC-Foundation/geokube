@@ -683,15 +683,19 @@ class Field(Variable, DomainMixin):
         ds = self.to_xarray(encoding=False)
 
         if (
-            time_ind := indexers.get(Axis("time"))
+            time_ind := indexers.pop(Axis("time"), None)
         ) is not None and util_methods.is_time_combo(time_ind):
             # NOTE: time is always independent coordinate
-            idx = self.domain._process_time_combo(time_ind)
+            try:
+                idx = self.domain._process_time_combo(time_ind)
+            except KeyError as err:
+                self._LOG.warn(
+                    "time axis is not present in the domain. %s", err
+                )
             if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
                 Field._LOG.warn("empty `time` indexer")
                 raise EmptyDataError("empty `time` indexer")
             ds = ds.isel(idx, drop=drop)
-            del indexers[Axis("time")]
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
@@ -701,6 +705,11 @@ class Field(Variable, DomainMixin):
             for k, v in indexers.items()
             if k in self.domain
         }
+        indexers = {
+            index_key: index_value 
+            for index_key, index_value in indexers.items()
+            if index_key in ds.xindexes
+        }        
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
@@ -1786,7 +1795,8 @@ class Field(Variable, DomainMixin):
 
         coords = self.domain.to_xarray(encoding)
 
-        data_vars[var_name].encoding["grid_mapping"] = "crs"
+        crs_name = self.domain.crs.grid_mapping_name
+        data_vars[var_name].encoding["grid_mapping"] = crs_name
 
         if self.cell_methods is not None:
             data_vars[var_name].attrs["cell_methods"] = str(self.cell_methods)

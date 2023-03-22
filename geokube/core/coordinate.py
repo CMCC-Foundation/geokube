@@ -357,7 +357,7 @@ class Coordinate(Variable, Axis):
             values = np.array(values).astype(np.datetime64)
             time_unit = time_step = None
             if len(self.data) > 1:
-                time_offset = to_offset(pd.Series(values).diff().mode().item())
+                time_offset = to_offset(pd.Series(values).diff().mode()[0])
                 time_unit = time_offset.name
                 time_step = time_offset.n
                 if time_unit in {
