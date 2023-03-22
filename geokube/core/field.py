@@ -688,9 +688,9 @@ class Field(Variable, DomainMixin):
             # NOTE: time is always independent coordinate
             try:
                 idx = self.domain._process_time_combo(time_ind)
-            except KeyError as err:
+            except KeyError:
                 self._LOG.warn(
-                    "time axis is not present in the domain. %s", err
+                    "time axis is not present in the domain."
                 )
             if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
                 Field._LOG.warn("empty `time` indexer")
