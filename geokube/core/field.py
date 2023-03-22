@@ -701,6 +701,11 @@ class Field(Variable, DomainMixin):
             for k, v in indexers.items()
             if k in self.domain
         }
+        indexers = {
+            index_key: index_value 
+            for index_key, index_value in indexers.items()
+            if index_key in ds.xindexes
+        }        
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
