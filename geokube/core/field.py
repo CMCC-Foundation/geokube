@@ -1786,7 +1786,8 @@ class Field(Variable, DomainMixin):
 
         coords = self.domain.to_xarray(encoding)
 
-        data_vars[var_name].encoding["grid_mapping"] = "crs"
+        crs_name = self.domain.crs.grid_mapping_name
+        data_vars[var_name].encoding["grid_mapping"] = crs_name
 
         if self.cell_methods is not None:
             data_vars[var_name].attrs["cell_methods"] = str(self.cell_methods)
