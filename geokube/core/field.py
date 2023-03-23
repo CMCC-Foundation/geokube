@@ -1109,7 +1109,7 @@ class Field(Variable, DomainMixin):
         return field
 
     @geokube_logging
-    def mean_(self, dim=None):
+    def average(self, dim=None):
         dset = self.to_xarray(encoding=False)
         if dim is None:
             return dset[self._name].mean().data
