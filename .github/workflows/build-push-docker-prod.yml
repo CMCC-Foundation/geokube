@@ -28,4 +28,6 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_PROD_REPO_URL }}/geokube:${{ env.RELEASE_TAG }}      
+        tags: |
+           ${{ secrets.DOCKER_PROD_REPO_URL }}/geokube:${{ env.RELEASE_TAG }}      
+           ${{ secrets.DOCKER_PROD_REPO_URL }}/geokube:latest
