@@ -683,7 +683,7 @@ class Field(Variable, DomainMixin):
         ds = self.to_xarray(encoding=False)
 
         if (
-            time_ind := indexers.pop(Axis("time"), None)
+            time_ind := indexers.get(Axis("time"))
         ) is not None and util_methods.is_time_combo(time_ind):
             # NOTE: time is always independent coordinate
             try:
@@ -697,6 +697,7 @@ class Field(Variable, DomainMixin):
                     Field._LOG.warn("empty `time` indexer")
                     raise EmptyDataError("empty `time` indexer")
                 ds = ds.isel(idx, drop=drop)
+                del indexers[Axis("time")]
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
