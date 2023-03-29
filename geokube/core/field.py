@@ -1110,6 +1110,25 @@ class Field(Variable, DomainMixin):
         return field
 
     @geokube_logging
+    def average(self, dim=None):
+        dset = self.to_xarray(encoding=False)
+        if dim is None:
+            return dset[self._name].mean().data
+        if self.coords[dim].is_dim:
+            result_dset = dset.mean(dim=dim)
+            result_field = Field.from_xarray(
+                ds=result_dset,
+                ncvar=self._name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+            )
+            result_field.domain.crs = self._domain.crs
+            result_field.domain._type = self._domain._type
+            return result_field
+        raise ValueError(f"'dim' {dim} is not supported for averaging")
+
+    @geokube_logging
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
