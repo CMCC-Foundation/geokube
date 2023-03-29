@@ -18,6 +18,7 @@ from zipfile import ZipFile
 from ..utils.decorators import geokube_logging
 from ..utils import util_methods
 from ..utils.hcube_logger import HCubeLogger
+from .enums import MethodType
 from .errs import EmptyDataError
 from .axis import Axis
 from .datacube import DataCube
@@ -161,6 +162,31 @@ class Dataset:
                 roll_if_needed=roll_if_needed,
                 **indexers_kwargs,
             )
+        )
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
+
+    def resample(
+        self,
+        operator: Union[Callable, MethodType, str],
+        frequency: str,
+        **resample_kwargs,
+    ) -> Dataset:
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.resample(
+                operator=operator, frequency=frequency, **resample_kwargs
+            )
+        )
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
+
+    def average(self, dim: str) -> Dataset:
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.average(dim=dim)
         )
         return Dataset(
             attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
