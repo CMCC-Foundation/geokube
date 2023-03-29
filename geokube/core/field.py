@@ -689,11 +689,12 @@ class Field(Variable, DomainMixin):
             try:
                 idx = self.domain._process_time_combo(time_ind)
             except KeyError:
-                self._LOG.warn(
-                    "time axis is not present in the domain."
-                )
+                self._LOG.warn("time axis is not present in the domain.")
             else:
-                if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
+                if (
+                    isinstance(idx["time"], np.ndarray)
+                    and len(idx["time"]) == 0
+                ):
                     Field._LOG.warn("empty `time` indexer")
                     raise EmptyDataError("empty `time` indexer")
                 ds = ds.isel(idx, drop=drop)
@@ -708,10 +709,10 @@ class Field(Variable, DomainMixin):
             if k in self.domain
         }
         indexers = {
-            index_key: index_value 
+            index_key: index_value
             for index_key, index_value in indexers.items()
             if index_key in ds.xindexes
-        }        
+        }
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
