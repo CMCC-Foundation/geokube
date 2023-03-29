@@ -1110,10 +1110,18 @@ class Field(Variable, DomainMixin):
         return field
 
     @geokube_logging
-    def average(self, dim=None):
+    def average(self, dim: str | None = None) -> Field:
         dset = self.to_xarray(encoding=False)
         if dim is None:
-            return dset[self._name].mean().data
+            # return dset[self._name].mean().data
+            result = dset[self._name].mean().data
+            return Field.from_xarray(
+                ds=xr.DataArray(data=result).to_dataset(name=self._name),
+                ncvar=self._name,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+                copy=False,
+            )
         if self.coords[dim].is_dim:
             result_dset = dset.mean(dim=dim)
             result_field = Field.from_xarray(

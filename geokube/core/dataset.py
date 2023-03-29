@@ -183,7 +183,7 @@ class Dataset:
             attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
         )
 
-    def average(self, dim: str) -> Dataset:
+    def average(self, dim: str | None = None) -> Dataset:
         _copy = self.__data.copy()
         _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
             lambda x: x.average(dim=dim)

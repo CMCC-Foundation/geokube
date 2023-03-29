@@ -261,7 +261,7 @@ class DataCube(DomainMixin):
         )
 
     @geokube_logging
-    def average(self, dim: str) -> "DataCube":
+    def average(self, dim: str | None = None) -> "DataCube":
         return DataCube(
             fields=[
                 self._fields[k].average(dim=dim) for k in self._fields.keys()
