@@ -1116,18 +1116,20 @@ class Field(Variable, DomainMixin):
         if dim is None:
             # return dset[self._name].mean().data
             result = dset[self._name].mean().data
+            result[self._name].encoding = dset[self._name].encoding
             return Field.from_xarray(
                 ds=xr.DataArray(data=result).to_dataset(name=self._name),
-                ncvar=self._name,
+                ncvar=self.name,
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
                 copy=False,
             )
         if self.coords[dim].is_dim:
             result_dset = dset.mean(dim=dim)
+            result_dset[self._name].encoding = dset[self._name].encoding
             result_field = Field.from_xarray(
                 ds=result_dset,
-                ncvar=self._name,
+                ncvar=self.name,
                 copy=False,
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
