@@ -689,11 +689,12 @@ class Field(Variable, DomainMixin):
             try:
                 idx = self.domain._process_time_combo(time_ind)
             except KeyError:
-                self._LOG.warn(
-                    "time axis is not present in the domain."
-                )
+                self._LOG.warn("time axis is not present in the domain.")
             else:
-                if isinstance(idx["time"], np.ndarray) and len(idx["time"]) == 0:
+                if (
+                    isinstance(idx["time"], np.ndarray)
+                    and len(idx["time"]) == 0
+                ):
                     Field._LOG.warn("empty `time` indexer")
                     raise EmptyDataError("empty `time` indexer")
                 ds = ds.isel(idx, drop=drop)
@@ -708,10 +709,10 @@ class Field(Variable, DomainMixin):
             if k in self.domain
         }
         indexers = {
-            index_key: index_value 
+            index_key: index_value
             for index_key, index_value in indexers.items()
             if index_key in ds.xindexes
-        }        
+        }
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
@@ -1110,15 +1111,25 @@ class Field(Variable, DomainMixin):
         return field
 
     @geokube_logging
-    def average(self, dim=None):
+    def average(self, dim: str | None = None) -> Field:
         dset = self.to_xarray(encoding=False)
         if dim is None:
-            return dset[self._name].mean().data
+            # return dset[self._name].mean().data
+            result = dset[self._name].mean().data
+            result[self._name].encoding = dset[self._name].encoding
+            return Field.from_xarray(
+                ds=xr.DataArray(data=result).to_dataset(name=self._name),
+                ncvar=self.name,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+                copy=False,
+            )
         if self.coords[dim].is_dim:
             result_dset = dset.mean(dim=dim)
+            result_dset[self._name].encoding = dset[self._name].encoding
             result_field = Field.from_xarray(
                 ds=result_dset,
-                ncvar=self._name,
+                ncvar=self.name,
                 copy=False,
                 id_pattern=self._id_pattern,
                 mapping=self._mapping,
