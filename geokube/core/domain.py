@@ -6,6 +6,7 @@ import warnings
 from collections.abc import Iterable
 from enum import Enum
 from itertools import chain
+from statistics import mode
 from typing import Any, Hashable, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
@@ -124,6 +125,11 @@ class Domain(DomainMixin):
     @property
     def aux_coords(self) -> List[str]:
         return [c.name for c in self._coords.values() if not c.is_dim]
+    
+    def _infer_resolution(self):
+        grid_x = mode(np.diff(self.longitude))
+        grid_y = mode(np.diff(self.latitude))
+        return (grid_x, grid_y)
 
     def __repr__(self) -> str:
         return self.to_xarray(encoding=False).__repr__()
