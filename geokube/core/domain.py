@@ -127,8 +127,8 @@ class Domain(DomainMixin):
         return [c.name for c in self._coords.values() if not c.is_dim]
     
     def _infer_resolution(self):
-        grid_x = mode(np.diff(self.longitude))
-        grid_y = mode(np.diff(self.latitude))
+        grid_x = np.abs(mode(np.diff(self.longitude)))
+        grid_y = np.abs(mode(np.diff(self.latitude)))
         return (grid_x, grid_y)
 
     def __repr__(self) -> str:
