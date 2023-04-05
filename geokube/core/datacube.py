@@ -26,13 +26,14 @@ from typing import (
 
 import pandas as pd
 import xarray as xr
+import math
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from ..utils import util_methods
 from .errs import EmptyDataError
 from .axis import Axis, AxisType
-from .coord_system import RegularLatLon
+from .coord_system import GeogCS, RegularLatLon
 from .domain import Domain, DomainType
 from .enums import RegridMethod
 from .field import Field
@@ -315,7 +316,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    def to_geojson(self, target=None):
+    def to_geojson(self, target=None, grid_x=0.0625, grid_y=0.0625):
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
@@ -354,7 +355,7 @@ class DataCube(DomainMixin):
             result = {"data": []}
             cube = (
                 self
-                if isinstance(self.domain.crs, RegularLatLon)
+                if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
             axis_names = cube.domain._axis_to_name
@@ -386,23 +387,39 @@ class DataCube(DomainMixin):
                             idx[axis_names[AxisType.TIME]] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
+                        # Polygon:
+                        # for each lat/lon we have to define a polygon with lan/lon centered
+                        # the cell length depends on the grid resolution (that should be computed)
+                        lonv = lon.item()
+                        latv = lat.item()
                         feature = {
                             "type": "Feature",
                             "geometry": {
-                                "type": "Point",
-                                "coordinates": [lon.item(), lat.item()],
+                                "type": "Polygon",
+                                "coordinates":[  
+                                   [ [lonv - grid_x, latv + grid_y], [lonv + grid_x, latv + grid_y],
+                                     [lonv + grid_x, latv - grid_y], [lonv - grid_x, latv - grid_y],
+                                     [lonv - grid_x, latv + grid_y]
+                                   ]
+                                ]
                             },
                             "properties": {},
                         }
                         for field in self.fields.values():
                             try:
                                 value = field.sel(indexers=idx)
+                                value_ = float(value)
+                                if math.isnan(value):
+                                    value_ = None                                
                             except EmptyDataError:
                                 continue
+                            except ValueError:
+                                try:
+                                    value_ = value.item()
+                                except AttributeError:
+                                    value_ = value                                
                             else:
-                                feature["properties"][field.name] = float(
-                                    value
-                                )
+                                feature["properties"][field.name] = value_                     
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
         else:

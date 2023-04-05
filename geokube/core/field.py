@@ -1407,7 +1407,7 @@ class Field(Variable, DomainMixin):
 
         return plot
 
-    def to_geojson(self, target=None):
+    def to_geojson(self, target=None, grid_x=0.0625, grid_y=0.0625):
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
@@ -1436,7 +1436,7 @@ class Field(Variable, DomainMixin):
             result = {"data": []}
             field = (
                 self
-                if isinstance(self.domain.crs, RegularLatLon)
+                if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
             axis_names = field.domain._axis_to_name
@@ -1465,12 +1465,23 @@ class Field(Variable, DomainMixin):
                             idx[axis_names[AxisType.TIME]] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
+                        # 
+                        # Polygon:
+                        # for each lat/lon we have to define a polygon with lan/lon centered
+                        # the cell length depends on the grid resolution (that should be computed)
                         value = field.sel(**idx)
+                        lonv = lon.item()
+                        latv = lat.item()
                         feature = {
                             "type": "Feature",
                             "geometry": {
-                                "type": "Point",
-                                "coordinates": [lon.item(), lat.item()],
+                                "type": "Polygon",
+                                "coordinates":[  
+                                   [ [lonv - grid_x, latv + grid_y], [lonv + grid_x, latv + grid_y],
+                                     [lonv + grid_x, latv - grid_y], [lonv - grid_x, latv - grid_y],
+                                     [lonv - grid_x, latv + grid_y]
+                                   ]
+                                ]
                             },
                             "properties": {self.name: float(value)},
                         }
