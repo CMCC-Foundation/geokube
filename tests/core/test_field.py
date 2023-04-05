@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pytest
 import xarray as xr
@@ -5,7 +6,7 @@ import pandas as pd
 import cf_units as cf
 
 import geokube.core.coord_system as crs
-from geokube.backend.netcdf import open_datacube, open_dataset
+from geokube.backend import open_datacube, open_dataset
 from geokube.core.axis import Axis, AxisType
 from geokube.core.coord_system import GeogCS, RegularLatLon
 from geokube.core.coordinate import Coordinate, CoordinateType
@@ -21,7 +22,7 @@ from geokube.core.field import Field
 from geokube.core.unit import Unit
 from geokube.core.variable import Variable
 from geokube.utils import util_methods
-from tests import RES_PATH, clear_test_res
+from tests import RES_PATH, clear_test_res, compare_dicts
 from tests.fixtures import *
 
 
@@ -926,6 +927,10 @@ def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
     )
 
 
+@pytest.mark.skipif(
+    xr.__version__ > "2022.1.0",
+    reason="Subsetting does not support empty indexers",
+)
 def test_nemo_sel_time_empty_result(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
     res = vt.sel(time={"hour": 13}, method="nearest")
@@ -1825,3 +1830,26 @@ def test_using_geo_domtype_attribute_in_serialization_field(
     assert "__geo_domtype" not in field_dset.attrs
     field_dset.to_netcdf(RES_PATH)
     clear_test_res()
+
+
+def test_keep_encoding_after_to_regular(era5_rotated_netcdf_wso):
+    field = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    reg_field = field.to_regular()
+    compare_dicts(
+        field.encoding,
+        reg_field.encoding,
+        exclude_d1=["grid_mapping", "coordinates", "_FillValue"],
+        exclude_d2=["grid_mapping", "coordinates", "_FillValue"],
+    )
+
+
+def test_keep_coordinate_encoding_with_scalars_after_to_regular(
+    era5_rotated_netcdf_wso,
+):
+    era5_rotated_netcdf_wso = era5_rotated_netcdf_wso.assign_coords({"sc": 10})
+    era5_rotated_netcdf_wso["sc"].attrs["standard_name"] = "scalar_coord"
+    era5_rotated_netcdf_wso["W_SO"].encoding["coordinates"] = "lat lon sc"
+    field = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
+    reg_field = field.to_regular()
+    xr_ds = reg_field.to_xarray()
+    assert xr_ds["W_SO"].encoding["coordinates"] == "sc"

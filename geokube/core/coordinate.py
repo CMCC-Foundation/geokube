@@ -5,11 +5,13 @@ from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
 import dask.array as da
 import numpy as np
 import pandas as pd
+from pandas.tseries.frequencies import to_offset
 import xarray as xr
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from ..utils.attrs_encoding import CFAttributes
+from ..utils.serialization import maybe_convert_to_json_serializable
 from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
@@ -26,6 +28,15 @@ class CoordinateType(Enum):
 # NOTE: coordinate is a dimension or axis with data and units
 # NOTE: coordinate name is dimension/axis name
 # NOTE: coordinate axis type is dimension/axis type
+
+FREQ_CODES = {
+    "T": "minute",
+    "H": "hour",
+    "D": "day",
+    "M": "month",
+    "Y": "year",
+    "N": "nanosecond",
+}
 
 
 class Coordinate(Variable, Axis):
@@ -52,7 +63,7 @@ class Coordinate(Variable, Axis):
                 "Expected argument is one of the following types"
                 f" `geokube.Axis` or `str`, but provided {type(data)}"
             )
-        Axis.__init__(self, name=axis)
+        Axis.__init__(self, name=axis, is_dim=dims is None)
         # We need to update as when calling constructor of Variable, encoding will be overwritten
         if encoding is not None:
             # encoding stored in axis
@@ -85,8 +96,8 @@ class Coordinate(Variable, Axis):
                     )
                 if len(dims_tuple) == 1 and dims_tuple[0] != self.name:
                     raise ValueError(
-                        f"`dims` parameter for dimension coordinate should"
-                        f" have the same name as axis name!"
+                        "`dims` parameter for dimension coordinate should"
+                        " have the same name as axis name!"
                     )
         Variable.__init__(
             self,
@@ -97,6 +108,7 @@ class Coordinate(Variable, Axis):
             encoding=self.encoding,
         )
         # Coordinates are always stored as NumPy data
+        # import pdb;pdb.set_trace()
         self._data = np.array(self._data)
         self.bounds = bounds
         self._update_properties_and_encoding()
@@ -263,14 +275,15 @@ class Coordinate(Variable, Axis):
     @property
     def type(self):
         # Cooridnate is scalar if data shows so. Dim(s) --  always defined
-        if self.shape == ():
+        if self.is_dimension:
+            if self.shape == () or self.shape == (1,):
+                return CoordinateType.SCALAR
+            else:
+                return CoordinateType.INDEPENDENT
+        elif self.shape == ():
             return CoordinateType.SCALAR
         else:
-            return (
-                CoordinateType.INDEPENDENT
-                if self.is_dimension
-                else CoordinateType.DEPENDENT
-            )
+            return CoordinateType.DEPENDENT
 
     @property
     def axis_type(self):
@@ -337,6 +350,57 @@ class Coordinate(Variable, Axis):
             bounds = {}
         return xr.Dataset(coords={da.name: da, **bounds})
 
+    def to_dict(self, unique_values=False):
+        axis_specific_details = {}
+        values = self.data
+        if self.axis_type is AxisType.TIME:
+            values = np.array(values).astype(np.datetime64)
+            time_unit = time_step = None
+            if len(self.data) > 1:
+                time_offset = to_offset(pd.Series(values).diff().mode()[0])
+                time_unit = time_offset.name
+                time_step = time_offset.n
+                if time_unit in {
+                    "L",
+                    "U",
+                    "N",
+                }:  # skip mili, micro, and nanoseconds
+                    values = values.astype(
+                        "datetime64[m]"
+                    )  # with minute resoluton
+                    time_offset = to_offset(
+                        pd.Series(values).diff().mode().item()
+                    )
+                    time_unit = time_offset.name
+                    time_step = time_offset.n
+                axis_specific_details = {
+                    "time_unit": FREQ_CODES[time_unit],
+                    "time_step": time_step,
+                }
+        elif (
+            self.axis_type is AxisType.VERTICAL
+            or self.axis_type is AxisType.GENERIC
+        ):
+            # e.g. numpy.float32 is not JSON serializable
+            axis_specific_details = {
+                "values": maybe_convert_to_json_serializable(
+                    np.unique(np.array(values))
+                )
+                if unique_values
+                else maybe_convert_to_json_serializable(
+                    np.array(np.atleast_1d(values))
+                )
+            }
+        return dict(
+            **{
+                "min": maybe_convert_to_json_serializable(np.nanmin(values)),
+                "max": maybe_convert_to_json_serializable(np.nanmax(values)),
+                "units": str(self.units),
+                "axis": self.axis_type.name,
+            },
+            **axis_specific_details,
+        )
+
     @classmethod
     @geokube_logging
     def from_xarray(
@@ -347,7 +411,6 @@ class Coordinate(Variable, Axis):
         mapping: Optional[Mapping[str, str]] = None,
         copy: Optional[bool] = False,
     ) -> "Coordinate":
-
         if not isinstance(ds, xr.Dataset):
             raise TypeError(
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
@@ -360,7 +423,12 @@ class Coordinate(Variable, Axis):
 
         axis_name = Variable._get_name(da, mapping, id_pattern)
         # `axis` attribute cannot be used below, as e.g for EOBS `latitude` has axis `Y`, so wrong AxisType is chosen
-        axistype = AxisType.parse(da.attrs.get("standard_name", ncvar))
+        axistype_name = None
+        if mapping is not None and da.name in mapping:
+            axistype_name = mapping[da.name].get("axis")
+        if axistype_name is None:
+            axistype_name = da.attrs.get("standard_name", ncvar)
+        axistype = AxisType.parse(axistype_name)
         axis = Axis(
             name=axis_name,
             is_dim=ncvar in da.dims,

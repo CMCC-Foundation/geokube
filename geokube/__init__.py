@@ -1,7 +1,7 @@
-import geokube.backend.netcdf
+import geokube.backend
 
-open_dataset = geokube.backend.netcdf.open_dataset
-open_datacube = geokube.backend.netcdf.open_datacube
+open_dataset = geokube.backend.open_dataset
+open_datacube = geokube.backend.open_datacube
 
 from geokube.core.coord_system import (
     AlbersEqualArea,

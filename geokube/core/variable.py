@@ -29,7 +29,6 @@ from .unit import Unit
 
 
 class Variable(xr.Variable):
-
     __slots__ = (
         "_dimensions",
         "_units",
@@ -58,8 +57,10 @@ class Variable(xr.Variable):
                 " `number.Number`, `numpy.ndarray`, `dask.array.Array`, or"
                 f" `xarray.Variable`, but provided {type(data)}"
             )
+        _is_scalar = False
         if isinstance(data, Number):
-            data = np.array(data)
+            data = np.array(data, ndmin=1)
+            _is_scalar = True
         if isinstance(data, Variable):
             self._dimensions = data._dimensions
             self._units = data._units
@@ -74,7 +75,7 @@ class Variable(xr.Variable):
             if dims is not None:
                 dims = self._as_dimension_tuple(dims)
                 dims = np.array(dims, ndmin=1, dtype=Axis)
-                if len(dims) != data.ndim:
+                if (not _is_scalar) and len(dims) != data.ndim:
                     raise ValueError(
                         f"Provided data have {data.ndim} dimension(s) but"
                         f" {len(dims)} Dimension(s) provided in `dims`"
@@ -192,7 +193,7 @@ class Variable(xr.Variable):
         id_pattern: str,
     ) -> str:
         if mapping is not None and da.name in mapping:
-            return mapping[da.name]["name"]
+            return mapping[da.name].get("name", da.name)
         if id_pattern is None:
             return da.attrs.get("standard_name", da.name)
         fmt = Formatter()
@@ -273,6 +274,13 @@ class Variable(xr.Variable):
             if self.units.is_time_reference():
                 nc_encoding["units"] = self.units.cftime_unit
                 nc_encoding["calendar"] = self.units.calendar
+            elif np.issubdtype(self.dtype, np.timedelta64) or np.issubdtype(
+                self.dtype, np.datetime64
+            ):
+                # NOTE: issue while using xarray.to_netcdf if units
+                # are stored as attributes,
+                # example: fapar/10-daily/LENGTH_AFTER
+                nc_encoding["units"] = str(self.units)
             else:
                 nc_attrs["units"] = str(self.units)
 

@@ -4,6 +4,8 @@ from collections.abc import Sequence
 import functools as ft
 import json
 import os
+import uuid
+import tempfile
 import warnings
 from html import escape
 from itertools import chain
@@ -36,8 +38,10 @@ from xarray.core.options import OPTIONS
 
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import geokube_logging
+from ..utils.util_methods import convert_cftimes_to_numpy
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
+from .errs import EmptyDataError
 from .cell_methods import CellMethod
 from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
 from .coordinate import Coordinate, CoordinateType
@@ -62,7 +66,6 @@ _CARTOPY_FEATURES = {
 
 
 class Field(Variable, DomainMixin):
-
     __slots__ = (
         "_name",
         "_domain",
@@ -100,7 +103,6 @@ class Field(Variable, DomainMixin):
             Mapping[Hashable, Union[np.ndarray, Variable]]
         ] = None,
     ) -> None:
-
         super().__init__(
             data=data,
             units=units,
@@ -368,7 +370,9 @@ class Field(Variable, DomainMixin):
         latitude: Number | Sequence[Number],
         longitude: Number | Sequence[Number],
         vertical: Number | Sequence[Number] | None = None,
-    ) -> Field:  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
+    ) -> (
+        Field
+    ):  # points are expressed as arrays for coordinates (dep or ind) lat/lon/vertical
         """
         Select points with given coordinates from a field.
 
@@ -488,10 +492,27 @@ class Field(Variable, DomainMixin):
             dset_interp = dset.interp(coords=interp_coords, method=method)
             dset_interp = dset_interp.drop(labels=[self.x.name, self.y.name])
 
-        # dset_interp[self.name].encoding.update(dset[self.name].encoding)
-        dset_interp[self.name].encoding[
-            "coordinates"
-        ] = f"{domain.latitude.name} {domain.longitude.name}"
+        dset_interp[self.name].encoding.update(dset[self.name].encoding)
+
+        encoding_coords = " ".join(
+            coord_name
+            for coord_name, coord in domain.coords.items()
+            if not coord.is_dimension
+        )
+        # NOTE: we need to manually append scalar coordinates
+        # NOTE: as they are not affected by interpolation
+        encoding_coords = " ".join(
+            chain(
+                [encoding_coords],
+                [
+                    coord_name
+                    for coord_name, coord in self.domain.coords.items()
+                    if coord.type is CoordinateType.SCALAR
+                ],
+            )
+        )
+        if encoding_coords:
+            dset_interp[self.name].encoding["coordinates"] = encoding_coords
         # TODO: Fill value should depend on the data type.
         # TODO: Add xarray fillna into Field.to_xarray.
         dset_interp[self.name].encoding["_FillValue"] = -9.0e-20
@@ -505,6 +526,7 @@ class Field(Variable, DomainMixin):
         )
 
         field.domain.type = domain.type
+        field.domain.crs = domain.crs
         return field
 
     def _locations_cartopy(self, latitude, longitude, vertical=None):
@@ -664,13 +686,33 @@ class Field(Variable, DomainMixin):
             time_ind := indexers.get(Axis("time"))
         ) is not None and util_methods.is_time_combo(time_ind):
             # NOTE: time is always independent coordinate
-            ds = ds.isel(self.domain._process_time_combo(time_ind), drop=drop)
-            del indexers[Axis("time")]
+            try:
+                idx = self.domain._process_time_combo(time_ind)
+            except KeyError:
+                self._LOG.warn("time axis is not present in the domain.")
+            else:
+                if (
+                    isinstance(idx["time"], np.ndarray)
+                    and len(idx["time"]) == 0
+                ):
+                    Field._LOG.warn("empty `time` indexer")
+                    raise EmptyDataError("empty `time` indexer")
+                ds = ds.isel(idx, drop=drop)
+                del indexers[Axis("time")]
 
         if roll_if_needed:
             ds = self._check_and_roll_longitude(ds, indexers)
 
-        indexers = {self.domain[k].name: v for k, v in indexers.items()}
+        indexers = {
+            self.domain[k].name: v
+            for k, v in indexers.items()
+            if k in self.domain
+        }
+        indexers = {
+            index_key: index_value
+            for index_key, index_value in indexers.items()
+            if index_key in ds.xindexes
+        }
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
@@ -1014,7 +1056,6 @@ class Field(Variable, DomainMixin):
             bnds_name, bnds = f"{self.time.name}_bnds", None
         else:
             ((bnds_name, bnds),) = time_bnds.items()
-
         if self.cell_methods and bnds is not None:
             # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
             # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
@@ -1051,7 +1092,7 @@ class Field(Variable, DomainMixin):
         # then `reduce` results in time axis for 1st, 2nd, and 3rd
         # passing for missing dates `NaN`s
         da = da.reduce(func=func, dim=self.time.name, keep_attrs=True).dropna(
-            dim=self.time.name
+            dim=self.time.name, how="all"
         )
         # NOTE: `reduce` removes all `encoding` properties
         da[self.name].encoding = ds[self.name].encoding
@@ -1068,6 +1109,35 @@ class Field(Variable, DomainMixin):
 
         # #########################################################################################
         return field
+
+    @geokube_logging
+    def average(self, dim: str | None = None) -> Field:
+        dset = self.to_xarray(encoding=False)
+        if dim is None:
+            # return dset[self._name].mean().data
+            result = dset[self._name].mean().data
+            result[self._name].encoding = dset[self._name].encoding
+            return Field.from_xarray(
+                ds=xr.DataArray(data=result).to_dataset(name=self._name),
+                ncvar=self.name,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+                copy=False,
+            )
+        if self.coords[dim].is_dim:
+            result_dset = dset.mean(dim=dim)
+            result_dset[self._name].encoding = dset[self._name].encoding
+            result_field = Field.from_xarray(
+                ds=result_dset,
+                ncvar=self.name,
+                copy=False,
+                id_pattern=self._id_pattern,
+                mapping=self._mapping,
+            )
+            result_field.domain.crs = self._domain.crs
+            result_field.domain._type = self._domain._type
+            return result_field
+        raise ValueError(f"'dim' {dim} is not supported for averaging")
 
     @geokube_logging
     def to_netcdf(self, path):
@@ -1768,7 +1838,8 @@ class Field(Variable, DomainMixin):
 
         coords = self.domain.to_xarray(encoding)
 
-        data_vars[var_name].encoding["grid_mapping"] = "crs"
+        crs_name = self.domain.crs.grid_mapping_name
+        data_vars[var_name].encoding["grid_mapping"] = crs_name
 
         if self.cell_methods is not None:
             data_vars[var_name].attrs["cell_methods"] = str(self.cell_methods)
@@ -1785,6 +1856,43 @@ class Field(Variable, DomainMixin):
 
         return xr.Dataset(data_vars=data_vars, coords=coords)
 
+    def persist(self, path=None) -> str:
+        if path is None:
+            path = os.path.join(
+                tempfile.gettempdir(), f"{str(uuid.uuid4())}.nc"
+            )
+        if os.path.isdir(path):
+            path = os.path.join(path, f"{str(uuid.uuid4())}.nc")
+        if not path.endswith(".nc"):
+            self._LOG.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            warnings.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            path = path + ".nc"
+        self.to_netcdf(path)
+        return path
+
+    def to_dict(self):
+        description = None
+        if self._mapping is not None and self.ncvar in self._mapping:
+            var_map = self._mapping[self.ncvar]
+            if "description" in var_map:
+                description = var_map["description"]
+            elif "name" in var_map:
+                description = var_map["name"]
+        if description is None:
+            description = self.properties.get(
+                "description", self.properties.get("long_name")
+            )
+        return {
+            "units": str(self.units),
+            "description": description,
+        }
+
     @classmethod
     @geokube_logging
     def from_xarray(
@@ -1799,7 +1907,7 @@ class Field(Variable, DomainMixin):
             raise TypeError(
                 f"Expected type `xarray.Dataset` but provided `{type(ds)}`"
             )
-
+        ds = convert_cftimes_to_numpy(ds)
         domain = Domain.from_xarray(
             ds, ncvar=ncvar, id_pattern=id_pattern, copy=copy, mapping=mapping
         )

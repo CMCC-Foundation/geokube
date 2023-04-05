@@ -1,7 +1,7 @@
 import pytest
 import xarray as xr
 
-from geokube.backend.netcdf import open_dataset
+from geokube.backend import open_dataset
 from geokube.core.datacube import DataCube
 
 
@@ -12,6 +12,14 @@ def dataset():
         pattern=(
             "tests//resources//{dataset}-single-levels-reanalysis_{vars}.nc"
         ),
+    )
+
+
+@pytest.fixture
+def dataset_rotated():
+    yield open_dataset(
+        "tests//resources//rlat-rlon-*",
+        pattern="tests//resources//rlat-rlon-{vars}.nc",
     )
 
 

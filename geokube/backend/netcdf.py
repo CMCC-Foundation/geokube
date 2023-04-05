@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 __all__ = (
     "open_datacube",
     "open_dataset",
@@ -14,6 +16,7 @@ import dask
 import pandas as pd
 import xarray as xr
 from intake.source.utils import reverse_format
+import rioxarray
 
 import geokube.backend.base
 import geokube.core.datacube
@@ -24,6 +27,26 @@ LOG = HCubeLogger(name="netcdf.py")
 
 FILES_COL = geokube.core.dataset.Dataset.FILES_COL
 DATACUBE_COL = geokube.core.dataset.Dataset.DATACUBE_COL
+
+
+def _get_engine(path: list | str):
+    if isinstance(path, list):
+        if len(path) > 0:
+            path = path[0]
+        else:
+            raise ValueError("empty path list provided!")
+    if isinstance(path, str):
+        _, ext = os.path.splitext(path)
+    else:
+        raise TypeError(f"unsupported path type: `{type(path)}`")
+    if ext == ".tif":
+        return "rasterio"
+    elif ext == ".nc":
+        return "netcdf4"
+    else:
+        raise ValueError(
+            f"there is not engine associated with the extension `{ext}`"
+        )
 
 
 def _read_cache(cache_path: str):
@@ -47,7 +70,6 @@ def open_datacube(
     metadata_cache_path: str = None,
     **kwargs,  # optional kw args for xr.open_mfdataset
 ) -> geokube.core.datacube.DataCube:
-
     # TODO: incremental metadata caching
     # we could load the cache file and compare the files from the paths with the files
     # in the dataframe cached and read only the files that are not in the cache
@@ -55,10 +77,11 @@ def open_datacube(
         ds = _read_cache(metadata_cache_path)
         if ds is not None:
             return ds
-    if "decode_coords" not in kwargs:
-        kwargs.update(decode_coords="all")
+    engine = _get_engine(path)
+    if engine == "netcdf4":
+        kwargs.setdefault("decode_coords", "all")
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, **kwargs),
+        xr.open_mfdataset(path, engine=engine, **kwargs),
         id_pattern=id_pattern,
         mapping=mapping,
     )
@@ -108,13 +131,13 @@ def open_dataset(
     delay_read_cubes: bool = False,  # when True the method will not create datacubes when opening a dataset; this is useful
     # when the number of rows is really high and the number of files per row is low
     # (e.g CMIP, CORDEX, observations). The datacube will be read when trying to accessing it
+    load_files_on_persistance: bool = True,
     **kwargs,  # optional kw args for xr.open_mfdataset
 ) -> geokube.core.dataset.Dataset:
     # incremental metadata caching:
     # load the cache file and compare the files from the paths with the files
     # in the dataframe cached and read only the files that are not in the cache
     ds_attr_names = _get_ds_attrs_names(pattern)
-
     if metadata_caching:
         if metadata_cache_path is None:
             raise ValueError(
@@ -123,16 +146,19 @@ def open_dataset(
             )
         cached_ds = _read_cache(metadata_cache_path)
         if cached_ds is not None:
-            cached_files = list(cached_ds.reset_index()[FILES_COL])
-            cached_files = [
-                item for sublist in cached_files for item in sublist
-            ]
-            files = glob.glob(path)  # all files
-            not_cached_files = list(set(files) - set(cached_files))
-            if len(not_cached_files) == 0:  # there are no new files
-                return geokube.core.dataset.Dataset(
-                    hcubes=cached_ds.reset_index()
-                )
+            # cached_files = list(cached_ds.reset_index()[FILES_COL])
+            # cached_files = [
+            #     item for sublist in cached_files for item in sublist
+            # ]
+            # TODO: below glob takes too much time
+            # while cache loading, e.g. for gutta-visir
+            # files = glob.glob(path)  # all files
+            # not_cached_files = list(set(files) - set(cached_files))
+            # if len(not_cached_files) == 0:  # there are no new files
+            return geokube.core.dataset.Dataset(
+                hcubes=cached_ds.reset_index(),
+                load_files_on_persistance=load_files_on_persistance,
+            )
 
             # there are new files we need to update the cache
             # we consider the case we only add files
@@ -149,7 +175,9 @@ def open_dataset(
                         *cached_ds[FILES_COL][i],
                         *not_cached_ds[FILES_COL][i],
                     ]
-                    if delay_read_cubes:
+                    if not load_files_on_persistance:
+                        cube = None
+                    elif delay_read_cubes:
                         cube = dask.delayed(open_datacube)(
                             path=new_files,
                             id_pattern=id_pattern,
@@ -190,13 +218,18 @@ def open_dataset(
                     pass
 
             _write_cache(cached_ds, metadata_cache_path)
-            return geokube.core.dataset.Dataset(hcubes=cached_ds.reset_index())
+            return geokube.core.dataset.Dataset(
+                hcubes=cached_ds.reset_index(),
+                load_files_on_persistance=load_files_on_persistance,
+            )
 
     # if cache is not True or cache file is not available proceed with reading files in paths
     files = glob.glob(path)  # all files
     df = _get_df_from_files_list(files, pattern, ds_attr_names)
     cubes = []
-    if delay_read_cubes:
+    if not load_files_on_persistance:
+        pass
+    elif delay_read_cubes:
         for i in df.index:
             cubes.append(
                 dask.delayed(open_datacube)(
@@ -216,9 +249,15 @@ def open_dataset(
                     **kwargs,
                 )
             )  # we do not need to enable caching here!
-    df[DATACUBE_COL] = cubes
+    if load_files_on_persistance:
+        df[DATACUBE_COL] = cubes
+    else:
+        df[DATACUBE_COL] = None
     # write cache if cache file does not exist and caching is true
     if metadata_caching:
         _write_cache(df, metadata_cache_path)
 
-    return geokube.core.dataset.Dataset(hcubes=df.reset_index())
+    return geokube.core.dataset.Dataset(
+        hcubes=df.reset_index(),
+        load_files_on_persistance=load_files_on_persistance,
+    )

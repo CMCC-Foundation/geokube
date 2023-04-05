@@ -29,7 +29,7 @@ conda config --append channels conda-forge
 #### Conda Environment
 Create virtual environment with installing xesmf and cartopy package
 ```bash
-conda create -n geokube python=3.9 xesmf cartopy -y
+conda create -n geokube python=3.9 xesmf=0.6.2 cartopy -y
 ```
 Activate virtual environment
 ```bash

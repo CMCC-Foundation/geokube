@@ -11,8 +11,8 @@ from ..utils.hcube_logger import HCubeLogger
 
 # from https://unidata.github.io/MetPy/latest/_modules/metpy/xarray.html
 coordinate_criteria_regular_expression = {
-    "y": r"(y|rlat|grid_lat.*)",
-    "x": r"(x|rlon|grid_lon.*)",
+    "y": r"(y|rlat|grid_lat.*|j)",
+    "x": r"(x|rlon|grid_lon.*|i)",
     "vertical": r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|dept(h)?|isobaric|pres|isotherm|model_level_number)[a-z_]*[0-9]*",
     "timedelta": r"time_delta",
     "time": r"(time[0-9]*|T)",
@@ -72,7 +72,6 @@ class AxisType(Enum):
 
 
 class Axis:
-
     _LOG = HCubeLogger(name="Axis")
 
     def __init__(

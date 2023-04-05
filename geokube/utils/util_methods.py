@@ -1,3 +1,4 @@
+from datetime import datetime
 import re
 from collections.abc import Iterable
 from itertools import product
@@ -12,10 +13,17 @@ from dask import is_dask_collection
 from ..core.axis import Axis
 
 
-def to_dict_if_possible(object):
-    if (to_dict := getattr(object, "to_dict", None)) is not None:
-        return to_dict() if callable(to_dict) else object
-    return object
+def convert_cftimes_to_numpy(obj):
+    for key in obj.coords:
+        if obj[key].dtype == np.dtype("O"):
+            try:
+                obj[key] = obj.indexes[key].to_datetimeindex()
+            except AttributeError:
+                pass
+            except KeyError:
+                # NOTE: we skipp non-indexable cooridnates, like time_bnds
+                pass            
+    return obj
 
 
 def are_dims_compliant(provided_shape, expected_shape):

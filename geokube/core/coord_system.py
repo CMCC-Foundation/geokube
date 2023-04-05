@@ -19,6 +19,10 @@ import cartopy.crs as ccrs
 import numpy as np
 import xarray as xr
 
+from ..utils.serialization import maybe_convert_to_json_serializable
+
+TOL = 1e-5
+
 
 def _arg_default(value, default, cast_as=float):
     """Apply a default value and type for an optional kwarg."""
@@ -110,6 +114,12 @@ class CoordSystem(metaclass=ABCMeta):
 
         return globe
 
+    def to_dict(self):
+        return {
+            "name": self.grid_mapping_name,
+            **maybe_convert_to_json_serializable(self.__dict__),
+        }
+
     @abstractmethod
     def as_cartopy_crs(self):
         """
@@ -198,14 +208,6 @@ class GeogCS(CoordSystem):
         ):
             raise ValueError("No ellipsoid specified")
 
-        # Ellipsoid over-specified? (1 1 1)
-        if (
-            (semi_major_axis is not None)
-            and (semi_minor_axis is not None)
-            and (inverse_flattening is not None)
-        ):
-            raise ValueError("Ellipsoid is overspecified")
-
         # Perfect sphere (semi_major_axis only)? (1 0 0)
         elif semi_major_axis is not None and (
             semi_minor_axis is None and inverse_flattening is None
@@ -214,20 +216,28 @@ class GeogCS(CoordSystem):
             inverse_flattening = 0.0
 
         # Calculate semi_major_axis? (0 1 1)
-        elif semi_major_axis is None and (
-            semi_minor_axis is not None and inverse_flattening is not None
-        ):
-            semi_major_axis = -semi_minor_axis / (
+        elif semi_minor_axis is not None and inverse_flattening is not None:
+            semi_major_axis_ = -semi_minor_axis / (
                 (1.0 - inverse_flattening) / inverse_flattening
             )
+            if (
+                semi_major_axis is not None
+                and abs(semi_major_axis_ - semi_major_axis) > TOL
+            ):
+                raise ValueError("Ellipsoid is overspecified")
+            semi_major_axis = semi_major_axis_
 
         # Calculate semi_minor_axis? (1 0 1)
-        elif semi_minor_axis is None and (
-            semi_major_axis is not None and inverse_flattening is not None
-        ):
-            semi_minor_axis = semi_major_axis - (
+        elif semi_major_axis is not None and inverse_flattening is not None:
+            semi_minor_axis_ = semi_major_axis - (
                 (1.0 / inverse_flattening) * semi_major_axis
             )
+            if (
+                semi_minor_axis is not None
+                and abs(semi_minor_axis_ - semi_minor_axis) > TOL
+            ):
+                raise ValueError("Ellipsoid is overspecified")
+            semi_minor_axis = semi_minor_axis_
 
         # Calculate inverse_flattening? (1 1 0)
         elif inverse_flattening is None and (
@@ -322,7 +332,6 @@ class GeogCS(CoordSystem):
 
 
 class RegularLatLon(GeogCS):
-
     grid_mapping_name = "latitude_longitude"
 
     def __init__(self, *args, **kwargs):
@@ -800,7 +809,6 @@ class Geostationary(CoordSystem):
         *args,
         **kwargs
     ):
-
         """
         Constructs a Geostationary coord system.
 
@@ -1359,7 +1367,6 @@ class AlbersEqualArea(CoordSystem):
 
 
 class CurvilinearGrid(CoordSystem):
-
     grid_mapping_name = "curvilinear_grid"
 
     def __init__(self, *args, **kwargs):

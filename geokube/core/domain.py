@@ -50,7 +50,6 @@ class DomainType(Enum):
 
 
 class Domain(DomainMixin):
-
     __slots__ = (
         "_coords",
         "_crs",
@@ -331,7 +330,6 @@ class Domain(DomainMixin):
         copy: bool = False,
         mapping: Optional[Mapping[str, str]] = None,
     ) -> "Domain":
-
         da = ds[ncvar]
         coords = set()
         for dim_name in da.dims:
@@ -344,7 +342,6 @@ class Domain(DomainMixin):
                         mapping=mapping,
                     )
                 )
-
         xr_coords = ds[ncvar].attrs.get(
             "coordinates", ds[ncvar].encoding.get("coordinates", None)
         )
@@ -397,12 +394,22 @@ class Domain(DomainMixin):
             grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
+            crs_name = self.crs.grid_mapping_name
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid.update(
-                {"crs": xr.DataArray(1, name="crs", attrs=not_none_attrs)}
+                {crs_name: xr.DataArray(1, name=crs_name, attrs=not_none_attrs)}
             )
         return grid
+
+    def to_dict(self, unique_values=False):
+        return {
+            "crs": self._crs.to_dict(),
+            "coordinates": {
+                name: coord.to_dict(unique_values)
+                for name, coord in self._coords.items()
+            },
+        }
 
     @classmethod
     def _make_domain_from_coords_dict_dims_and_crs(
@@ -497,7 +504,6 @@ class GeodeticPoints(Domain):
 
 class GeodeticGrid(Domain):
     def __init__(self, latitude, longitude, vertical=None):
-
         latitude = np.array(latitude, dtype=np.float64, ndmin=1)
         longitude = np.array(longitude, dtype=np.float64, ndmin=1)
         if vertical != None:

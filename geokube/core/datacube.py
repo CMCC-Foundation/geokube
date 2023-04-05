@@ -1,6 +1,9 @@
+import os
 import json
 import logging
 import re
+import tempfile
+import uuid
 import warnings
 from collections import defaultdict
 from enum import Enum
@@ -27,6 +30,8 @@ import math
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
+from ..utils import util_methods
+from .errs import EmptyDataError
 from .axis import Axis, AxisType
 from .coord_system import GeogCS, RegularLatLon
 from .domain import Domain, DomainType
@@ -47,7 +52,6 @@ IndexerType = Union[slice, List[slice], Number, List[Number]]
 # dc['latitude']
 #
 class DataCube(DomainMixin):
-
     __slots__ = (
         "_fields",
         "_domain",
@@ -134,7 +138,7 @@ class DataCube(DomainMixin):
                 )
             return item
 
-    def __iter__(self):
+    def __next__(self):
         for f in self._fields.values():
             yield f
         raise StopIteration
@@ -204,18 +208,24 @@ class DataCube(DomainMixin):
         roll_if_needed: bool = True,
         **indexers_kwargs: Any,
     ) -> "DataCube":  # this can be only independent variables
-        return DataCube(
-            fields=[
-                self._fields[k].sel(
-                    indexers=indexers,
-                    roll_if_needed=roll_if_needed,
-                    method=method,
-                    tolerance=tolerance,
-                    drop=drop,
-                    **indexers_kwargs,
+        fields = []
+        for k in self._fields.keys():
+            try:
+                fields.append(
+                    self._fields[k].sel(
+                        indexers=indexers,
+                        roll_if_needed=roll_if_needed,
+                        method=method,
+                        tolerance=tolerance,
+                        drop=drop,
+                        **indexers_kwargs,
+                    )
                 )
-                for k in self._fields.keys()
-            ],
+            except EmptyDataError as err:
+                DataCube._LOG.info(f"skipping field `{k}` due to `{err}`")
+                continue
+        return DataCube(
+            fields=fields,
             properties=self.properties,
             encoding=self.encoding,
         )
@@ -246,6 +256,16 @@ class DataCube(DomainMixin):
                     operator=operator, frequency=frequency, **resample_kwargs
                 )
                 for k in self._fields.keys()
+            ],
+            properties=self.properties,
+            encoding=self.encoding,
+        )
+
+    @geokube_logging
+    def average(self, dim: str | None = None) -> "DataCube":
+        return DataCube(
+            fields=[
+                self._fields[k].average(dim=dim) for k in self._fields.keys()
             ],
             properties=self.properties,
             encoding=self.encoding,
@@ -316,10 +336,16 @@ class DataCube(DomainMixin):
                     "properties": {"time": time_},
                 }
                 for field in self.fields.values():
-                    value = (
-                        field.sel(time=time_) if field.time.size > 1 else field
-                    )
-                    feature["properties"][field.name] = float(value)
+                    try:
+                        value = (
+                            field.sel(time=time_)
+                            if field.time.size > 1
+                            else field
+                        )
+                    except EmptyDataError:
+                        continue
+                    else:
+                        feature["properties"][field.name] = float(value)
                 result["features"].append(feature)
         elif (
             self.domain.type is DomainType.GRIDDED or self.domain.type is None
@@ -380,17 +406,20 @@ class DataCube(DomainMixin):
                             "properties": {},
                         }
                         for field in self.fields.values():
-                            value = field.sel(indexers=idx)
                             try:
+                                value = field.sel(indexers=idx)
                                 value_ = float(value)
                                 if math.isnan(value):
-                                    value_ = None
+                                    value_ = None                                
+                            except EmptyDataError:
+                                continue
                             except ValueError:
                                 try:
                                     value_ = value.item()
                                 except AttributeError:
-                                    value_ = value
-                            feature["properties"][field.name] = value_
+                                    value_ = value                                
+                            else:
+                                feature["properties"][field.name] = value_                     
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
         else:
@@ -425,9 +454,12 @@ class DataCube(DomainMixin):
                     ds, ncvar=dv, id_pattern=id_pattern, mapping=mapping
                 )
             )
-        return DataCube(
-            fields=fields, properties=ds.attrs, encoding=ds.encoding
-        )
+        # Issue https://github.com/opengeokube/geokube/issues/221
+        attrs = ds.attrs.copy()
+        encoding = ds.encoding.copy()
+        attrs.pop("_NCProperties", None)
+        encoding.pop("_NCProperties", None)
+        return DataCube(fields=fields, properties=attrs, encoding=encoding)
 
     @geokube_logging
     def to_xarray(self, encoding=True):
@@ -442,14 +474,47 @@ class DataCube(DomainMixin):
         return dset
 
     @geokube_logging
-    def to_netcdf(self, path):
-        self.to_xarray(encoding=True).to_netcdf(path=path)
+    def to_netcdf(self, path, encoding: bool = True):
+        self.to_xarray(encoding=encoding).to_netcdf(path=path)
 
-    @geokube_logging
-    def to_dict(self) -> dict:
-        # NOTE: it should return concise dict representation without returning each lat/lon/time value
-        dset = self.to_xarray(encoding=True)
+    def persist(self, path=None) -> str:
+        if path is None:
+            path = os.path.join(
+                tempfile.gettempdir(), f"{str(uuid.uuid4())}.nc"
+            )
+        if os.path.isdir(path):
+            path = os.path.join(path, f"{str(uuid.uuid4())}.nc")
+        if not path.endswith(".nc"):
+            self._LOG.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            warnings.warn(
+                f"Provided persistance path: `{path}` has not `.nc` extension."
+                " Adding automatically!"
+            )
+            path = path + ".nc"
+        self.assert_not_empty()
+        self.to_netcdf(path)
+        return path
+
+    def to_dict(self, unique_values=False) -> dict:
         return {
-            "variables": list(dset.data_vars.keys()),
-            "coordinates": list(dset.coords.keys()),
+            "domain": self.domain.to_dict(unique_values),
+            "fields": {k: v.to_dict() for k, v in self.fields.items()},
         }
+
+    def assert_not_empty(self):
+        if not len(self):
+            self._LOG.warn("No fields in DataCube")
+            raise EmptyDataError("No fields in DataCube!")
+        for fname, field in self.fields.items():
+            if 0 in field.shape:
+                self._LOG.warn(
+                    f"One of coordinate is empty for the field `{fname}`."
+                    f" Shape=`{field.shape}`. Dimensions=`{field.dim_names}`!"
+                )
+                raise EmptyDataError(
+                    f"One of coordinate is empty for the field `{fname}`."
+                    f" Shape=`{field.shape}`. Dimensions=`{field.dim_names}`!"
+                )

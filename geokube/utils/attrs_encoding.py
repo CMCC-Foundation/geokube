@@ -3,7 +3,6 @@ from typing import List, Mapping, Tuple
 
 
 class CFAttributes(Enum):
-
     # encoding for names and dims
     NETCDF_NAME = "name"
     NETCDF_DIMS = "dims"
