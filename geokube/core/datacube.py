@@ -415,7 +415,7 @@ class DataCube(DomainMixin):
                             },
                             "properties": {},
                         }
-                        for field in self.fields.values():
+                        for field in cube.fields.values():
                             try:
                                 value = field.sel(indexers=idx)
                                 value_ = float(value)

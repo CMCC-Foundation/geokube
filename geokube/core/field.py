@@ -1444,7 +1444,7 @@ class Field(Variable, DomainMixin):
             lat_min = self.latitude.min().item()
             lon_max = self.longitude.max().item()
             lat_max = self.latitude.max().item()              
-            grid_x, grid_y = field.domain._infer_resolution
+            grid_x, grid_y = field.domain._infer_resolution()
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
