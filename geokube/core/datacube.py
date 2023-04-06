@@ -367,7 +367,7 @@ class DataCube(DomainMixin):
             lat_min = self.latitude.min().item()
             lon_max = self.longitude.max().item()
             lat_max = self.latitude.max().item()      
-            grid_x, grid_y = cube.domain._infer_resolution
+            grid_x, grid_y = cube.domain._infer_resolution()
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
@@ -398,10 +398,10 @@ class DataCube(DomainMixin):
                         # the cell length depends on the grid resolution (that should be computed)
                         lonv = lon.item()
                         latv = lat.item()
-                        lon_lower = np.clip(lonv - grid_x, amin=lon_min)
-                        lat_upper = np.clip(latv + grid_y, amax=lat_max)
-                        lon_upper = np.clip(lonv + grid_x, amax=lon_max)
-                        lat_lower = np.clip(latv - grid_y, amin=lat_min)
+                        lon_lower = np.clip(lonv - grid_x, amin=lon_min, amax=lon_max)
+                        lat_upper = np.clip(latv + grid_y, amin=lat_min, amax=lat_max)
+                        lon_upper = np.clip(lonv + grid_x, amin=lon_min, amax=lon_max)
+                        lat_lower = np.clip(latv - grid_y, amin=lat_min, amax=lat_max)
                         feature = {
                             "type": "Feature",
                             "geometry": {
