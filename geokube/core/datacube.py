@@ -398,10 +398,10 @@ class DataCube(DomainMixin):
                         # the cell length depends on the grid resolution (that should be computed)
                         lonv = lon.item()
                         latv = lat.item()
-                        lon_lower = np.clip(lonv - grid_x, amin=lon_min, amax=lon_max)
-                        lat_upper = np.clip(latv + grid_y, amin=lat_min, amax=lat_max)
-                        lon_upper = np.clip(lonv + grid_x, amin=lon_min, amax=lon_max)
-                        lat_lower = np.clip(latv - grid_y, amin=lat_min, amax=lat_max)
+                        lon_lower = np.clip(lonv - grid_x, a_min=lon_min, a_max=lon_max)
+                        lat_upper = np.clip(latv + grid_y, a_min=lat_min, a_max=lat_max)
+                        lon_upper = np.clip(lonv + grid_x, a_min=lon_min, a_max=lon_max)
+                        lat_lower = np.clip(latv - grid_y, a_min=lat_min, a_max=lat_max)
                         feature = {
                             "type": "Feature",
                             "geometry": {
