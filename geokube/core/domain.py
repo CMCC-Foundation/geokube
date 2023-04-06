@@ -322,9 +322,11 @@ class Domain(DomainMixin):
     def merge(cls, domains: List[Domain]):
         # TODO: check if the domains are defined on the same crs
         coords = {}
+        domaintype = None
         for domain in domains:
             coords.update(**domain.coords)
-        return Domain(coords=coords, crs=domains[0].crs)
+            domaintype = domain.type
+        return Domain(coords=coords, crs=domains[0].crs, domaintype=domaintype)
 
     @classmethod
     @geokube_logging
