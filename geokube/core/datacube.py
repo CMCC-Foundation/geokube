@@ -337,6 +337,7 @@ class DataCube(DomainMixin):
                     "properties": {"time": time_},
                 }
                 for field in self.fields.values():
+                    field.compute()
                     try:
                         value = (
                             field.sel(time=time_)
@@ -368,6 +369,8 @@ class DataCube(DomainMixin):
             lon_max = self.longitude.max().item()
             lat_max = self.latitude.max().item()      
             grid_x, grid_y = cube.domain._infer_resolution()
+            grid_x = grid_x/2.0
+            grid_y = grid_y/2.0
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {

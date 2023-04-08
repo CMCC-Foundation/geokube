@@ -32,7 +32,6 @@ from shapely.geometry import MultiPolygon, Polygon
 from shapely.vectorized import contains as sv_contains
 import xarray as xr
 import hvplot.xarray  # noqa
-import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
@@ -894,6 +893,7 @@ class Field(Variable, DomainMixin):
         ... )
 
         """
+        import xesmf as xe
         if not isinstance(target, Domain):
             if isinstance(target, Field):
                 target = target.domain
@@ -1408,6 +1408,7 @@ class Field(Variable, DomainMixin):
         return plot
 
     def to_geojson(self, target=None):
+        self.comnpute()
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
@@ -1444,7 +1445,7 @@ class Field(Variable, DomainMixin):
             lat_min = self.latitude.min().item()
             lon_max = self.longitude.max().item()
             lat_max = self.latitude.max().item()              
-            grid_x, grid_y = field.domain._infer_resolution()
+            grid_x, grid_y = field.domain._infer_resolution()/2.0
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
