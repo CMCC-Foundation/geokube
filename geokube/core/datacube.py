@@ -337,7 +337,7 @@ class DataCube(DomainMixin):
                     "properties": {"time": time_},
                 }
                 for field in self.fields.values():
-                    field.compute()
+                    field.load()
                     try:
                         value = (
                             field.sel(time=time_)

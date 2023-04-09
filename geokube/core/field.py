@@ -1408,7 +1408,7 @@ class Field(Variable, DomainMixin):
         return plot
 
     def to_geojson(self, target=None):
-        self.comnpute()
+        self.load()
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
