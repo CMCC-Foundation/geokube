@@ -360,6 +360,8 @@ class DataCube(DomainMixin):
                 if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
+            for field in self.fields.values():
+                field.load()
             axis_names = cube.domain._axis_to_name
             units = {
                 field.name: str(field.units) for field in self.fields.values()
