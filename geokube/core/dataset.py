@@ -18,10 +18,12 @@ from zipfile import ZipFile
 from ..utils.decorators import geokube_logging
 from ..utils import util_methods
 from ..utils.hcube_logger import HCubeLogger
-from .enums import MethodType
+from .enums import MethodType, RegridMethod
 from .errs import EmptyDataError
 from .axis import Axis
 from .datacube import DataCube
+from .domain import Domain
+from .field import Field
 
 
 class Dataset:
@@ -187,6 +189,35 @@ class Dataset:
         _copy = self.__data.copy()
         _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
             lambda x: x.average(dim=dim)
+        )
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
+
+    def regrid(
+        self,
+        target: Union[Domain, Field],
+        method: Union[str, RegridMethod] = "bilinear",
+        weights_path: Optional[str] = None,
+        reuse_weights: bool = True,
+    ) -> Dataset:
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.regrid(
+                target=target,
+                method=method,
+                weights_path=weights_path,
+                reuse_weights=reuse_weights,
+            )
+        )
+        return Dataset(
+            attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata
+        )
+
+    def to_regular(self) -> Dataset:
+        _copy = self.__data.copy()
+        _copy[self.DATACUBE_COL] = _copy[self.DATACUBE_COL].apply(
+            lambda x: x.to_regular()
         )
         return Dataset(
             attrs=self.__attrs, hcubes=_copy, metadata=self.__metadata

@@ -32,7 +32,6 @@ from shapely.geometry import MultiPolygon, Polygon
 from shapely.vectorized import contains as sv_contains
 import xarray as xr
 import hvplot.xarray  # noqa
-import xesmf as xe
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
 
@@ -894,6 +893,7 @@ class Field(Variable, DomainMixin):
         ... )
 
         """
+        import xesmf as xe
         if not isinstance(target, Domain):
             if isinstance(target, Field):
                 target = target.domain
@@ -1408,6 +1408,7 @@ class Field(Variable, DomainMixin):
         return plot
 
     def to_geojson(self, target=None):
+        self.load()
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
@@ -1436,20 +1437,25 @@ class Field(Variable, DomainMixin):
             result = {"data": []}
             field = (
                 self
-                if isinstance(self.domain.crs, RegularLatLon)
+                if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
             axis_names = field.domain._axis_to_name
+            lon_min = self.longitude.min().item()
+            lat_min = self.latitude.min().item()
+            lon_max = self.longitude.max().item()
+            lat_max = self.latitude.max().item()              
+            grid_x, grid_y = field.domain._infer_resolution()/2.0
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
                     "type": "FeatureCollection",
                     "date": time_,
                     "bbox": [
-                        self.longitude.min().item(),  # West
-                        self.latitude.min().item(),  # South
-                        self.longitude.max().item(),  # East
-                        self.latitude.max().item(),  # North
+                        lon_min,  # West
+                        lat_min,  # South
+                        lon_max,  # East
+                        lat_max,  # North
                     ],
                     "units": {self.name: str(self.units)},
                     "features": [],
@@ -1465,12 +1471,27 @@ class Field(Variable, DomainMixin):
                             idx[axis_names[AxisType.TIME]] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
+                        # 
+                        # Polygon:
+                        # for each lat/lon we have to define a polygon with lan/lon centered
+                        # the cell length depends on the grid resolution (that should be computed)
                         value = field.sel(**idx)
+                        lonv = lon.item()
+                        latv = lat.item()
+                        lon_lower = np.clip(lonv - grid_x, amin=lon_min)
+                        lat_upper = np.clip(latv + grid_y, amax=lat_max)
+                        lon_upper = np.clip(lonv + grid_x, amax=lon_max)
+                        lat_lower = np.clip(latv - grid_y, amin=lat_min)                        
                         feature = {
                             "type": "Feature",
                             "geometry": {
-                                "type": "Point",
-                                "coordinates": [lon.item(), lat.item()],
+                                "type": "Polygon",
+                                "coordinates":[  
+                                   [ [lon_lower, lat_upper], [lon_upper, lat_upper],
+                                     [lon_upper, lat_lower], [lon_lower, lat_lower],
+                                     [lon_lower, lat_upper]
+                                   ]
+                                ]
                             },
                             "properties": {self.name: float(value)},
                         }

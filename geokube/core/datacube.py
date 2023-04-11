@@ -24,15 +24,17 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import pandas as pd
 import xarray as xr
+import math
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from ..utils import util_methods
 from .errs import EmptyDataError
 from .axis import Axis, AxisType
-from .coord_system import RegularLatLon
+from .coord_system import GeogCS, RegularLatLon
 from .domain import Domain, DomainType
 from .enums import RegridMethod
 from .field import Field
@@ -335,6 +337,7 @@ class DataCube(DomainMixin):
                     "properties": {"time": time_},
                 }
                 for field in self.fields.values():
+                    field.load()
                     try:
                         value = (
                             field.sel(time=time_)
@@ -354,23 +357,32 @@ class DataCube(DomainMixin):
             result = {"data": []}
             cube = (
                 self
-                if isinstance(self.domain.crs, RegularLatLon)
+                if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
+            for field in self.fields.values():
+                field.load()
             axis_names = cube.domain._axis_to_name
             units = {
                 field.name: str(field.units) for field in self.fields.values()
             }
+            lon_min = self.longitude.min().item()
+            lat_min = self.latitude.min().item()
+            lon_max = self.longitude.max().item()
+            lat_max = self.latitude.max().item()      
+            grid_x, grid_y = cube.domain._infer_resolution()
+            grid_x = grid_x/2.0
+            grid_y = grid_y/2.0
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
                     "type": "FeatureCollection",
                     "date": time_,
                     "bbox": [
-                        self.longitude.min().item(),  # West
-                        self.latitude.min().item(),  # South
-                        self.longitude.max().item(),  # East
-                        self.latitude.max().item(),  # North
+                        lon_min,  # West
+                        lat_min,  # South
+                        lon_max,  # East
+                        lat_max,  # North
                     ],
                     "units": units,
                     "features": [],
@@ -386,23 +398,43 @@ class DataCube(DomainMixin):
                             idx[axis_names[AxisType.TIME]] = time_
                         # TODO: Check whether this works now:
                         # this gives an error if only 1 time is selected before to_geojson()
+                        # Polygon:
+                        # for each lat/lon we have to define a polygon with lan/lon centered
+                        # the cell length depends on the grid resolution (that should be computed)
+                        lonv = lon.item()
+                        latv = lat.item()
+                        lon_lower = np.clip(lonv - grid_x, a_min=lon_min, a_max=lon_max)
+                        lat_upper = np.clip(latv + grid_y, a_min=lat_min, a_max=lat_max)
+                        lon_upper = np.clip(lonv + grid_x, a_min=lon_min, a_max=lon_max)
+                        lat_lower = np.clip(latv - grid_y, a_min=lat_min, a_max=lat_max)
                         feature = {
                             "type": "Feature",
                             "geometry": {
-                                "type": "Point",
-                                "coordinates": [lon.item(), lat.item()],
+                                "type": "Polygon",
+                                "coordinates":[  
+                                   [ [lon_lower, lat_upper], [lon_upper, lat_upper],
+                                     [lon_upper, lat_lower], [lon_lower, lat_lower],
+                                     [lon_lower, lat_upper]
+                                   ]
+                                ]
                             },
                             "properties": {},
                         }
-                        for field in self.fields.values():
+                        for field in cube.fields.values():
                             try:
                                 value = field.sel(indexers=idx)
+                                value_ = float(value)
+                                if math.isnan(value):
+                                    value_ = None                                
                             except EmptyDataError:
                                 continue
+                            except ValueError:
+                                try:
+                                    value_ = value.item()
+                                except AttributeError:
+                                    value_ = value                                
                             else:
-                                feature["properties"][field.name] = float(
-                                    value
-                                )
+                                feature["properties"][field.name] = value_                     
                         time_data["features"].append(feature)
                 result["data"].append(time_data)
         else:
