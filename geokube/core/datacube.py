@@ -24,6 +24,7 @@ from typing import (
     Union,
 )
 
+import numpy as np
 import pandas as pd
 import xarray as xr
 import math
@@ -316,7 +317,7 @@ class DataCube(DomainMixin):
             encoding=self.encoding,
         )
 
-    def to_geojson(self, target=None, grid_x=0.0625, grid_y=0.0625):
+    def to_geojson(self, target=None):
         if self.domain.type is DomainType.POINTS:
             if self.latitude.size != 1 or self.longitude.size != 1:
                 raise NotImplementedError(
@@ -336,6 +337,7 @@ class DataCube(DomainMixin):
                     "properties": {"time": time_},
                 }
                 for field in self.fields.values():
+                    field.load()
                     try:
                         value = (
                             field.sel(time=time_)
@@ -358,20 +360,29 @@ class DataCube(DomainMixin):
                 if isinstance(self.domain.crs, GeogCS)
                 else self.to_regular()
             )
+            for field in self.fields.values():
+                field.load()
             axis_names = cube.domain._axis_to_name
             units = {
                 field.name: str(field.units) for field in self.fields.values()
             }
+            lon_min = self.longitude.min().item()
+            lat_min = self.latitude.min().item()
+            lon_max = self.longitude.max().item()
+            lat_max = self.latitude.max().item()      
+            grid_x, grid_y = cube.domain._infer_resolution()
+            grid_x = grid_x/2.0
+            grid_y = grid_y/2.0
             for time in self.time.values.flat:
                 time_ = pd.to_datetime(time).strftime("%Y-%m-%dT%H:%M")
                 time_data = {
                     "type": "FeatureCollection",
                     "date": time_,
                     "bbox": [
-                        self.longitude.min().item(),  # West
-                        self.latitude.min().item(),  # South
-                        self.longitude.max().item(),  # East
-                        self.latitude.max().item(),  # North
+                        lon_min,  # West
+                        lat_min,  # South
+                        lon_max,  # East
+                        lat_max,  # North
                     ],
                     "units": units,
                     "features": [],
@@ -392,20 +403,24 @@ class DataCube(DomainMixin):
                         # the cell length depends on the grid resolution (that should be computed)
                         lonv = lon.item()
                         latv = lat.item()
+                        lon_lower = np.clip(lonv - grid_x, a_min=lon_min, a_max=lon_max)
+                        lat_upper = np.clip(latv + grid_y, a_min=lat_min, a_max=lat_max)
+                        lon_upper = np.clip(lonv + grid_x, a_min=lon_min, a_max=lon_max)
+                        lat_lower = np.clip(latv - grid_y, a_min=lat_min, a_max=lat_max)
                         feature = {
                             "type": "Feature",
                             "geometry": {
                                 "type": "Polygon",
                                 "coordinates":[  
-                                   [ [lonv - grid_x, latv + grid_y], [lonv + grid_x, latv + grid_y],
-                                     [lonv + grid_x, latv - grid_y], [lonv - grid_x, latv - grid_y],
-                                     [lonv - grid_x, latv + grid_y]
+                                   [ [lon_lower, lat_upper], [lon_upper, lat_upper],
+                                     [lon_upper, lat_lower], [lon_lower, lat_lower],
+                                     [lon_lower, lat_upper]
                                    ]
                                 ]
                             },
                             "properties": {},
                         }
-                        for field in self.fields.values():
+                        for field in cube.fields.values():
                             try:
                                 value = field.sel(indexers=idx)
                                 value_ = float(value)

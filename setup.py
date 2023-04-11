@@ -21,8 +21,6 @@ setuptools.setup(
     url="https://github.com/geokube/geokube",
     packages=setuptools.find_packages(),
     install_requires=[
-        "cf_units",
-        "hvplot",
         "pytest-cov",
         "pytest",
         "shapely",

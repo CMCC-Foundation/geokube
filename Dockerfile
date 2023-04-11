@@ -1,13 +1,7 @@
 FROM continuumio/miniconda3:22.11.1
+COPY environment.yaml /tmp/enviroment.yaml
 RUN conda config --set allow_conda_downgrades true 
-RUN conda install -c conda-forge --yes --freeze-installed cartopy 
-RUN conda install -c conda-forge --yes --freeze-installed 'bokeh>=2.4.2,<3'
-RUN conda install -c conda-forge --yes --freeze-installed numpy=1.23.5
-RUN conda install -c conda-forge --yes --freeze-installed pandas=1.4.3
-RUN conda install -c conda-forge --yes --freeze-installed netCDF4
-RUN conda install -c conda-forge --yes --freeze-installed scipy 
-RUN conda install -c conda-forge --yes --freeze-installed xarray=2022.6.0
-RUN conda install -c conda-forge --yes --freeze-installed xesmf=0.6.3
+RUN conda env update --name base --file /tmp/enviroment.yaml --prune
 RUN conda clean -afy \
     && find /opt/conda/ -follow -type f -name '*.a' -delete \
     && find /opt/conda/ -follow -type f -name '*.pyc' -delete \
