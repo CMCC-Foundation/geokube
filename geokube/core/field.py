@@ -303,7 +303,17 @@ class Field(Variable, DomainMixin):
         bottom: Number | None = None,
     ):
         field = self
-        lat, lon = field.latitude, field.longitude
+        try:
+            lat = field.latitude
+        except KeyError:
+            lat = None
+        
+        try:
+            lon = field.longitude
+        except KeyError:
+            lon = None
+
+#        lat, lon = field.latitude, field.longitude
 
         # Vertical
         # NOTE: In this implementation, vertical is always considered an
@@ -328,41 +338,71 @@ class Field(Variable, DomainMixin):
             vert_idx = {vert.name: vert_slice}
             field = field.sel(indexers=vert_idx, roll_if_needed=True)
 
-        if field.is_latitude_independent and field.is_longitude_independent:
+        idx = {}
+        independent = False
+        if lat is not None and field.is_latitude_independent:
             # Case of latitude and longitude being independent.
             lat_incr = util_methods.is_nondecreasing(lat.data)
             lat_slice = np.s_[south:north] if lat_incr else np.s_[north:south]
+            idx = {lat.name: lat_slice}
+            independent = True
+
+        if lon is not None and field.is_longitude_independent:
             lon_incr = util_methods.is_nondecreasing(lon.data)
             lon_slice = np.s_[west:east] if lon_incr else np.s_[east:west]
-            idx = {lat.name: lat_slice, lon.name: lon_slice}
+            idx = idx.update({lon.name: lon_slice})
+            independent = True
+
+        if independent:
             return field.sel(indexers=idx, roll_if_needed=True)
-        else:
+
+        lat_mask = None
+        if lat is not None and (not field.is_latitude_independent):
             # Case of latitude and longitude being dependent.
             # Specifying the mask(s) and extracting the indices that correspond
             # to the inside the bounding box.
             lat_mask = util_methods.is_between(lat.data, south, north)
-            lon_mask = util_methods.is_between(lon.data, west, east)
             # TODO: Clarify why this is required.
             if lat_mask.sum() == 0:
                 lat_mask = util_methods.is_between(lat.data, north, south)
+
+        lon_mask = None
+        if lon is not None and (not field.is_longitude_independent):
+            lon_mask = util_methods.is_between(lon.data, west, east)
             if lon_mask.sum() == 0:
                 lon_mask = util_methods.is_between(lon.data, east, west)
+
+        if (lat_mask is not None and lon_mask is not None):
             nonzero_idx = np.nonzero(lat_mask & lon_mask)
             idx = {
                 lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
                 for i, incl_idx in enumerate(nonzero_idx)
             }
-            dset = field.to_xarray(encoding=False)
-            dset = field._check_and_roll_longitude(dset, idx)
-            dset = dset.isel(indexers=idx)
+        elif lat_mask is not None:
+            nonzero_idx = np.nonzero(lat_mask)
+            idx = idx.update({
+                lat.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
+                for i, incl_idx in enumerate(nonzero_idx)
+            })
+        elif lon_mask is not None:
+            nonzero_idx = np.nonzero(lon_mask)
+            idx = idx.update({
+                lon.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
+                for i, incl_idx in enumerate(nonzero_idx)
+            })
 
-            return Field.from_xarray(
-                ds=dset,
-                ncvar=self.name,
-                copy=False,
-                id_pattern=self._id_pattern,
-                mapping=self._mapping,
-            )
+
+        dset = field.to_xarray(encoding=False)
+        dset = field._check_and_roll_longitude(dset, idx)
+        dset = dset.isel(indexers=idx)
+
+        return Field.from_xarray(
+            ds=dset,
+            ncvar=self.name,
+            copy=False,
+            id_pattern=self._id_pattern,
+            mapping=self._mapping,
+        )
 
     def locations(
         self,
