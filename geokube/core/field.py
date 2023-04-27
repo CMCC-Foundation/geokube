@@ -20,6 +20,7 @@ from typing import (
     Tuple,
     Union,
 )
+from warnings import warn
 
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
@@ -344,19 +345,18 @@ class Field(Variable, DomainMixin):
             # Case of latitude and longitude being independent.
             lat_incr = util_methods.is_nondecreasing(lat.data)
             lat_slice = np.s_[south:north] if lat_incr else np.s_[north:south]
-            idx = {lat.name: lat_slice}
+            idx[lat.name] = lat_slice
             independent = True
 
         if lon is not None and field.is_longitude_independent:
             lon_incr = util_methods.is_nondecreasing(lon.data)
             lon_slice = np.s_[west:east] if lon_incr else np.s_[east:west]
-            idx = idx.update({lon.name: lon_slice})
+            idx[lon.name] = lon_slice
             independent = True
 
         if independent:
             return field.sel(indexers=idx, roll_if_needed=True)
 
-        lat_mask = None
         if lat is not None and (not field.is_latitude_independent):
             # Case of latitude and longitude being dependent.
             # Specifying the mask(s) and extracting the indices that correspond
@@ -365,12 +365,15 @@ class Field(Variable, DomainMixin):
             # TODO: Clarify why this is required.
             if lat_mask.sum() == 0:
                 lat_mask = util_methods.is_between(lat.data, north, south)
+        else:
+            lat_mask = None
 
-        lon_mask = None
         if lon is not None and (not field.is_longitude_independent):
             lon_mask = util_methods.is_between(lon.data, west, east)
             if lon_mask.sum() == 0:
                 lon_mask = util_methods.is_between(lon.data, east, west)
+        else:
+            lon_mask = None
 
         if (lat_mask is not None and lon_mask is not None):
             nonzero_idx = np.nonzero(lat_mask & lon_mask)
@@ -390,7 +393,8 @@ class Field(Variable, DomainMixin):
                 lon.dims[i].name: np.s_[incl_idx.min() : incl_idx.max() + 1]
                 for i, incl_idx in enumerate(nonzero_idx)
             })
-
+        else:
+            warn("'field' does not have latitude nor longitude dimensions")
 
         dset = field.to_xarray(encoding=False)
         dset = field._check_and_roll_longitude(dset, idx)
