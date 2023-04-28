@@ -83,3 +83,21 @@ class DomainMixin:
             " types [str, geokube.Axis, geokub.AxisType]. Provided type:"
             f" {type(key)}"
         )
+
+    @geokube_logging
+    def get(self, key: Union[AxisType, Axis, str], default=None):
+        if isinstance(key, str):
+            return self.coords.get(key, default)
+        elif isinstance(key, AxisType):
+            if key in self._axis_to_name:
+                return self.coords[self._axis_to_name.get(key)]
+            return default
+        elif isinstance(key, Axis):
+            if key.type in self._axis_to_name:
+                return self.coords[self._axis_to_name.get(key.type)]
+            return default
+        raise TypeError(
+            "Indexing coordinates for Domain is supported only for object of"
+            " types [str, geokube.Axis, geokub.AxisType]. Provided type:"
+            f" {type(key)}"
+        )

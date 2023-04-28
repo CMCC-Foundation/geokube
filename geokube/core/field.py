@@ -304,15 +304,8 @@ class Field(Variable, DomainMixin):
         bottom: Number | None = None,
     ):
         field = self
-        try:
-            lat = field.latitude
-        except KeyError:
-            lat = None
-        
-        try:
-            lon = field.longitude
-        except KeyError:
-            lon = None
+        lat = field.domain.get(AxisType.LATITUDE)
+        lon = field.domain.get(AxisType.LONGITUDE)
 
 #        lat, lon = field.latitude, field.longitude
 
