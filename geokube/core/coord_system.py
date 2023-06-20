@@ -1405,7 +1405,7 @@ def parse_crs(
     ...     )
     """
     grid_mapping_name = da.attrs.get("grid_mapping_name")
-    if grid_mapping_name == "latitude_longitude":
+    if grid_mapping_name == "crs_latitude_longitude":
         return RegularLatLon(**da.attrs)
     for _, cls in inspect.getmembers(
         importlib.import_module(__name__), inspect.isclass
