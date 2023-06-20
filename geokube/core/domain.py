@@ -402,7 +402,7 @@ class Domain(DomainMixin):
             grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
-            crs_name = self.crs.grid_mapping_name
+            crs_name = f"crs_{self.crs.grid_mapping_name}"
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid.update(
