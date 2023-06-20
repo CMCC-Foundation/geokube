@@ -101,6 +101,10 @@ class Domain(DomainMixin):
             )
         else:
             return Coordinate(data=coord, axis=name)
+    
+    @property
+    def grid_mapping_name(self) -> str:
+        return f"crs_{self.crs.grid_mapping_name}"
 
     @property
     def type(self):
@@ -402,7 +406,7 @@ class Domain(DomainMixin):
             grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
-            crs_name = f"crs_{self.crs.grid_mapping_name}"
+            crs_name = self.grid_mapping_name
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = crs_name
             grid.update(
