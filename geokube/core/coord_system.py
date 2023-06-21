@@ -22,7 +22,17 @@ import xarray as xr
 from ..utils.serialization import maybe_convert_to_json_serializable
 
 TOL = 1e-5
+PREFIX = "crs_"
 
+def add_prefix(txt: str) -> str:
+    if txt.startswith(PREFIX):
+        return txt
+    return f"{PREFIX}{txt}"
+
+def trim_prefix(txt: str) -> str:
+    if not txt.startswith(PREFIX):
+        return txt
+    return txt.removeprefix(PREFIX)
 
 def _arg_default(value, default, cast_as=float):
     """Apply a default value and type for an optional kwarg."""
@@ -1404,8 +1414,8 @@ def parse_crs(
     ...         grid_north_pole_longitude=170
     ...     )
     """
-    grid_mapping_name = da.attrs.get("grid_mapping_name")
-    if grid_mapping_name == "crs_latitude_longitude":
+    grid_mapping_name = trim_prefix(da.attrs.get("grid_mapping_name"))
+    if grid_mapping_name == "latitude_longitude":
         return RegularLatLon(**da.attrs)
     for _, cls in inspect.getmembers(
         importlib.import_module(__name__), inspect.isclass

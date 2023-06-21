@@ -24,6 +24,8 @@ from .coord_system import (
     GeogCS,
     RegularLatLon,
     parse_crs,
+    add_prefix,
+    trim_prefix
 )
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
@@ -104,7 +106,7 @@ class Domain(DomainMixin):
     
     @property
     def grid_mapping_name(self) -> str:
-        return f"crs_{self.crs.grid_mapping_name}"
+        return add_prefix(self.crs.grid_mapping_name)
 
     @property
     def type(self):
