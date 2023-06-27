@@ -312,6 +312,7 @@ class Domain(DomainMixin):
             missing_lat_or_lon
             and (self._type is DomainType.GRIDDED or self._type is None)
             and self._crs is not None
+            and not isinstance(self._crs, GeogCS)
             and self.x.type is CoordinateType.INDEPENDENT
             and self.y.type is CoordinateType.INDEPENDENT
         ):
