@@ -125,7 +125,7 @@ class Domain(DomainMixin):
     @property
     def aux_coords(self) -> List[str]:
         return [c.name for c in self._coords.values() if not c.is_dim]
-    
+
     def _infer_resolution(self):
         grid_x = np.abs(mode(np.diff(self.longitude)))
         grid_y = np.abs(mode(np.diff(self.latitude)))
@@ -293,6 +293,57 @@ class Domain(DomainMixin):
         # Setting `coordinate.bounds`
         coord.bounds = Domain.convert_bounds_1d_to_2d(val_b)
 
+    @geokube_logging
+    def _calculate_missing_lat_and_lon(self):
+        # NOTE: This approach is elegant and accurate, but it issues warnings
+        # because of the `@geokube_logging` decorator.
+        # missing_lat_or_lon = False
+        # try:
+        #     self.latitude, self.longitude
+        # except KeyError:
+        #     missing_lat_or_lon = True
+        missing_lat_or_lon = not (
+            {AxisType.LATITUDE, AxisType.LONGITUDE}
+            <= self._axis_to_name.keys()
+        )
+
+        # TODO: Consider moving these checks to `Field.to_xarray`.
+        if (
+            missing_lat_or_lon
+            and (self._type is DomainType.GRIDDED or self._type is None)
+            and self._crs is not None
+            and self.x.type is CoordinateType.INDEPENDENT
+            and self.y.type is CoordinateType.INDEPENDENT
+        ):
+            domain_x, domain_y = self.x, self.y
+            dims = (domain_y.dims[0], domain_x.dims[0])
+            x, y = np.meshgrid(domain_x.to_numpy(), domain_y.to_numpy())
+            pts = (
+                GeogCS(6371229)
+                .as_cartopy_crs()
+                .transform_points(src_crs=self._crs.as_cartopy_crs(), x=x, y=y)
+            )
+            lon_vals, lat_vals = pts[..., 0], pts[..., 1]
+            lat_axis = Axis(
+                name="latitude", axistype=AxisType.LATITUDE, is_dim=False
+            )
+            lon_axis = Axis(
+                name="longitude", axistype=AxisType.LONGITUDE, is_dim=False
+            )
+            lat_coord = Coordinate(
+                data=lat_vals, axis=lat_axis, dims=dims, units="degree_north"
+            )
+            lon_coord = Coordinate(
+                data=lon_vals, axis=lon_axis, dims=dims, units="degree_east"
+            )
+            new_coords = {"latitude": lat_coord, "longitude": lon_coord}
+            self._coords.update(new_coords)
+            new_names = {
+                AxisType.LATITUDE: "latitude",
+                AxisType.LONGITUDE: "longitude",
+            }
+            self._axis_to_name.update(new_names)
+
     @staticmethod
     def convert_bounds_1d_to_2d(values):
         assert values.ndim == 1
@@ -406,7 +457,11 @@ class Domain(DomainMixin):
             not_none_attrs = self.crs.as_crs_attributes()
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid.update(
-                {crs_name: xr.DataArray(1, name=crs_name, attrs=not_none_attrs)}
+                {
+                    crs_name: xr.DataArray(
+                        1, name=crs_name, attrs=not_none_attrs
+                    )
+                }
             )
         return grid
 
