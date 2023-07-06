@@ -1979,6 +1979,7 @@ class Field(Variable, DomainMixin):
         )
         field._id_pattern = id_pattern
         field._mapping = mapping
+        field._domain._calculate_missing_lat_and_lon()
         return field
 
     @staticmethod
