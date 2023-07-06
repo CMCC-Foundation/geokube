@@ -24,6 +24,8 @@ from .coord_system import (
     GeogCS,
     RegularLatLon,
     parse_crs,
+    add_prefix,
+    trim_prefix
 )
 from .coordinate import Coordinate, CoordinateType
 from .domainmixin import DomainMixin
@@ -101,6 +103,10 @@ class Domain(DomainMixin):
             )
         else:
             return Coordinate(data=coord, axis=name)
+    
+    @property
+    def grid_mapping_name(self) -> str:
+        return add_prefix(self.crs.grid_mapping_name)
 
     @property
     def type(self):
@@ -402,8 +408,9 @@ class Domain(DomainMixin):
             grid.update(coord.to_xarray(encoding=encoding))
 
         if self.crs is not None:
-            crs_name = self.crs.grid_mapping_name
+            crs_name = self.grid_mapping_name
             not_none_attrs = self.crs.as_crs_attributes()
+            # NOTE: we keep cf-compliant value of `grid_mapping_name` attribute
             not_none_attrs["grid_mapping_name"] = self.crs.grid_mapping_name
             grid.update(
                 {crs_name: xr.DataArray(1, name=crs_name, attrs=not_none_attrs)}
