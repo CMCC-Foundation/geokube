@@ -1885,7 +1885,7 @@ class Field(Variable, DomainMixin):
 
         coords = self.domain.to_xarray(encoding)
 
-        crs_name = self.domain.crs.grid_mapping_name
+        crs_name = self.domain.grid_mapping_name
         data_vars[var_name].encoding["grid_mapping"] = crs_name
 
         if self.cell_methods is not None:
@@ -1979,6 +1979,7 @@ class Field(Variable, DomainMixin):
         )
         field._id_pattern = id_pattern
         field._mapping = mapping
+        field._domain._calculate_missing_lat_and_lon()
         return field
 
     @staticmethod
