@@ -12,7 +12,7 @@ class CoordinateSystem:
 
     def __init__(
         self,
-        horizontal_crs: crs.CRS | None,
+        horizontal_crs: crs.CRS | None = None,
         elevation: Sequence[axis.Axis] = (),
         time: Sequence[axis.Axis] = (),
         user_axes: Sequence[axis.Axis] = ()
@@ -66,6 +66,13 @@ class CoordinateSystem:
     @property
     def user_axes(self) -> tuple[axis.Axis, ...]:
         return self.__user_axes
+
+    @property
+    def all_axes(self) -> tuple[axis.Axis, ...]:
+        axes = (*self.__user_axes, *self.__time, *self.__elevation)
+        if self.__horizontal_crs is not None:
+            axes += self.__horizontal_crs.AXES
+        return axes
 
     def add_axis(self, new_axis: axis.Axis) -> None:
         if not isinstance(new_axis, axis.Axis):
