@@ -1,10 +1,9 @@
 from collections.abc import Sequence
 
-from . import axis
-from . import crs
+from . import axis, crs
 
 
-class CoordSystem:
+class CoordinateSystem:
     __slots__ = ('__horizontal_crs', '__elevation', '__time', '__user_axes')
 
     _ELEVATION_AXES = frozenset({axis.vertical, axis.z})
@@ -13,11 +12,12 @@ class CoordSystem:
 
     def __init__(
         self,
-        horizontal_crs: crs.CRS,
-        elevation: Sequence[axis.Axis],
-        time: Sequence[axis.Axis],
-        user_axes: Sequence[axis.Axis]
+        horizontal_crs: crs.CRS | None,
+        elevation: Sequence[axis.Axis] | None,
+        time: Sequence[axis.Axis] | None,
+        user_axes: Sequence[axis.Axis] | None
     ) -> None:
+        # TODO: Solve the case with `None`.
         self.horizontal_crs = horizontal_crs
 
         if diff := set(elevation) - self._ELEVATION_AXES:
