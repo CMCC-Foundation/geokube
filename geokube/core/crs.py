@@ -130,7 +130,7 @@ class CRS(_CRS):
     #: Whether this projection can handle ellipses.
     _handles_ellipses = True
 
-    AXES: frozenset[axis.Axis] = frozenset({})
+    AXES: tuple[axis.Axis, ...] = ()
 
     def __init__(self, proj4_params, globe=None):
         """
@@ -564,7 +564,7 @@ class Geodetic(CRS):
 
     """
 
-    AXES = frozenset({axis.latitude, axis.longitude})
+    AXES = (axis.latitude, axis.longitude)
 
     def __init__(self, globe=None):
         """
@@ -620,7 +620,7 @@ class RotatedGeodetic(CRS):
 
     """
 
-    AXES = frozenset({axis.grid_latitude, axis.grid_longitude} | Geodetic.AXES)
+    AXES = (axis.grid_latitude, axis.grid_longitude, *Geodetic.AXES)
 
     def __init__(self, pole_longitude, pole_latitude,
                  central_rotated_longitude=0.0, globe=None):
@@ -655,7 +655,7 @@ class Projection(CRS, metaclass=ABCMeta):
 
     """
 
-    AXES = frozenset({axis.y, axis.x} | Geodetic.AXES)
+    AXES = (axis.y, axis.x, *Geodetic.AXES)
 
     _method_map = {
         'Point': '_project_point',
