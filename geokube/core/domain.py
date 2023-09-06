@@ -64,7 +64,7 @@ class Points:
             data = pd.DataFrame(data=coords, columns=coord_syst.all_axes)
             self.__coords = {
                 axis_: xr.DataArray(
-                    vals.to_numpy() * units.get(axis_, no_unit), dims=pts
+                    pint.Quantity(vals.to_numpy(), units.get(axis_)), dims=pts
                 )
                 for axis_, vals in data.items()
             }
