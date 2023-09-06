@@ -13,9 +13,9 @@ class CoordinateSystem:
     def __init__(
         self,
         horizontal_crs: crs.CRS | None,
-        elevation: Sequence[axis.Axis] | None,
-        time: Sequence[axis.Axis] | None,
-        user_axes: Sequence[axis.Axis] | None
+        elevation: Sequence[axis.Axis] = (),
+        time: Sequence[axis.Axis] = (),
+        user_axes: Sequence[axis.Axis] = ()
     ) -> None:
         # TODO: Solve the case with `None`.
         self.horizontal_crs = horizontal_crs
@@ -34,9 +34,10 @@ class CoordinateSystem:
         self.__time = tuple(time)
 
         # TODO: Reconsider the logic of checking the user axes.
-        predef_axes = horizontal_crs.AXES.union(
-            self._ELEVATION_AXES, self._TIME_AXES
+        hor_axes = (
+            set() if horizontal_crs is None else set(horizontal_crs.AXES)
         )
+        predef_axes = hor_axes.union(self._ELEVATION_AXES, self._TIME_AXES)
         if intersect := set(user_axes) & predef_axes:
             raise ValueError(
                 "'user_axes' contains axes that are not allowed: "
@@ -45,12 +46,12 @@ class CoordinateSystem:
         self.__user_axes = tuple(user_axes)
 
     @property
-    def horizontal_crs(self) -> crs.CRS:
+    def horizontal_crs(self) -> crs.CRS | None:
         return self.__horizontal_crs
 
     @horizontal_crs.setter
-    def horizontal_crs(self, value) -> None:
-        if not isinstance(value, crs.CRS):
+    def horizontal_crs(self, value: crs.CRS | None) -> None:
+        if not (value is None or isinstance(value, crs.CRS)):
             raise TypeError("'horizontal_crs' must be an instance of 'CRS'")
         self.__horizontal_crs = value
 
@@ -69,9 +70,12 @@ class CoordinateSystem:
     def add_axis(self, new_axis: axis.Axis) -> None:
         if not isinstance(new_axis, axis.Axis):
             raise TypeError("'new_axis' must be an instance of 'Axis'")
-        all_axes = self.__horizontal_crs.AXES.union(
-            set(self.__elevation), set(self.__time)
+        hor_axes = (
+            set()
+            if self.__horizontal_crs is None else
+            set(self.__horizontal_crs.AXES)
         )
+        all_axes = hor_axes.union(set(self.__elevation), set(self.__time))
         if new_axis in all_axes:
             raise ValueError(f"'new_axis' {new_axis} already exists")
 
@@ -92,15 +96,18 @@ class CoordinateSystem:
         return tuple(tmp)
 
     def delete_axis(self, existing_axis: axis.Axis) -> None:
-        if existing_axis in self.__horizontal_crs.AXES:
+        if (
+            self.__horizontal_crs is not None
+            and existing_axis in set(self.__horizontal_crs.AXES)
+        ):
             raise ValueError("'existing_axis' cannot be removed from CRS")
-        if existing_axis in self.__elevation:
+        if existing_axis in set(self.__elevation):
             self.__elevation = self._delete_axis_from(
                 self.__elevation, existing_axis
             )
-        elif existing_axis in self.__time:
+        elif existing_axis in set(self.__time):
             self.__time = self._delete_axis_from(self.__time, existing_axis)
-        elif existing_axis in self.__user_axes:
+        elif existing_axis in set(self.__user_axes):
             self.__user_axes = self._delete_axis_from(
                 self.__user_axes, existing_axis
             )
