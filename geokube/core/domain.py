@@ -27,7 +27,6 @@ class Points:
         self.__coord_syst = coord_syst
 
         units = axis._DEFAULT_UNITS
-        no_unit = pint.Unit('')
         pts = ('_points',)
 
         if isinstance(coords, Mapping):
@@ -38,11 +37,12 @@ class Points:
                     case pint.Quantity():
                         vals_ = vals
                     case np.ndarray():
-                        vals_ = pint.Quantity(vals, units.get(axis_, no_unit))
+                        # NOTE: The pattern arr * unit does not work when arr
+                        # has stings.
+                        vals_ = pint.Quantity(vals, units.get(axis_))
                     case _:
-                        vals_ = pint.Quantity(
-                            np.asarray(vals), units.get(axis_, no_unit)
-                        )
+                        arr = np.asarray(vals)
+                        vals_ = pint.Quantity(arr, units.get(axis_))
                 if vals_.ndim != 1:
                     raise ValueError(
                         "'coords' must have only one-dimensional values"
