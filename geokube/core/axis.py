@@ -20,7 +20,7 @@ import pint
 
 
 @dataclass(frozen=True, slots=True)
-class AxisIndexer(Iterable):
+class _AxisIndexer(Iterable):
     axis: Axis
     indexer: slice | npt.ArrayLike | pint.Quantity
 
@@ -78,16 +78,16 @@ class Axis(str, Hashable):
 
     def __getitem__(
         self, key: slice | npt.ArrayLike | pint.Quantity
-    ) -> AxisIndexer:
+    ) -> _AxisIndexer:
         match key:
             case slice():
-                return AxisIndexer(self, key)
+                return _AxisIndexer(self, key)
             case pint.Quantity():
-                return AxisIndexer(
+                return _AxisIndexer(
                     self, pint.Quantity(np.array(key.magnitude), key.units)
                 )
             case _:
-                return AxisIndexer(self, np.array(key))
+                return _AxisIndexer(self, np.array(key))
 
 
 @unique
@@ -102,7 +102,6 @@ class _AxisKind(Enum):
     VERTICAL = 'vertical'
     TIME = 'time'
     TIMEDELTA = 'timedelta'
-    POINTS = '_points'
 
 
 def create(name: str) -> None:
@@ -148,7 +147,6 @@ longitude = Axis('longitude')
 vertical = Axis('vertical')
 time = Axis('time')
 timedelta = Axis('timedelta')
-_points = Axis('_points')
 
 
 _PREDEFINED_AXIS_ENCODING = {
@@ -175,7 +173,6 @@ _PREDEFINED_AXIS_ENCODING = {
             r"|pres|vertical|isotherm|model_level_number)[a-z_]*[0-9]*"
         )
     },
-    # _points: {'pattern': 'points'},
     timedelta: {'pattern': r"timedelta|time_delta"},
     time: {'standard_name': 'time', 'pattern': r"(time[0-9]*|T)"}
 }
