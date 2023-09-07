@@ -12,6 +12,8 @@ import numpy as np
 import numpy.typing as npt
 import pint
 
+from . import units
+
 
 # TODO: This should be used in the configuration file:
 #     [mypy]
@@ -179,14 +181,14 @@ _PREDEFINED_AXIS_ENCODING = {
 
 # TODO: Finish this once the units are managed properly.
 _DEFAULT_UNITS = {
-    x: pint.Unit(''),
-    y: pint.Unit(''),
-    z: pint.Unit(''),
-    grid_latitude: pint.Unit('degree'),
-    grid_longitude: pint.Unit('degree'),
-    # latitude: units.degrees_north,
-    # longitude: units.degrees_east,
-    time: pint.Unit('')
+    x: units.units(''),
+    y: units.units(''),
+    z: units.units(''),
+    grid_latitude: units.units('degree'),
+    grid_longitude: units.units('degree'),
+    latitude: units.units('degrees_north'),
+    longitude: units.units('degrees_east'),
+    time: units.units(''),
 }
 
 

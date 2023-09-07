@@ -1,10 +1,14 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+
+import pint
 
 from . import axis, crs
 
 
 class CoordinateSystem:
-    __slots__ = ('__horizontal_crs', '__elevation', '__time', '__user_axes')
+    __slots__ = (
+        '__horizontal_crs', '__elevation', '__time', '__user_axes', '__units'
+    )
 
     _ELEVATION_AXES = frozenset({axis.vertical, axis.z})
     # TODO: Add reference time and climate time axes.
@@ -15,7 +19,8 @@ class CoordinateSystem:
         horizontal_crs: crs.CRS | None = None,
         elevation: Sequence[axis.Axis] = (),
         time: Sequence[axis.Axis] = (),
-        user_axes: Sequence[axis.Axis] = ()
+        user_axes: Sequence[axis.Axis] = (),
+        units: Mapping[axis.Axis, pint.Unit] | None = None
     ) -> None:
         # TODO: Solve the case with `None`.
         self.horizontal_crs = horizontal_crs
@@ -45,6 +50,10 @@ class CoordinateSystem:
             )
         self.__user_axes = tuple(user_axes)
 
+        self.__units = axis._DEFAULT_UNITS.copy()
+        if units:
+            self.__units |= units
+
     @property
     def horizontal_crs(self) -> crs.CRS | None:
         return self.__horizontal_crs
@@ -73,6 +82,10 @@ class CoordinateSystem:
         if self.__horizontal_crs is not None:
             axes += self.__horizontal_crs.AXES
         return axes
+
+    @property
+    def units(self) -> dict[axis.Axis, pint.Unit]:
+        return self.__units
 
     def add_axis(self, new_axis: axis.Axis) -> None:
         if not isinstance(new_axis, axis.Axis):

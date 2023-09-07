@@ -26,7 +26,7 @@ class Points:
             )
         self.__coord_syst = coord_syst
 
-        units = axis._DEFAULT_UNITS
+        units = coord_syst.units
         pts = ('_points',)
 
         if isinstance(coords, Mapping):

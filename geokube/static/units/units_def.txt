@@ -1,0 +1,17 @@
+degrees_north = degree = degrees_N = degreesN = degree_north = degree_N = degreeN
+degrees_east = degree = degrees_E = degreesE = degree_east = degree_E = degreeE
+
+mgC = milligram
+mgCO2 = milligram
+
+# NOTE: PSU definition according to the
+# https://help.marine.copernicus.eu/en/articles/5477248-what-is-the-unit-of-salinity
+psu = milligram/kg
+percent = 1e-2 frac = pct = %
+
+# kg m-2 = kg m^-2
+
+@alias degC = deg_C = degree_C = degrees_C = Celsius
+@alias kilogram = Kg
+@alias degree = Degree
+@alias degF = deg_F
