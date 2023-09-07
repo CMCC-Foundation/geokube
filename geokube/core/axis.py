@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Hashable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, fields
 from enum import Enum, unique
 import re
@@ -34,12 +34,12 @@ class _AxisIndexer(Iterable):
         return (getattr(self, field.name) for field in fields(self))
 
 
-class Axis(str, Hashable):
+class Axis(str):
     # HACK: `Axis` inherits `str` to be capable of acting as a dimension in
     # `xarray` data structures. If `xarray` becomes capable of handling all
     # hashables as dimensions, the inheritance from `str` will not be
-    # necessary any more. In that case, `Axis` might inherit from `Iterable` if
-    # `__iter__` method is kept.
+    # necessary any more. In that case, `Axis` might inherit from `Hashable`
+    # and `Iterable` if `__iter__` method is kept.
 
     def __new__(cls, *args, **kwargs):
         return str.__new__(cls, *args, **kwargs)
@@ -66,8 +66,8 @@ class Axis(str, Hashable):
     #         return str(self) != str(other)
     #     return True
 
-    def __hash__(self) -> int:
-        return hash(str(self))
+    # def __hash__(self) -> int:
+    #     return hash(str(self))
 
     # TODO: Consider removing `__iter__` and inheritance from `Iterable`. It is
     # not necessary but sometimes can be suitable for unpacking or converting
