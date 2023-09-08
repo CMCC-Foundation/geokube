@@ -77,11 +77,11 @@ class CoordinateSystem:
         return self.__user_axes
 
     @property
-    def all_axes(self) -> tuple[axis.Axis, ...]:
-        axes = (*self.__user_axes, *self.__time, *self.__elevation)
+    def axes(self) -> tuple[axis.Axis, ...]:
+        axes_ = (*self.__user_axes, *self.__time, *self.__elevation)
         if self.__horizontal_crs is not None:
-            axes += self.__horizontal_crs.AXES
-        return axes
+            axes_ += self.__horizontal_crs.AXES
+        return axes_
 
     @property
     def units(self) -> dict[axis.Axis, pint.Unit]:
