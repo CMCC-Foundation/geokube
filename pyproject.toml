@@ -1,0 +1,71 @@
+# [build-system]
+# requires = ["hatchling"]
+# build-backend = "hatchling.build"
+
+# [build-system]
+# requires = ["setuptools>=64.0"]
+# build-backend = "setuptools.build_meta"
+
+[build-system]
+requires = ["flit_core>=3.4"]
+build-backend = "flit_core.buildapi"
+
+# [build-system]
+# requires = ["pdm-backend"]
+# build-backend = "pdm.backend"
+
+[project]
+name = "geokube"
+version = "0.4a0"
+authors = [
+    {name = "geokube Contributors", email = "geokube@googlegroups.com"}
+]
+maintainers = [
+    {name = "geokube Contributors", email = "geokube@googlegroups.com"}
+]
+description = "Python package for Earth Science Data Analysis"
+keywords = ["Earth science", "data analysis"]
+license = {file = "LICENSE"}
+readme = "README.md"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Web Environment",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Earth Science",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "cartopy>=0.21",
+    "dask>=2023.6.0",
+    "matplotlib>=3.5",
+    "numpy>=1.25",
+    "pandas>=2.0",
+    "pint>=0.20",
+    "pyproj>=3.4",
+    "shapely>=2.0",
+    "xarray>=2023.6.0"
+]
+# dynamic = ["version", "description", "optional-dependencies"]
+
+[project.urls]
+Homepage = "https://github.com/geokube/geokube"
+# Documentation = "https://readthedocs.org"
+Repository = "https://github.com/geokube/geokube.git"
+# Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
+
+[project.optional-dependencies]
+geo_science = ["cartopy>=0.20", "pyproj>=3.4", "shapely>=2.0"]
+regridding = ["xesmf"]
+
+# [project.scripts]
+# spam-cli = "spam:main_cli"
+
+# [project.gui-scripts]
+# spam-gui = "spam:main_gui"
+
+# [project.entry-points."spam.magical"]
+# tomatoes = "spam:main_tomatoes"
