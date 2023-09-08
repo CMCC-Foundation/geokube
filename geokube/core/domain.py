@@ -59,7 +59,7 @@ class Points:
                     "'coords' must have points of equal number of dimensions"
                 )
             self.__n_pts = len(coords)
-            data = pd.DataFrame(data=coords, columns=coord_syst.all_axes)
+            data = pd.DataFrame(data=coords, columns=coord_syst.axes)
             self.__coords = {
                 axis_: xr.DataArray(
                     pint.Quantity(
