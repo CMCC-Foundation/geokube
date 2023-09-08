@@ -36,12 +36,10 @@ class Points:
                 match vals:
                     case pint.Quantity():
                         vals_ = vals
-                    case np.ndarray():
+                    case _:
                         # NOTE: The pattern arr * unit does not work when arr
                         # has stings.
-                        vals_ = pint.Quantity(vals, units.get(axis_))
-                    case _:
-                        arr = np.asarray(vals)
+                        arr = np.asarray(vals, dtype=_DTYPES.get(axis_))
                         vals_ = pint.Quantity(arr, units.get(axis_))
                 if vals_.ndim != 1:
                     raise ValueError(
@@ -64,7 +62,11 @@ class Points:
             data = pd.DataFrame(data=coords, columns=coord_syst.all_axes)
             self.__coords = {
                 axis_: xr.DataArray(
-                    pint.Quantity(vals.to_numpy(), units.get(axis_)), dims=pts
+                    pint.Quantity(
+                        vals.to_numpy(dtype=_DTYPES.get(axis_)),
+                        units.get(axis_)
+                    ),
+                    dims=pts
                 )
                 for axis_, vals in data.items()
             }
@@ -82,3 +84,6 @@ class Points:
     @property
     def _n_pts(self) -> int:
         return self.__n_pts
+
+
+_DTYPES = {axis.time: 'datetime64', axis.timedelta: 'timedelta64'}
