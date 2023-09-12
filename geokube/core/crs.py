@@ -130,7 +130,7 @@ class CRS(_CRS):
     #: Whether this projection can handle ellipses.
     _handles_ellipses = True
 
-    AXES: tuple[axis.Axis, ...] = ()
+    AXES: tuple[axis.Horizontal, ...] = ()
 
     def __init__(self, proj4_params, globe=None):
         """
