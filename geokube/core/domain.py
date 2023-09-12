@@ -1,16 +1,18 @@
 from typing import Mapping, Sequence
 
+import dask.array as da
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
 import xarray as xr
 
-from . import axis, coord_system
+from . import axis
+from .coord_system import CoordinateSystem
 
 
 class Points:
-    __slots__ = ('__coords', '__coord_syst', '__n_pts')
+    __slots__ = ('__coords', '__coord_system', '__n_pts')
 
     def __init__(
         self,
@@ -18,15 +20,15 @@ class Points:
             Mapping[axis.Axis, npt.ArrayLike | pint.Quantity]
             | Sequence[Sequence]
         ),
-        coord_syst: coord_system.CoordinateSystem
+        coord_system: CoordinateSystem
     ) -> None:
-        if not isinstance(coord_syst, coord_system.CoordinateSystem):
+        if not isinstance(coord_system, CoordinateSystem):
             raise TypeError(
-                "'coord_syst' must be an instance of 'CoordinateSystem'"
+                "'coord_system' must be an instance of 'CoordinateSystem'"
             )
-        self.__coord_syst = coord_syst
+        self.__coord_system = coord_system
 
-        units = coord_syst.units
+        units = coord_system.units
         pts = ('_points',)
 
         if isinstance(coords, Mapping):
@@ -36,11 +38,17 @@ class Points:
                 match vals:
                     case pint.Quantity():
                         vals_ = vals
-                    case _:
+                    case np.ndarray():
                         # NOTE: The pattern arr * unit does not work when arr
                         # has stings.
-                        arr = np.asarray(vals, dtype=_DTYPES.get(axis_))
-                        vals_ = pint.Quantity(arr, units.get(axis_))
+                        vals_ = pint.Quantity(vals, units.get(axis_))
+                    case da.Array():
+                        vals_ = pint.Quantity(vals.compute(), units.get(axis_))
+                    case _:
+                        vals_ = pint.Quantity(
+                            np.asarray(vals, dtype=axis_.dtype),
+                            units.get(axis_)
+                        )
                 if vals_.ndim != 1:
                     raise ValueError(
                         "'coords' must have only one-dimensional values"
@@ -59,12 +67,11 @@ class Points:
                     "'coords' must have points of equal number of dimensions"
                 )
             self.__n_pts = len(coords)
-            data = pd.DataFrame(data=coords, columns=coord_syst.axes)
+            data = pd.DataFrame(data=coords, columns=coord_system.axes)
             self.__coords = {
                 axis_: xr.DataArray(
                     pint.Quantity(
-                        vals.to_numpy(dtype=_DTYPES.get(axis_)),
-                        units.get(axis_)
+                        vals.to_numpy(dtype=axis_.dtype), units.get(axis_)
                     ),
                     dims=pts
                 )
@@ -74,8 +81,8 @@ class Points:
             raise TypeError("'coords' must be a sequence or mapping")
 
     @property
-    def coord_syst(self) -> coord_system.CoordinateSystem:
-        return self.__coord_syst
+    def coord_system(self) -> CoordinateSystem:
+        return self.__coord_system
 
     @property
     def _coords(self) -> dict[axis.Axis, xr.DataArray]:
@@ -84,6 +91,3 @@ class Points:
     @property
     def _n_pts(self) -> int:
         return self.__n_pts
-
-
-_DTYPES = {axis.time: 'datetime64', axis.timedelta: 'timedelta64'}
