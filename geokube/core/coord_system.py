@@ -1,135 +1,136 @@
 from collections.abc import Mapping, Sequence
+from typing import Self, TYPE_CHECKING
 
 import pint
 
-from . import axis, crs
+from . import axis
+from .crs import CRS
+
+
+class SpatialCoordinateSystem:
+    __slots__ = ('__crs', '__elevation', '__axes')
+
+    if TYPE_CHECKING:
+        __crs: CRS
+        __elevation: axis.Elevation | None
+        __axes: tuple[axis.Spatial, ...]
+
+    def __init__(
+        self, crs: CRS, elevation: axis.Elevation | None = None
+    ) -> None:
+        if not isinstance(crs, CRS):
+            raise TypeError("'crs' must be an instance of 'CRS'")
+        self.__crs = crs
+        axes: list[axis.Spatial] = list(crs.AXES)
+        match elevation:
+            case axis.Elevation():
+                self.__elevation = elevation
+                axes.insert(0, elevation)
+            case None:
+                self.__elevation = None
+            case _:
+                raise TypeError(
+                    "'elevation' must be an instance of 'Elevation' or 'None'"
+                )
+        self.__axes = tuple(axes)
+
+    @property
+    def crs(self) -> CRS:
+        return self.__crs
+
+    @property
+    def elevation(self) -> axis.Elevation | None:
+        return self.__elevation
+
+    @property
+    def axes(self) -> tuple[axis.Spatial, ...]:
+        return self.__axes
 
 
 class CoordinateSystem:
-    __slots__ = (
-        '__horizontal_crs', '__elevation', '__time', '__user_axes', '__units'
-    )
+    __slots__ = ('__spatial', '__time', '__user_axes', '__all_axes', '__units')
 
-    _ELEVATION_AXES = frozenset({axis.vertical, axis.z})
-    # TODO: Add reference time and climate time axes.
-    _TIME_AXES = frozenset({axis.time, axis.timedelta})
+    if TYPE_CHECKING:
+        __spatial: SpatialCoordinateSystem
+        __time: axis.Time | None
+        __user_axes: tuple[axis.UserDefined, ...]
+        __all_axes: tuple[axis.Axis, ...]
+        __units: dict[axis.Axis, pint.Unit]
 
     def __init__(
         self,
-        horizontal_crs: crs.CRS | None = None,
-        elevation: Sequence[axis.Axis] = (),
-        time: Sequence[axis.Axis] = (),
-        user_axes: Sequence[axis.Axis] = (),
+        horizontal: CRS,
+        elevation: axis.Elevation | None = None,
+        time: axis.Time | None = None,
+        user_axes: Sequence[axis.UserDefined] = (),
         units: Mapping[axis.Axis, pint.Unit] | None = None
     ) -> None:
-        # TODO: Solve the case with `None`.
-        self.horizontal_crs = horizontal_crs
+        self.__spatial = SpatialCoordinateSystem(horizontal, elevation)
+        all_axes: list[axis.Axis] = list(self.__spatial.axes)
 
-        if diff := set(elevation) - self._ELEVATION_AXES:
-            raise ValueError(
-                f"'elevation' contains axes that are not allowed: "
-                f"{sorted({diff})}"
-            )
-        self.__elevation = tuple(elevation)
+        match time:
+            case axis.Time():
+                self.__time = time
+                all_axes.insert(0, time)
+            case None:
+                self.__time = None
+            case _:
+                raise TypeError(
+                    "'time' must be an instance of 'Time' or 'None'"
+                )
 
-        if diff := set(time) - self._TIME_AXES:
-            raise ValueError(
-                f"'time' contains axes that are not allowed: {sorted({diff})}"
-            )
-        self.__time = tuple(time)
+        if user_axes:
+            for user_axis in user_axes:
+                if not isinstance(user_axis, axis.UserDefined):
+                    raise TypeError(
+                        "'user_axis' must be an instance of 'UserDefined'")
+            self.__user_axes = tuple(user_axes)
+            all_axes[:0] = self.__user_axes
+        else:
+            self.__user_axes = ()
 
-        # TODO: Reconsider the logic of checking the user axes.
-        hor_axes = (
-            set() if horizontal_crs is None else set(horizontal_crs.AXES)
-        )
-        predef_axes = hor_axes.union(self._ELEVATION_AXES, self._TIME_AXES)
-        if intersect := set(user_axes) & predef_axes:
-            raise ValueError(
-                "'user_axes' contains axes that are not allowed: "
-                f"{sorted({intersect})}"
-            )
-        self.__user_axes = tuple(user_axes)
+        self.__all_axes = tuple(all_axes)
 
-        self.__units = axis._DEFAULT_UNITS.copy()
+        self.__units = {axis: axis.default_units for axis in self.__all_axes}
         if units:
             self.__units |= units
 
     @property
-    def horizontal_crs(self) -> crs.CRS | None:
-        return self.__horizontal_crs
-
-    @horizontal_crs.setter
-    def horizontal_crs(self, value: crs.CRS | None) -> None:
-        if not (value is None or isinstance(value, crs.CRS)):
-            raise TypeError("'horizontal_crs' must be an instance of 'CRS'")
-        self.__horizontal_crs = value
+    def spatial(self) -> SpatialCoordinateSystem:
+        return self.__spatial
 
     @property
-    def elevation(self) -> tuple[axis.Axis, ...]:
-        return self.__elevation
-
-    @property
-    def time(self) -> tuple[axis.Axis, ...]:
+    def time(self) -> axis.Time | None:
         return self.__time
 
     @property
-    def user_axes(self) -> tuple[axis.Axis, ...]:
+    def user_axes(self) -> tuple[axis.UserDefined, ...]:
         return self.__user_axes
 
     @property
     def axes(self) -> tuple[axis.Axis, ...]:
-        axes_ = (*self.__user_axes, *self.__time, *self.__elevation)
-        if self.__horizontal_crs is not None:
-            axes_ += self.__horizontal_crs.AXES
-        return axes_
+        return self.__all_axes
 
     @property
     def units(self) -> dict[axis.Axis, pint.Unit]:
         return self.__units
 
-    def add_axis(self, new_axis: axis.Axis) -> None:
-        if not isinstance(new_axis, axis.Axis):
-            raise TypeError("'new_axis' must be an instance of 'Axis'")
-        hor_axes = (
-            set()
-            if self.__horizontal_crs is None else
-            set(self.__horizontal_crs.AXES)
+    def add_axis(self, new_axis: axis.UserDefined) -> Self:
+        return type(self)(
+            horizontal=self.__spatial.crs,
+            elevation=self.__spatial.elevation,
+            time=self.__time,
+            user_axes=(*self.__user_axes, new_axis),
+            units=self.__units.copy()
         )
-        all_axes = hor_axes.union(set(self.__elevation), set(self.__time))
-        if new_axis in all_axes:
-            raise ValueError(f"'new_axis' {new_axis} already exists")
 
-        if new_axis in self._ELEVATION_AXES:
-            self.__elevation += (new_axis,)
-        elif new_axis in self._TIME_AXES:
-            self.__time += (new_axis,)
-        else:
-            self.__user_axes += (new_axis,)
-
-    def _delete_axis_from(
-        self,
-        axes: tuple[axis.Axis, ...],
-        existing_axis: axis.Axis
-    ) -> tuple[axis.Axis, ...]:
-        tmp = list(axes)
-        tmp.remove(existing_axis)
-        return tuple(tmp)
-
-    def delete_axis(self, existing_axis: axis.Axis) -> None:
-        if (
-            self.__horizontal_crs is not None
-            and existing_axis in set(self.__horizontal_crs.AXES)
-        ):
-            raise ValueError("'existing_axis' cannot be removed from CRS")
-        if existing_axis in set(self.__elevation):
-            self.__elevation = self._delete_axis_from(
-                self.__elevation, existing_axis
-            )
-        elif existing_axis in set(self.__time):
-            self.__time = self._delete_axis_from(self.__time, existing_axis)
-        elif existing_axis in set(self.__user_axes):
-            self.__user_axes = self._delete_axis_from(
-                self.__user_axes, existing_axis
-            )
-        else:
-            raise ValueError(f"'existing_axis' {existing_axis} not found")
+    def delete_axis(self, existing_axis: axis.UserDefined) -> Self:
+        new_axes = list(self.__user_axes)
+        new_axes.remove(existing_axis)
+        return type(self)(
+            horizontal=self.__spatial.crs,
+            elevation=self.__spatial.elevation,
+            time=self.__time,
+            user_axes=tuple(new_axes),
+            units=self.__units.copy()
+        )
