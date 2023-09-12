@@ -1,229 +1,85 @@
-from __future__ import annotations
-
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass, fields
-from enum import Enum, unique
-import re
-from typing import Self
-import sys
-from warnings import warn
-
 import numpy as np
 import numpy.typing as npt
 import pint
 
-from . import units
+from .units import units
 
 
-# TODO: This should be used in the configuration file:
-#     [mypy]
-#     plugins = numpy.typing.mypy_plugin
-# See: https://numpy.org/devdocs/reference/typing.html.
-
-
-@dataclass(frozen=True, slots=True)
-class _AxisIndexer(Iterable):
-    axis: Axis
-    indexer: slice | npt.ArrayLike | pint.Quantity
-
-    # TODO: Consider removing `__iter__` and inheritance from `Iterable`. It is
-    # not necessary but sometimes can be suitable for unpacking or converting
-    # to `dict`.
-
-    def __iter__(
-        self
-    ) -> Iterator[Axis | slice | npt.ArrayLike | pint.Quantity]:
-        return (getattr(self, field.name) for field in fields(self))
+# pylint: disable=unused-argument
 
 
 class Axis(str):
     # HACK: `Axis` inherits `str` to be capable of acting as a dimension in
     # `xarray` data structures. If `xarray` becomes capable of handling all
     # hashables as dimensions, the inheritance from `str` will not be
-    # necessary any more. In that case, `Axis` might inherit from `Hashable`
-    # and `Iterable` if `__iter__` method is kept.
+    # necessary any more. In that case, `Axis` might inherit from `Hashable`.
 
-    def __new__(cls, *args, **kwargs):
-        return str.__new__(cls, *args, **kwargs)
+    __slots__ = ('__default_units', '__dtype')
+
+    def __new__(
+        cls, name: str, default_units: pint.Unit | str, dtype: npt.DTypeLike
+    ):
+        return str.__new__(cls, name)
+
+    def __init__(
+        self, name: str, default_units: pint.Unit | str, dtype: npt.DTypeLike
+    ) -> None:
+        self.__dtype = np.dtype(dtype)
+        self.__default_units = pint.Unit(default_units)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self}')"
+        name = f"name='{self}'"
+        default_units = f"default_units='{self.__default_units}'"
+        dtype = f"dtype='{self.__dtype}'"
+        return f"{self.__class__.__name__}({name}, {default_units}, {dtype})"
 
-    # TODO: Consider whether the desired behavior or (in)equality comparison
-    # between instances of `Axis` and `str`. For example, it is necessary to
-    # decide how `Axis('time') == 'time'` behaves. If the implementation of
-    # the methods `__eq__` and `__ne__` is skipped, then
-    # `Axis('time') == 'time'` returns `True` and `Axis('time') != 'time'`
-    # returns `False`.
+    @property
+    def name(self) -> str:
+        return str(self)
 
-    # def __eq__(self, other) -> bool:
-    #     if other.__class__ is self.__class__:
-    #         return str(self) == str(other)
-    #     # return NotImplemented
-    #     return False
+    @property
+    def default_units(self) -> pint.Unit:
+        return self.__default_units
 
-    # def __ne__(self, other) -> bool:
-    #     # return not self == other
-    #     if other.__class__ is self.__class__:
-    #         return str(self) != str(other)
-    #     return True
-
-    # def __hash__(self) -> int:
-    #     return hash(str(self))
-
-    # TODO: Consider removing `__iter__` and inheritance from `Iterable`. It is
-    # not necessary but sometimes can be suitable for unpacking or converting
-    # to `dict`.
-
-    def __iter__(self) -> Iterator[Self]:
-        return iter((self,))
-
-    def __getitem__(
-        self, key: slice | npt.ArrayLike | pint.Quantity
-    ) -> _AxisIndexer:
-        match key:
-            case slice():
-                return _AxisIndexer(self, key)
-            case pint.Quantity():
-                return _AxisIndexer(
-                    self, pint.Quantity(np.array(key.magnitude), key.units)
-                )
-            case _:
-                return _AxisIndexer(self, np.array(key))
+    @property
+    def dtype(self) -> np.dtype:
+        return self.__dtype
 
 
-@unique
-class _AxisKind(Enum):
-    X = 'x'
-    Y = 'y'
-    Z = 'z'
-    GRID_LATITUDE = 'grid_latitude'
-    GRID_LONGITUDE = 'grid_longitude'
-    LATITUDE = 'latitude'
-    LONGITUDE = 'longitude'
-    VERTICAL = 'vertical'
-    TIME = 'time'
-    TIMEDELTA = 'timedelta'
+class Spatial(Axis):
+    pass
 
 
-def create(name: str) -> None:
-    module = sys.modules[__name__]
-    names, values = [], []
-    for axis_ in _AxisKind:
-        names.append(axis_.name)
-        values.append(axis_.value)
-    if name.lower() in {value.lower() for value in values}:
-        warn(f"'name' '{name}' not added because it already exists")
-    else:
-        names.append(name.upper())
-        values.append(name)
-        items = list(zip(names, values))
-        setattr(module, '_AxisKind', Enum('_AxisKind', items))
-        setattr(module, name, Axis(name))
+class Horizontal(Spatial):
+    pass
 
 
-# Dynamically adding predefined axes like: time, time delta, latitude,
-# longitude, vertical, x, y, and points.
-# NOTE: Linters cannot recognize that `axis` has these attributes.
-# def _predefine_axes():
-#     module = sys.modules[__name__]
-#     for axis_ in _AxisKind:
-#         axis_name = axis_.value
-#         setattr(module, axis_name, Axis(axis_name))
+class Elevation(Spatial):
+    pass
 
 
-# _predefine_axes()
+class Time(Axis):
+    pass
 
 
-# Statically adding predefined axes like: time, time delta, latitude,
-# longitude, vertical, x, y, and points.
-# NOTE: This is currently the preferred way to its dynamic alternative because
-# of linting capabilities.
-x = Axis('x')
-y = Axis('y')
-z = Axis('z')
-grid_latitude = Axis('grid_latitude')
-grid_longitude = Axis('grid_longitude')
-latitude = Axis('latitude')
-longitude = Axis('longitude')
-vertical = Axis('vertical')
-time = Axis('time')
-timedelta = Axis('timedelta')
+class UserDefined(Axis):
+    pass
 
 
-_PREDEFINED_AXIS_ENCODING = {
-    x: {'axis': 'X', 'pattern': r"(x|projection_x*|rlon|grid_lon.*)"},
-    y: {'axis': 'Y', 'pattern': r"(y|projection_y*|rlat|grid_lat.*)"},
-    z: {'axis': 'Z', 'pattern': r"z"},
-    grid_latitude: {
-        # TODO: Check these attributes.
-        'axis': 'Y', 'standard_name': 'grid_latitude', 'pattern': "grid_lat.*"
-    },
-    grid_longitude: {
-        # TODO: Check these attributes.
-        'axis': 'X', 'standard_name': 'grid_longitude', 'pattern': "grid_lon.*"
-    },
-    latitude: {
-        'standard_name': 'latitude', 'pattern': r"(x?lat[a-z0-9]*|nav_lat)"
-    },
-    longitude: {
-        'standard_name': 'longitude', 'pattern': r"(x?lon[a-z0-9]*|nav_lon)"
-    },
-    vertical: {
-        'pattern': (
-            r"(soil|lv_|bottom_top|sigma|h(ei)?ght|altitude|depth|isobaric"
-            r"|pres|vertical|isotherm|model_level_number)[a-z_]*[0-9]*"
-        )
-    },
-    timedelta: {'pattern': r"timedelta|time_delta"},
-    time: {'standard_name': 'time', 'pattern': r"(time[0-9]*|T)"}
-}
-
-# TODO: Finish this once the units are managed properly.
-_DEFAULT_UNITS = {
-    x: units.units(''),
-    y: units.units(''),
-    z: units.units(''),
-    grid_latitude: units.units('degree'),
-    grid_longitude: units.units('degree'),
-    latitude: units.units('degrees_north'),
-    longitude: units.units('degrees_east'),
-    time: units.units(''),
-}
+x = Horizontal('x', units['meter'], np.float64)
+y = Horizontal('y', units['meter'], np.float64)
+z = Elevation('z', units['meter'], np.float64)
+grid_latitude = Horizontal('grid_latitude', units['degrees'], np.float64)
+grid_longitude = Horizontal('grid_longitude', units['degrees'], np.float64)
+latitude = Horizontal('latitude', units['degrees_north'], np.float64)
+longitude = Horizontal('longitude', units['degrees_east'], np.float64)
+vertical = Elevation('vertical', units['meter'], np.float64)
+time = Time('time', units[''], 'datetime64')
+timedelta = Time('timedelta', units[''], 'timedelta64')
 
 
-# TODO: Consider making these methods internal.
-def match_cfaxis(axis: str) -> Axis:
-    for axis_, encoding in _PREDEFINED_AXIS_ENCODING.items():
-        if (name := encoding.get('axis')) and name == axis:
-            return axis_
-    raise ValueError(f"'axis' '{axis}' do not match any of the existing axes")
-
-
-def match_cfstdname(std_name: str) -> Axis:
-    for axis_, encoding in _PREDEFINED_AXIS_ENCODING.items():
-        if (name := encoding.get('standard_name')) and name == std_name:
-            return axis_
-    raise ValueError(
-        f"'std_name' '{std_name}' do not match any of the existing axes"
-    )
-
-
-def match_pattern(name: str) -> Axis:
-    for axis_, encoding in _PREDEFINED_AXIS_ENCODING.items():
-        if pattern_ := encoding.get('pattern'):
-            pattern = re.compile(pattern=pattern_, flags=re.IGNORECASE)
-            if re.match(pattern=pattern, string=name) is not None:
-                return axis_
-    raise ValueError(
-        f"'name' '{name}' do not match any of the existing patterns"
-    )
-
-
-def match(name: str) -> Axis:
-    for match_func in (match_cfstdname, match_cfaxis, match_pattern):
-        try:
-            return match_func(name)
-        except ValueError:
-            pass
-    raise ValueError(f"'name' '{name}' do not match any of the existing axes")
+def create(
+    name: str, default_units: pint.Unit | str, dtype: npt.DTypeLike
+) -> None:
+    # TODO: Implement this.
+    pass
