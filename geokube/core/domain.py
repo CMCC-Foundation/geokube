@@ -111,7 +111,7 @@ class Profile:
 
         units = coord_system.units
         interm_coords = dict(coords)
-        result_coords = {}
+        result_coords: dict[axis.Axis, xr.DataArray] = {}
         prof = ('_profiles',)
         n_prof = set()
         vert = interm_coords.pop(axis.vertical)
@@ -133,9 +133,7 @@ class Profile:
             vert_ = pint.Quantity(vert_vals, units[axis.vertical])
         else:
             vert_ = _create_quantity(
-                vert,
-                units.get(axis.vertical, axis.vertical.dtype),
-                axis.vertical.dtype
+                vert, units.get(axis.vertical), axis.vertical.dtype
             )
             vert_shape = vert_.shape
             if len(vert_shape) != 2:
@@ -168,7 +166,7 @@ class Profile:
         if not set(self.__coord_system.axes) <= result_coords.keys():
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
-        )
+            )
         self.__n_prof = n_prof_tot
         self.__n_lev = n_lev_tot
         self.__coords = result_coords
