@@ -6,7 +6,7 @@ import numpy.typing as npt
 import pint
 import xarray as xr
 
-from . import domain as domain_
+from . import domain as domain_, indexes
 
 
 class PointsField:
@@ -63,7 +63,7 @@ class PointsField:
             coords=domain._coords
         )
         for axis_ in domain.coord_system.axes:
-            dset = dset.set_xindex(axis_)
+            dset = dset.set_xindex(axis_, indexes.OneDimIndex)
         self.__data = dset
 
     @property
