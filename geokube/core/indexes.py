@@ -30,12 +30,10 @@ class OneDimIndex(xr.core.indexes.Index):
             raise ValueError("'variables' can contain exactly one item")
 
         coord_axis, var = next(iter(variables.items()))
-        print(coord_axis, var, sep='\n')
         if not isinstance(coord_axis, axis.Axis):
             raise TypeError("'variables' key must be an instance of 'Axis'")
 
         data, dims = var.data, var.dims
-        print(data, dims, sep='\n')
         if not isinstance(data, pint.Quantity):
             raise TypeError("'variables' must contain data of type 'Quantity'")
         if len(dims) != 1:
@@ -77,7 +75,7 @@ def _get_indexer(
     label: slice | npt.ArrayLike | pint.Quantity,
     method: str | None = 'nearest',
     tolerance: int | float | None = None,
-) -> tuple[npt.NDArray[np.intp], ...]:
+) -> npt.NDArray[np.intp] | tuple[npt.NDArray[np.intp], ...]:
     data, units = quantity.magnitude, quantity.units
     dtype = data.dtype
 
