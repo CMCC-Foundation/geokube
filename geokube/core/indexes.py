@@ -1,11 +1,146 @@
 from dataclasses import dataclass
 from typing import Any, Hashable, Mapping, Self
 
+import dask.array as da
 import numpy as np
+import numpy.typing as npt
+import pint
 import xarray as xr
+
+from . import axis
 
 
 # TODO: Consider making this module and `TwoDimIndex` internal.
+
+
+@dataclass(frozen=True, slots=True)
+class OneDimIndex(xr.core.indexes.Index):
+    data: pint.Quantity
+    dims: tuple[Hashable]
+    coord_axis: axis.Axis
+
+    @classmethod
+    def from_variables(
+        cls,
+        variables: Mapping[Any, xr.Variable],
+        *,
+        options: Mapping[str, Any]
+    ) -> Self:
+        if len(variables) != 1:
+            raise ValueError("'variables' can contain exactly one item")
+
+        coord_axis, var = next(iter(variables.items()))
+        print(coord_axis, var, sep='\n')
+        if not isinstance(coord_axis, axis.Axis):
+            raise TypeError("'variables' key must be an instance of 'Axis'")
+
+        data, dims = var.data, var.dims
+        print(data, dims, sep='\n')
+        if not isinstance(data, pint.Quantity):
+            raise TypeError("'variables' must contain data of type 'Quantity'")
+        if len(dims) != 1:
+            raise ValueError("'variables' value must be be one-dimensional")
+
+        return cls(data=data, dims=dims, coord_axis=coord_axis)
+
+    def sel(
+        self,
+        labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
+        method: str | None = "nearest",
+        tolerance: int | float | None = None
+    ) -> xr.core.indexing.IndexSelResult:
+        if len(labels) != 1:
+            raise ValueError("'labels' can contain exactly one item")
+
+        coord_axis, label = next(iter(labels.items()))
+        # TODO: Consider if this is necessary.
+        if coord_axis != self.coord_axis:
+            raise ValueError("'labels' contain a wrong axis")
+
+        idx = _get_indexer(self.data, label, method, tolerance)[0]
+
+        return xr.core.indexing.IndexSelResult({self.dims[0]: idx})
+
+
+def _get_magnitude(
+    data: npt.ArrayLike | da.Array | pint.Quantity, units: pint.Unit
+) -> npt.ArrayLike | da.Array:
+    if isinstance(data, pint.Quantity):
+        if data.units != units:
+            data = data.to(units)
+        return data.magnitude
+    return data
+
+
+def _get_indexer(
+    quantity: pint.Quantity,
+    label: slice | npt.ArrayLike | pint.Quantity,
+    method: str | None = 'nearest',
+    tolerance: int | float | None = None,
+) -> tuple[npt.NDArray[np.intp], ...]:
+    data, units = quantity.magnitude, quantity.units
+    dtype = data.dtype
+
+    match label:
+        case slice():
+            start = _get_magnitude(label.start, units)
+            stop = _get_magnitude(label.stop, units)
+            if label.step is not None:
+                raise ValueError("'label' must have step 'None'")
+            lb_, ub_ = sorted([start, stop])
+            # lb_, ub_ = (start, stop) if start < stop else (stop, start)
+            lb_arr = np.asarray(lb_, dtype=dtype)
+            ub_arr = np.asarray(ub_, dtype=dtype)
+            return np.nonzero((data >= lb_arr) & (data <= ub_arr))
+        case _:
+            arr_lib = da if isinstance(data, da.Array) else np
+            n_dims, shape = data.ndim, data.shape
+            data_ = data[np.newaxis, ...]
+            label_vals = _get_magnitude(label, units)
+            vals = np.asarray(label_vals, dtype=dtype).reshape(-1)
+            vals_ = vals[(np.s_[:],) + (np.newaxis,) * n_dims]
+            n_vals = vals.size
+
+            if dtype.kind in {'O', 'S', 'U'}:
+                method = None
+                abs_diff = (data_ != vals_).astype(np.int64)
+            else:
+                abs_diff = arr_lib.abs(data_ - vals_)
+
+            idx = tuple(
+                np.empty(shape=n_vals, dtype=np.int64) for _ in range(n_dims)
+            )
+            for i in range(n_vals):
+                raw_idx = np.unravel_index(
+                    indices=abs_diff[i].argmin(), shape=shape
+                )
+                for j, idx_item in enumerate(idx):
+                    idx_item[i] = raw_idx[j]
+
+            match method:
+                case 'nearest':
+                    if dtype.kind in {'m', 'M'}:
+                        # NOTE: Tolerance does not apply for `datetime64` and
+                        # `timedelta64`.
+                        acc_check = True
+                    else:
+                        tol = float(
+                            'inf'
+                            if tolerance is None else
+                            _get_magnitude(tolerance, units)
+                        )
+                        acc_check = arr_lib.allclose(
+                            data[idx], vals, rtol=0, atol=tol
+                        )
+                case None:
+                    acc_check = bool((data[idx] == vals).all())
+                case _:
+                    raise ValueError(f"'method' cannot have be {method}")
+
+            if not acc_check:
+                raise ValueError("'values' contain items that cannot be found")
+
+            return idx
 
 
 @dataclass(frozen=True, slots=True)
