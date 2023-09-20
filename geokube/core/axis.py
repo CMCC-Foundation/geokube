@@ -74,8 +74,8 @@ grid_longitude = Horizontal('grid_longitude', units['degrees'], np.float64)
 latitude = Horizontal('latitude', units['degrees_north'], np.float64)
 longitude = Horizontal('longitude', units['degrees_east'], np.float64)
 vertical = Elevation('vertical', units['meter'], np.float64)
-time = Time('time', units[''], 'datetime64')
-timedelta = Time('timedelta', units[''], 'timedelta64')
+time = Time('time', units[''], np.datetime64)
+timedelta = Time('timedelta', units[''], np.timedelta64)
 
 
 def create(
