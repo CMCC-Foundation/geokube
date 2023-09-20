@@ -8,6 +8,7 @@ import pint
 import xarray as xr
 
 from . import axis
+from .indexers import get_indexer
 
 
 # TODO: Consider making this module and `TwoDimIndex` internal.
@@ -44,8 +45,8 @@ class OneDimIndex(xr.core.indexes.Index):
     def sel(
         self,
         labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
-        method: str | None = "nearest",
-        tolerance: int | float | None = None
+        method: str | None = None,
+        tolerance: npt.ArrayLike | None = None
     ) -> xr.core.indexing.IndexSelResult:
         if len(labels) != 1:
             raise ValueError("'labels' can contain exactly one item")
@@ -55,12 +56,95 @@ class OneDimIndex(xr.core.indexes.Index):
         if coord_axis != self.coord_axis:
             raise ValueError("'labels' contain a wrong axis")
 
-        idx = _get_indexer(self.data, label, method, tolerance)[0]
+        # idx = _get_indexer_1d(self.data, label, method, tolerance)[0]
+        data = self.data
+        idx = get_indexer(
+            [self.data.magnitude],
+            [get_magnitude(label, data.units)],
+            method=method,
+            tolerance=tolerance,
+            return_all=False
+        )
 
-        return xr.core.indexing.IndexSelResult({self.dims[0]: idx})
+        print(idx)
+
+        return xr.core.indexing.IndexSelResult({self.dims[0]: idx[0]})
 
 
-def _get_magnitude(
+@dataclass(frozen=True, slots=True)
+class TwoDimHorPointsIndex(xr.core.indexes.Index):
+    latitude: pint.Quantity
+    longitude: pint.Quantity
+    dims: tuple[Hashable]
+
+    @classmethod
+    def from_variables(
+        cls,
+        variables: Mapping[Any, xr.Variable],
+        *,
+        options: Mapping[str, Any]
+    ) -> Self:
+        if len(variables) != 2:
+            raise ValueError("'variables' can contain exactly two items")
+
+        try:
+            lat = variables[axis.latitude]
+            lon = variables[axis.longitude]
+        except KeyError as err:
+            raise ValueError(
+                "'variables' must contain both latitude and longitude"
+            ) from err
+
+        lat_data, lon_data = lat.data, lon.data
+        if not (
+            isinstance(lat_data, pint.Quantity)
+            and isinstance(lon_data, pint.Quantity)
+        ):
+            raise TypeError("'variables' must contain data of type 'Quantity'")
+
+        dims = lat.dims
+        if lon.dims != dims:
+            raise ValueError("'variables' must have the same dimensions")
+        if len(dims) != 1:
+            raise ValueError("'variables' must contain one-dimensional data")
+
+        return cls(latitude=lat_data, longitude=lon_data, dims=dims)
+
+    def sel(
+        self,
+        labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
+        method: str | None = None,
+        tolerance: npt.ArrayLike | None = None
+    ) -> xr.core.indexing.IndexSelResult:
+        # TODO: Try this approach with 2-D and N-D data.
+        if len(labels) != 2:
+            raise ValueError("'labels' can contain exactly two items")
+
+        try:
+            lat = labels[axis.latitude]
+            lon = labels[axis.longitude]
+        except KeyError as err:
+            raise ValueError(
+                "'labels' must contain both latitude and longitude"
+            ) from err
+
+        # idx = _get_indexer_nd(self.latitude, self.longitude, lat, lon)[0]
+        lat_, lon_ = self.latitude, self.longitude
+        idx = get_indexer(
+            [lat_.magnitude, lon_.magnitude],
+            [get_magnitude(lat, lat_.units), get_magnitude(lon, lon_.units)],
+            combine_result=True,
+            method=method,
+            tolerance=np.inf if tolerance is None else tolerance,
+            return_all=False
+        )
+
+        print(idx)
+
+        return xr.core.indexing.IndexSelResult({self.dims[0]: idx[0]})
+
+
+def _get_array_like_magnitude(
     data: npt.ArrayLike | da.Array | pint.Quantity, units: pint.Unit
 ) -> npt.ArrayLike | da.Array:
     if isinstance(data, pint.Quantity):
@@ -70,75 +154,22 @@ def _get_magnitude(
     return data
 
 
-def _get_indexer(
-    quantity: pint.Quantity,
-    label: slice | npt.ArrayLike | pint.Quantity,
-    method: str | None = 'nearest',
-    tolerance: int | float | None = None,
-) -> npt.NDArray[np.intp] | tuple[npt.NDArray[np.intp], ...]:
-    data, units = quantity.magnitude, quantity.units
-    dtype = data.dtype
+def _get_slice_magnitude(data: slice, units: pint.Unit) -> slice:
+    if data.step is not None:
+        raise ValueError("'data' must have the step 'None'")
+    start = _get_array_like_magnitude(data.start, units)
+    stop = _get_array_like_magnitude(data.stop, units)
+    return slice(start, stop)
 
-    match label:
+
+def get_magnitude(
+    data: slice | npt.ArrayLike | da.Array | pint.Quantity, units: pint.Unit
+) -> slice | npt.ArrayLike | da.Array:
+    match data:
         case slice():
-            start = _get_magnitude(label.start, units)
-            stop = _get_magnitude(label.stop, units)
-            if label.step is not None:
-                raise ValueError("'label' must have step 'None'")
-            lb_, ub_ = sorted([start, stop])
-            # lb_, ub_ = (start, stop) if start < stop else (stop, start)
-            lb_arr = np.asarray(lb_, dtype=dtype)
-            ub_arr = np.asarray(ub_, dtype=dtype)
-            return np.nonzero((data >= lb_arr) & (data <= ub_arr))
+            return _get_slice_magnitude(data, units)
         case _:
-            arr_lib = da if isinstance(data, da.Array) else np
-            n_dims, shape = data.ndim, data.shape
-            data_ = data[np.newaxis, ...]
-            label_vals = _get_magnitude(label, units)
-            vals = np.asarray(label_vals, dtype=dtype).reshape(-1)
-            vals_ = vals[(np.s_[:],) + (np.newaxis,) * n_dims]
-            n_vals = vals.size
-
-            if dtype.kind in {'O', 'S', 'U'}:
-                method = None
-                abs_diff = (data_ != vals_).astype(np.int64)
-            else:
-                abs_diff = arr_lib.abs(data_ - vals_)
-
-            idx = tuple(
-                np.empty(shape=n_vals, dtype=np.int64) for _ in range(n_dims)
-            )
-            for i in range(n_vals):
-                raw_idx = np.unravel_index(
-                    indices=abs_diff[i].argmin(), shape=shape
-                )
-                for j, idx_item in enumerate(idx):
-                    idx_item[i] = raw_idx[j]
-
-            match method:
-                case 'nearest':
-                    if dtype.kind in {'m', 'M'}:
-                        # NOTE: Tolerance does not apply for `datetime64` and
-                        # `timedelta64`.
-                        acc_check = True
-                    else:
-                        tol = float(
-                            'inf'
-                            if tolerance is None else
-                            _get_magnitude(tolerance, units)
-                        )
-                        acc_check = arr_lib.allclose(
-                            data[idx], vals, rtol=0, atol=tol
-                        )
-                case None:
-                    acc_check = bool((data[idx] == vals).all())
-                case _:
-                    raise ValueError(f"'method' cannot have be {method}")
-
-            if not acc_check:
-                raise ValueError("'values' contain items that cannot be found")
-
-            return idx
+            return _get_array_like_magnitude(data, units)
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +207,7 @@ class TwoDimIndex(xr.core.indexes.Index):
         pass
 
     def sel(self, labels: dict[Any, Any]) -> xr.core.indexing.IndexSelResult:
+        # TODO: Consider using `_get_indexer_nd` here.
         dims = self.dims
         vars_ = self.variables
         vars_iter = iter(vars_)
