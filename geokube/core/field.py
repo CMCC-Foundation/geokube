@@ -2,6 +2,7 @@ from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from numbers import Number
 from typing import Any, Self
+from warnings import warn
 
 import dask.array as da
 import numpy as np
@@ -10,6 +11,8 @@ import pint
 import xarray as xr
 
 from . import axis, domain as domain_, indexes
+from .indexers import get_indexer
+from .quantity import get_magnitude
 
 
 class PointsField:
@@ -136,16 +139,16 @@ class PointsField:
         east: Number | None = None,
         bottom: Number | None = None,
         top: Number | None = None
-    ) -> Self | PointsField:
+    ) -> Self:
         h_idx = {
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        new_data = self.__data.sel(h_idx, method='nearest', tolerance=np.inf)
+        new_data = self.__data.sel(h_idx)
         if not (bottom is None and top is None):
             v_idx = {axis.vertical: slice(bottom, top)}
             new_data = self._new_field(new_data)._data
-            new_data = new_data.sel(v_idx, method='nearest', tolerance=np.inf)
+            new_data = new_data.sel(v_idx)
         return self._new_field(new_data)
 
     def nearest_horizontal(
@@ -218,11 +221,14 @@ class ProfileField:
                     "'data' does not contain the same number of profiles as "
                     "the coordinates do"
                 )
-            all_sizes, all_units = [], set()
+            all_sizes, all_units, all_data = [], set(), []
             for data_item in data:
                 all_sizes.append(len(data_item))
                 if isinstance(data_item, pint.Quantity):
                     all_units.add(data_item.units)
+                    all_data.append(data_item.magnitude)
+                else:
+                    all_data.append(data_item)
             if max(all_sizes) > n_lev:
                 raise ValueError(
                     "'data' contains more levels than the coordinates do"
@@ -236,7 +242,7 @@ class ProfileField:
                     # TODO: Consider supporting unit conversion in such cases.
                     raise ValueError("'data' has items with different units")
             data_vals = np.empty(shape=data_shape, dtype=np.float32)
-            for i, (stop_idx, vals) in enumerate(zip(all_sizes, data)):
+            for i, (stop_idx, vals) in enumerate(zip(all_sizes, all_data)):
                 if stop_idx == n_lev:
                     data_vals[i, :] = vals
                 else:
@@ -273,12 +279,17 @@ class ProfileField:
             data_vars={self.__name: (('_profiles', '_levels'), data_)},
             coords=domain._coords
         )
-        # TODO: Consider adding the index for vertical.
         coord_system = domain.coord_system
         spat_axes = set(coord_system.spatial.axes)
         for axis_ in coord_system.axes:
             if axis_ not in spat_axes:
                 dset = dset.set_xindex(axis_, indexes.OneDimIndex)
+        dset = dset.set_xindex(
+            axis.vertical,
+            indexes.TwoDimVertProfileIndex,
+            data=dset[self.__name],
+            name=self.__name
+        )
         dset = dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
@@ -348,9 +359,32 @@ class ProfileField:
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        new_data = self.__data.sel(h_idx, method='nearest', tolerance=np.inf)
+        new_data = self.__data.sel(h_idx)
         if not (bottom is None and top is None):
-            raise NotImplementedError()
+            # TODO: Try to move this functionality to
+            # `indexes.TwoDimHorPointsIndex.sel`.
+            warn(
+                "'bounding_box' loads in memory and makes a copy of the data "
+                "and vertical coordinate when 'bottom' or 'top' is not 'None'"
+            )
+            v_slice = slice(bottom, top)
+            v_idx = {axis.vertical: v_slice}
+            new_data = self._new_field(new_data)._data
+            new_data = new_data.sel(v_idx)
+            vert = new_data[axis.vertical]
+            vert_dims = vert.dims
+            vert_data = vert.data
+            vert_mag, vert_units = vert_data.magnitude, vert_data.units
+            data = new_data[self.__name].data
+            mask = get_indexer(
+                [vert_mag], [get_magnitude(v_slice, vert_units)]
+            )[0]
+            masked_vert = np.where(mask, vert_mag, np.nan)
+            vert_ = pint.Quantity(masked_vert, vert_units)
+            new_data[axis.vertical] = xr.Variable(dims=vert_dims, data=vert_)
+            masked_data = np.where(mask, data.magnitude, np.nan)
+            data_ = pint.Quantity(masked_data, data.units)
+            new_data[self.__name] = xr.Variable(dims=vert_dims, data=data_)
         return self._new_field(new_data)
 
     def nearest_horizontal(
@@ -365,10 +399,42 @@ class ProfileField:
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        raise NotImplementedError()
-        idx = {axis.vertical: elevation}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
+        # TODO: Try to move this functionality to
+        # `indexes.TwoDimHorPointsIndex.sel`.
+        dset = self.__data
+        data_qty = dset[self.__name].data
+        data_mag = data_qty.magnitude
+        vert = dset[axis.vertical]
+        vert_qty = vert.data
+        vert_mag, vert_units = vert_qty.magnitude, vert_qty.units
+        dims = vert.dims
+        profile_idx = dims.index('_profiles')
+        n_profiles = vert_mag.shape[profile_idx]
+        kwa = {
+            'y_data': [get_magnitude(elevation, vert_units)],
+            'return_all': False,
+            'method': 'nearest',
+            'tolerance': np.inf
+        }
+        order = slice(None, None, -1 if profile_idx else 1)
+        shape = (n_profiles, len(elevation))[order]
+        new_data_mag = np.empty(shape=shape, dtype=data_mag.dtype)
+        new_vert_mag = np.empty(shape=shape, dtype=vert_mag.dtype)
+        # TODO: Try to implement this in a more efficient way.
+        for p_idx in range(n_profiles):
+            all_l_idx = (p_idx, slice(None))[order]
+            l_idx = get_indexer([vert_mag[all_l_idx]], **kwa)
+            p_l_idx = (p_idx, l_idx)[order]
+            new_data_mag[all_l_idx] = data_mag[p_l_idx]
+            new_vert_mag[all_l_idx] = vert_mag[p_l_idx]
+        domain = self.__domain
+        new_coords = self.__domain.coordinates().copy()
+        new_coords[axis.vertical] = pint.Quantity(new_vert_mag, vert_units)
+        return type(self)(
+            name=self.__name,
+            domain=type(domain)(new_coords, domain.coord_system),
+            data=pint.Quantity(new_data_mag, data_qty.units)
+        )
 
     # Temporal operations -----------------------------------------------------
 
