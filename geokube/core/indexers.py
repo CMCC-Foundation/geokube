@@ -192,7 +192,6 @@ def get_array_indexer(
             method = Accuracy.EXACT
     else:
         diffs = [x_arr - y_arr for x_arr, y_arr in zip(x_data_, y_data_)]
-        print('diffs:', diffs)
         if diffs[0].dtype.kind == 'm':
             if metric is None:
                 metric = Metric.CITY_BLOCK
@@ -216,7 +215,6 @@ def get_array_indexer(
             tot_diff = sum(np.abs(diff) for diff in diffs)
         case Metric.EUCLIDEAN:
             tot_diff = np.sqrt(sum(diff * diff for diff in diffs))
-            print('tot_diff', tot_diff)
         case _:
             raise ValueError(f"'metric' with the name {metric} is not allowed")
     if tolerance is None:
@@ -228,7 +226,6 @@ def get_array_indexer(
             dtype=tot_diff.dtype
         )
         allow_diff = tot_diff <= tol
-        print('allow_diff', allow_diff)
 
     # Calculating indices. ----------------------------------------------------
     # TODO: Modify the rest of the function, so that it supports
