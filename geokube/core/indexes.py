@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Hashable, Mapping, Self
 
-import dask.array as da
 import numpy as np
 import numpy.typing as npt
 import pint
@@ -9,9 +8,11 @@ import xarray as xr
 
 from . import axis
 from .indexers import get_indexer
+from .quantity import get_magnitude
 
 
 # TODO: Consider making this module and `TwoDimIndex` internal.
+# TODO: Consider removing redundant checks in `.from_variables`.
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,8 +67,6 @@ class OneDimIndex(xr.core.indexes.Index):
             return_all=False
         )
 
-        print(idx)
-
         return xr.core.indexing.IndexSelResult({self.dims[0]: idx[0]})
 
 
@@ -116,7 +115,6 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
         method: str | None = None,
         tolerance: npt.ArrayLike | None = None
     ) -> xr.core.indexing.IndexSelResult:
-        # TODO: Try this approach with 2-D and N-D data.
         if len(labels) != 2:
             raise ValueError("'labels' can contain exactly two items")
 
@@ -139,37 +137,147 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
             return_all=False
         )
 
-        print(idx)
-
         return xr.core.indexing.IndexSelResult({self.dims[0]: idx[0]})
 
 
-def _get_array_like_magnitude(
-    data: npt.ArrayLike | da.Array | pint.Quantity, units: pint.Unit
-) -> npt.ArrayLike | da.Array:
-    if isinstance(data, pint.Quantity):
-        if data.units != units:
-            data = data.to(units)
-        return data.magnitude
-    return data
+@dataclass(frozen=True, slots=True)
+class TwoDimVertProfileIndex(xr.core.indexes.Index):
+    vertical: pint.Quantity
+    data: pint.Quantity
+    name: str
+    dims: tuple[Hashable, Hashable]
 
+    @classmethod
+    def from_variables(
+        cls,
+        variables: Mapping[Any, xr.Variable],
+        *,
+        options: Mapping[str, Any]
+    ) -> Self:
+        if len(variables) != 1:
+            raise ValueError("'variables' can contain exactly one item")
 
-def _get_slice_magnitude(data: slice, units: pint.Unit) -> slice:
-    if data.step is not None:
-        raise ValueError("'data' must have the step 'None'")
-    start = _get_array_like_magnitude(data.start, units)
-    stop = _get_array_like_magnitude(data.stop, units)
-    return slice(start, stop)
+        try:
+            vert = variables[axis.vertical]
+        except KeyError as err:
+            raise ValueError(
+                "'variables' must contain the vertical coordinate"
+            ) from err
 
+        try:
+            opts = dict(options)
+            data = opts.pop('data')
+            name = str(opts.pop('name'))
+        except KeyError as err:
+            raise ValueError(
+                "'options' must contain the data and name of the field"
+            ) from err
 
-def get_magnitude(
-    data: slice | npt.ArrayLike | da.Array | pint.Quantity, units: pint.Unit
-) -> slice | npt.ArrayLike | da.Array:
-    match data:
-        case slice():
-            return _get_slice_magnitude(data, units)
-        case _:
-            return _get_array_like_magnitude(data, units)
+        if opts:
+            raise ValueError(
+                "'options' cannot contain anything but the data and name of "
+                "the field"
+            )
+
+        vert_data = vert.data
+        data_data = data.data
+        if not (
+            isinstance(vert_data, pint.Quantity)
+            and isinstance(data_data, pint.Quantity)
+        ):
+            raise TypeError(
+                "'variables' and 'options' must contain data of type "
+                "'Quantity'"
+            )
+
+        dims = vert.dims
+        if data.dims != dims:
+            raise ValueError(
+                "'variables' and 'options' must have data with the same "
+                "dimensions"
+            )
+        if set(dims) != {'_profiles', '_levels'}:
+            raise ValueError(
+                "'variables' and 'options' must contain data with the "
+                "dimensions '_profiles' and '_levels'"
+            )
+
+        return cls(vertical=vert_data, data=data_data, name=name, dims=dims)
+
+    def sel(
+        self,
+        labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
+        method: str | None = None,
+        tolerance: npt.ArrayLike | None = None
+    ) -> xr.core.indexing.IndexSelResult:
+        if len(labels) != 1:
+            raise ValueError("'labels' can contain exactly one item")
+
+        try:
+            vert_labels = labels[axis.vertical]
+        except KeyError as err:
+            raise ValueError(
+                "'labels' must contain the vertical coordinate"
+            ) from err
+
+        vert = self.vertical
+        vert_mag, vert_units = vert.magnitude, vert.units
+        data = self.data
+        dims = self.dims
+
+        match vert_labels:
+            case slice():
+                mask_: list[npt.NDArray[np.bool_]] = get_indexer(
+                    [vert_mag], [get_magnitude(vert_labels, vert_units)]
+                )
+                mask: npt.NDArray[np.bool_] = mask_[0]
+                # Finding the index slice that removes redundant columns from
+                # the begining and the end.
+                keep_cols_mask = mask.any(axis=0)
+                keep_cols_idx = keep_cols_mask.nonzero()[0]
+                # keep_cols_slice = slice(
+                #     keep_cols_idx[0], keep_cols_idx[-1] + 1
+                # )
+                keep_cols_slice = slice(
+                    keep_cols_idx.min(), keep_cols_idx.max() + 1
+                )
+                # Finding the index slice that removes redundant rows from the
+                # begining and the end.
+                keep_rows_mask = mask.any(axis=1)
+                keep_rows_idx = np.nonzero(keep_rows_mask)[0]
+                # keep_rows_slice = slice(
+                #     keep_rows_idx[0], keep_rows_idx[-1] + 1
+                # )
+                keep_rows_slice = slice(
+                    keep_rows_idx.min(), keep_rows_idx.max() + 1
+                )
+                idx = (keep_rows_slice, keep_cols_slice)
+
+                return xr.core.indexing.IndexSelResult(
+                    dim_indexers=dict(zip(self.dims, idx))
+                )
+
+                # NOTE: It seems that this approach is not working.
+                # new_mask = mask[idx]
+                # new_mask_ = xr.Variable(dims=dims, data=new_mask)
+                # new_vert = np.where(new_mask, vert_mag[idx], np.nan)
+                # new_vert_ = xr.Variable(
+                #     dims=dims, data=pint.Quantity(new_vert, vert_units)
+                # )
+                # new_data = np.where(new_mask, data.magnitude[idx], np.nan)
+                # new_data_ = xr.Variable(
+                #     dims=dims, data=pint.Quantity(new_data, data.units)
+                # )
+                # return xr.core.indexing.IndexSelResult(
+                #     dim_indexers=dict(zip(self.dims, idx)),
+                #     variables={
+                #         'mask': new_mask_,
+                #         axis.vertical: new_vert_,
+                #         self.name: new_data_
+                #     }
+                # )
+            case _:
+                raise NotImplementedError()
 
 
 @dataclass(frozen=True, slots=True)
