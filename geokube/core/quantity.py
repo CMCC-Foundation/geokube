@@ -4,6 +4,33 @@ import numpy.typing as npt
 import pint
 
 
+def create_quantity(
+    values: npt.ArrayLike | pint.Quantity,
+    default_units: pint.Unit | None,
+    default_dtype: np.dtype
+) -> pint.Quantity:
+    match values:
+        case pint.Quantity() if isinstance(values.magnitude, np.ndarray):
+            return values
+        case pint.Quantity():
+            return pint.Quantity(np.asarray(values.magnitude), values.units)
+        case np.ndarray():
+            # NOTE: The pattern arr * unit does not work when arr has stings.
+            return pint.Quantity(values, default_units)
+        case da.Array():
+            return pint.Quantity(values.compute(), default_units)
+        case _:
+            return pint.Quantity(
+                np.asarray(values, dtype=default_dtype), default_units
+            )
+
+
+def is_monotonic(values: pint.Quantity) -> bool:
+    mag = values.magnitude
+    mag_start, mag_stop = mag[:-1], mag[1:]
+    return bool(np.all(mag_start < mag_stop) or np.all(mag_start > mag_stop))
+
+
 def _get_array_like_magnitude(
     data: npt.ArrayLike | da.Array | pint.Quantity, units: pint.Unit
 ) -> npt.ArrayLike | da.Array:
