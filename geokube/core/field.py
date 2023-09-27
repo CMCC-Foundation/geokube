@@ -14,7 +14,8 @@ import xarray as xr
 from . import axis, indexes
 from .crs import Geodetic
 from .domain import Grid, Points, Profile
-from .indexers import get_indexer
+from .indexers import get_array_indexer, get_indexer
+from .points import to_points_dict
 from .quantity import get_magnitude
 
 
@@ -640,10 +641,65 @@ class GridField:
         self,
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        idx = {axis.latitude: latitude, axis.longitude: longitude}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
+    ) -> PointsField:  # Self:
+        # NOTE: This code works with geodetic grids and returns the Cartesian
+        # product.
+        # idx = {axis.latitude: latitude, axis.longitude: longitude}
+        # new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
+        # return self._new_field(new_data)
+
+        # NOTE: This code works with all tested grids and returns the nearest
+        # points.
+        # Preparing data, labels, units, and dimensions.
+        name = self.__name
+        coord_system = self.__domain.coord_system
+        dset = self.__data
+        lat = dset[axis.latitude]
+        lat_data = lat.data
+        lat_vals = lat_data.magnitude
+        lon = dset[axis.longitude]
+        lon_data = lon.data
+        lon_vals = lon_data.magnitude
+
+        lat_labels = get_magnitude(latitude, lat_data.units)
+        lon_labels = get_magnitude(longitude, lon_data.units)
+
+        if isinstance(coord_system.spatial.crs, Geodetic):
+            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
+            dims = ('_latitude', '_longitude')
+        else:
+            all_dims = {lat.dims, lon.dims}
+            if len(all_dims) != 1:
+                raise ValueError(
+                    "'dset' must contain latitude and longitude with the same"
+                    "dimensions for rotated geodetic and projection grids"
+                )
+            dims = all_dims.pop()
+
+        # Calculating indexers and subsetting.
+        idx = get_array_indexer(
+            [lat_vals, lon_vals],
+            [lat_labels, lon_labels],
+            method='nearest',
+            tolerance=np.inf,
+            return_all=False
+        )
+        pts_dim = ('_points',)
+        pts_idx = [(pts_dim, dim_idx) for dim_idx in idx]
+        result_idx = dict(zip(dims, pts_idx))
+        dset = dset.isel(indexers=result_idx)
+
+        # Creating the resulting points field.
+        new_coords = to_points_dict(name=name, dset=dset)
+        del new_coords['points']
+        new_data = new_coords.pop(name)
+
+        return PointsField(
+            name=name,
+            domain=Points(coords=new_coords, coord_system=coord_system),
+            data=new_data
+        )
+
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
