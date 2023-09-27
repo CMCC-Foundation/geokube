@@ -1,6 +1,5 @@
 from typing import Mapping, Sequence
 
-import dask.array as da
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -9,6 +8,7 @@ import xarray as xr
 
 from . import axis
 from .coord_system import CoordinateSystem
+from .quantity import create_quantity, is_monotonic
 
 
 class Points:
@@ -35,7 +35,7 @@ class Points:
             result_coords = {}
             n_pts = set()
             for axis_, vals in coords.items():
-                vals_ = _create_quantity(vals, units.get(axis_), axis_.dtype)
+                vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
                 if vals_.ndim != 1:
                     raise ValueError(
                         f"'coords' have axis {axis_} that does not have "
@@ -52,7 +52,7 @@ class Points:
             self.__n_pts = n_pts.pop()
             self.__coords = result_coords
         elif isinstance(coords, Sequence):
-            # NOTE: This approach currently does not allows providing units.
+            # NOTE: This approach currently does not allow providing units.
             n_dims = {len(point) for point in coords}
             if len(n_dims) != 1:
                 raise ValueError(
@@ -132,7 +132,7 @@ class Profile:
                     vert_vals[i, stop_idx:] = np.nan
             vert_ = pint.Quantity(vert_vals, units[axis.vertical])
         else:
-            vert_ = _create_quantity(
+            vert_ = create_quantity(
                 vert, units.get(axis.vertical), axis.vertical.dtype
             )
             vert_shape = vert_.shape
@@ -148,7 +148,7 @@ class Profile:
 
         # All coordinates except the vertical.
         for axis_, vals in interm_coords.items():
-            vals_ = _create_quantity(vals, units.get(axis_), axis_.dtype)
+            vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
             if vals_.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
@@ -195,22 +195,81 @@ class Profile:
         return self.__coords[coord_axis].data
 
 
-def _create_quantity(
-    values: npt.ArrayLike | pint.Quantity,
-    default_units: pint.Unit | None,
-    default_dtype: np.dtype
-) -> pint.Quantity:
-    match values:
-        case pint.Quantity() if isinstance(values.magnitude, np.ndarray):
-            return values
-        case pint.Quantity():
-            return pint.Quantity(np.asarray(values.magnitude), values.units)
-        case np.ndarray():
-            # NOTE: The pattern arr * unit does not work when arr has stings.
-            return pint.Quantity(values, default_units)
-        case da.Array():
-            return pint.Quantity(values.compute(), default_units)
-        case _:
-            return pint.Quantity(
-                np.asarray(values, dtype=default_dtype), default_units
+class Grid:
+    # TODO: Consider auxiliary coordinates other than the
+    # latitude and longitude. Especially consider how to represent them in the
+    # API.
+    # NOTE: The assumption is that the latitude and longitude as auxiliary
+    # coordinates must have the dimensions either
+    # `(axis.grid_latitude, axis.grid_longitude)` or `(axis.y, axis.x)`.
+    __slots__ = ('__coords', '__coord_system')
+
+    def __init__(
+        self,
+        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
+        coord_system: CoordinateSystem
+    ) -> None:
+        if not isinstance(coord_system, CoordinateSystem):
+            raise TypeError(
+                "'coord_system' must be an instance of 'CoordinateSystem'"
             )
+        self.__coord_system = coord_system
+
+        if not isinstance(coords, Mapping):
+            raise TypeError("'coords' must be a mapping")
+
+        hor_axes = coord_system.spatial.crs.AXES
+        hor_dim_axes, hor_aux_axes = hor_axes[:2], hor_axes[2:]
+        hor_dims = tuple(f'_{axis_}' for axis_ in hor_dim_axes)
+        dim_axes: tuple[str, ...]
+        axes = set(coord_system.axes)
+        if hor_aux_axes:
+            axes -= set(hor_aux_axes)
+        units = coord_system.units
+        result_coords: dict[axis.Axis, xr.DataArray] = {}
+        hor_aux_shapes = set()
+
+        for axis_, vals in coords.items():
+            vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
+            if axis_ in axes:
+                # Dimension coordinates.
+                if vals_.ndim != 1:
+                    raise ValueError(
+                        f"'coords' have a dimension axis {axis_} that does "
+                        "not have one-dimensional values"
+                    )
+                # if not is_monotonic(vals_):
+                #     raise ValueError(
+                #         f"'coords' have a dimension axis {axis_} that does "
+                #         "not have monotonic values"
+                #     )
+                # dim_axes = (axis_,)
+                dim_axes = (f'_{axis_}',)
+            else:
+                # Auxiliary coordinates.
+                # dim_axes = hor_dim_axes
+                dim_axes = hor_dims
+                if axis_ in hor_aux_axes:
+                    hor_aux_shapes.add(vals_.shape)
+            result_coords[axis_] = xr.DataArray(vals_, dims=dim_axes)
+        if len(hor_aux_shapes) > 1:
+            raise ValueError(
+                "'coords' have auxiliary horizontal coordinates with different"
+                "shapes"
+            )
+        self.__coords = result_coords
+
+    @property
+    def coord_system(self) -> CoordinateSystem:
+        return self.__coord_system
+
+    @property
+    def _coords(self) -> dict[axis.Axis, xr.DataArray]:
+        return self.__coords
+
+    def coordinates(
+        self, coord_axis: axis.Axis | None = None
+    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
+        if coord_axis is None:
+            return {axis: coord.data for axis, coord in self.__coords.items()}
+        return self.__coords[coord_axis].data

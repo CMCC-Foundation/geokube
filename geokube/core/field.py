@@ -7,12 +7,18 @@ from warnings import warn
 import dask.array as da
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pint
 import xarray as xr
 
-from . import axis, domain as domain_, indexes
+from . import axis, indexes
+from .crs import Geodetic
+from .domain import Grid, Points, Profile
 from .indexers import get_indexer
 from .quantity import get_magnitude
+
+
+_ARRAY_TYPES = (np.ndarray, da.Array)
 
 
 class PointsField:
@@ -25,32 +31,40 @@ class PointsField:
         '__encoding'
     )
 
-    _DOMAIN_TYPE = domain_.Points
+    _DOMAIN_TYPE = Points
 
     def __init__(
         self,
         name: str,
-        domain: domain_.Points,
+        domain: Points,
         data: npt.ArrayLike | pint.Quantity | None = None,
         anciliary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
         self.__name = str(name)
-        if not isinstance(domain, domain_.Points):
-            raise TypeError("'domain' must be an instance of 'Points'")
+        domain_type = self._DOMAIN_TYPE
+        if not isinstance(domain, domain_type):
+            raise TypeError(
+                f"'domain' must be an instance of '{domain_type.__name__}'"
+            )
         self.__anciliary = dict(anciliary) if anciliary else {}
         self.__domain = domain
         self.__properties = dict(properties) if properties else {}
         self.__encoding = dict(encoding) if encoding else {}
 
         n_pts = domain.number_of_points
-        arr_types = (np.ndarray, da.Array)
         match data:
-            case pint.Quantity() if isinstance(data.magnitude, arr_types):
-                data_ = data
+            # case pint.Quantity() if isinstance(data.magnitude, _ARRAY_TYPES):
+            #     data_ = data
+            # case pint.Quantity():
+            #     data_ = pint.Quantity(np.asarray(data.magnitude), data.units)
             case pint.Quantity():
-                data_ = pint.Quantity(np.asarray(data.magnitude), data.units)
+                data_ = (
+                    data
+                    if isinstance(data.magnitude, _ARRAY_TYPES) else
+                    pint.Quantity(np.asarray(data.magnitude), data.units)
+                )
             case np.ndarray() | da.Array():
                 # NOTE: The pattern arr * unit does not work when arr has
                 # stings.
@@ -85,7 +99,7 @@ class PointsField:
         return self.__name
 
     @property
-    def domain(self) -> domain_.Points:
+    def domain(self) -> Points:
         return self.__domain
 
     @property
@@ -178,8 +192,10 @@ class PointsField:
         new_data = self.__data.sel(idx)
         return self._new_field(new_data)
 
-    def nearest_time(self, time: date | datetime | str) -> Self:
-        idx = {axis.time: time}
+    def nearest_time(
+        self, time: date | datetime | str | npt.ArrayLike
+    ) -> Self:
+        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
         new_data = self.__data.sel(idx, method='nearest', tolerance=None)
         return self._new_field(new_data)
 
@@ -194,20 +210,23 @@ class ProfileField:
         '__encoding'
     )
 
-    _DOMAIN_TYPE = domain_.Profile
+    _DOMAIN_TYPE = Profile
 
     def __init__(
         self,
         name: str,
-        domain: domain_.Profile,
+        domain: Profile,
         data: npt.ArrayLike | pint.Quantity | None = None,
         anciliary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
         self.__name = str(name)
-        if not isinstance(domain, domain_.Profile):
-            raise TypeError("'domain' must be an instance of 'Profile'")
+        domain_type = self._DOMAIN_TYPE
+        if not isinstance(domain, domain_type):
+            raise TypeError(
+                f"'domain' must be an instance of '{domain_type.__name__}'"
+            )
         self.__anciliary = dict(anciliary) if anciliary else {}
         self.__domain = domain
         self.__properties = dict(properties) if properties else {}
@@ -250,13 +269,12 @@ class ProfileField:
                     data_vals[i, stop_idx:] = np.nan
             data_ = pint.Quantity(data_vals, unit)
         else:
-            arr_types = (np.ndarray, da.Array)
             match data:
-                case pint.Quantity() if isinstance(data.magnitude, arr_types):
-                    data_ = data
                 case pint.Quantity():
-                    data_ = pint.Quantity(
-                        np.asarray(data.magnitude), data.units
+                    data_ = (
+                        data
+                        if isinstance(data.magnitude, _ARRAY_TYPES) else
+                        pint.Quantity(np.asarray(data.magnitude), data.units)
                     )
                 case np.ndarray() | da.Array():
                     data_ = pint.Quantity(data)
@@ -300,7 +318,7 @@ class ProfileField:
         return self.__name
 
     @property
-    def domain(self) -> domain_.Profile:
+    def domain(self) -> Profile:
         return self.__domain
 
     @property
@@ -447,7 +465,188 @@ class ProfileField:
         new_data = self.__data.sel(idx)
         return self._new_field(new_data)
 
-    def nearest_time(self, time: date | datetime | str) -> Self:
-        idx = {axis.time: time}
+    def nearest_time(
+        self, time: date | datetime | str | npt.ArrayLike
+    ) -> Self:
+        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
+        new_data = self.__data.sel(idx, method='nearest', tolerance=None)
+        return self._new_field(new_data)
+
+
+class GridField:
+    # NOTE: The default order of axes is assumed.
+
+    __slots__ = (
+        '__name',
+        '__data',
+        '__anciliary',
+        '__domain',
+        '__properties',
+        '__encoding'
+    )
+
+    _DOMAIN_TYPE = Grid
+
+    def __init__(
+        self,
+        name: str,
+        domain: Grid,
+        data: npt.ArrayLike | pint.Quantity | None = None,
+        anciliary: Mapping | None = None,
+        properties: Mapping | None = None,
+        encoding: Mapping | None = None
+    ) -> None:
+        self.__name = str(name)
+        domain_type = self._DOMAIN_TYPE
+        if not isinstance(domain, domain_type):
+            raise TypeError(
+                f"'domain' must be an instance of '{domain_type.__name__}'"
+            )
+        self.__anciliary = dict(anciliary) if anciliary else {}
+        self.__domain = domain
+        self.__properties = dict(properties) if properties else {}
+        self.__encoding = dict(encoding) if encoding else {}
+
+        match data:
+            # case pint.Quantity() if isinstance(data.magnitude, _ARRAY_TYPES):
+            #     data_ = data
+            # case pint.Quantity():
+            #     data_ = pint.Quantity(np.asarray(data.magnitude), data.units)
+            case pint.Quantity():
+                data_ = (
+                    data
+                    if isinstance(data.magnitude, _ARRAY_TYPES) else
+                    pint.Quantity(np.asarray(data.magnitude), data.units)
+                )
+            case np.ndarray() | da.Array():
+                # NOTE: The pattern arr * unit does not work when arr has
+                # stings.
+                data_ = pint.Quantity(data)
+            case None:
+                data_ = None
+            case _:
+                data_ = pint.Quantity(np.asarray(data))
+
+        coord_system = domain.coord_system
+        crs = coord_system.spatial.crs
+        axes = coord_system.axes
+        dim_axes, aux_hor_axes = (
+            (axes, ()) if isinstance(crs, Geodetic) else (axes[:-2], axes[-2:])
+        )
+
+        dset = xr.Dataset(
+            data_vars={
+                self.__name: (tuple(f'_{axis}' for axis in dim_axes), data_)
+            },
+            coords=domain._coords
+        )
+        for axis_ in dim_axes:
+            dset = dset.set_xindex(axis_, indexes.OneDimPandasIndex)
+        if aux_hor_axes == (axis.latitude, axis.longitude):
+            dset = dset.set_xindex(aux_hor_axes, indexes.TwoDimHorGridIndex)
+        self.__data = dset
+
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @property
+    def domain(self) -> Grid:
+        return self.__domain
+
+    @property
+    def anciliary(self) -> dict:
+        return self.__anciliary
+
+    @property
+    def properties(self) -> dict:
+        return self.__properties
+
+    @property
+    def encoding(self) -> dict:
+        return self.__encoding
+
+    @property
+    def _data(self) -> xr.Dataset:
+        return self.__data
+
+    @property
+    def data(self) -> pint.Quantity:
+        return self.__data[self.__name].data
+
+    # TODO: Consider making this a method of a future base class.
+    # TODO: Replace `Any` with an appropriate `TypeVar` instance that
+    # represents all eligible types.
+    def _new_field(
+        self, new_data: xr.Dataset, result_type: type[Any] | None = None
+    ) -> Any:
+        field_type = type(self) if result_type is None else result_type
+        domain_type = field_type._DOMAIN_TYPE
+        name = self.__name
+        return field_type(
+            name=name,
+            domain=domain_type(
+                coords={
+                    axis_: coord.data
+                    for axis_, coord in new_data.coords.items()
+                },
+                coord_system=self.__domain.coord_system
+            ),
+            data=new_data[name].data
+        )
+
+    # Spatial operations ------------------------------------------------------
+
+    def bounding_box(
+        self,
+        south: Number | None = None,
+        north: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
+        bottom: Number | None = None,
+        top: Number | None = None
+    ) -> Self:
+        h_idx = {
+            axis.latitude: slice(south, north),
+            axis.longitude: slice(west, east)
+        }
+        new_data = self.__data.sel(h_idx)
+        if not (bottom is None and top is None):
+            v_idx = {axis.vertical: slice(bottom, top)}
+            new_data = self._new_field(new_data)._data
+            new_data = new_data.sel(v_idx)
+        return self._new_field(new_data)
+
+    def nearest_horizontal(
+        self,
+        latitude: npt.ArrayLike | pint.Quantity,
+        longitude: npt.ArrayLike | pint.Quantity
+    ) -> Self:
+        idx = {axis.latitude: latitude, axis.longitude: longitude}
+        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
+        return self._new_field(new_data)
+
+    def nearest_vertical(
+        self, elevation: npt.ArrayLike | pint.Quantity
+    ) -> Self:
+        idx = {axis.vertical: elevation}
+        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
+        return self._new_field(new_data)
+
+    # Temporal operations -----------------------------------------------------
+
+    def time_range(
+        self,
+        start: date | datetime | str | None = None,
+        end: date | datetime | str | None = None
+    ) -> Self:
+        idx = {axis.time: slice(start, end)}
+        new_data = self.__data.sel(idx)
+        return self._new_field(new_data)
+
+    def nearest_time(
+        self, time: date | datetime | str | npt.ArrayLike
+    ) -> Self:
+        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
         new_data = self.__data.sel(idx, method='nearest', tolerance=None)
         return self._new_field(new_data)

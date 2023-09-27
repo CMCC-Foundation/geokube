@@ -7,7 +7,7 @@ import pint
 import xarray as xr
 
 from . import axis
-from .indexers import get_indexer
+from .indexers import get_array_indexer, get_indexer, get_slice_indexer
 from .quantity import get_magnitude
 
 
@@ -281,11 +281,12 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
 
 
 @dataclass(frozen=True, slots=True)
-class TwoDimIndex(xr.core.indexes.Index):
-    variables: dict[str, xr.Variable]
-    dims: tuple[Hashable, ...]
+class OneDimPandasIndex(xr.core.indexes.Index):
+    # NOTE: This is a wrapper around `xarray.core.indexes.PandasIndex` that
+    # enables preserving the units.
 
-    # TODO: Consider using `Axis` instead of `str` for dims.
+    index: xr.core.indexes.PandasIndex
+    units: pint.Unit
 
     @classmethod
     def from_variables(
@@ -294,85 +295,124 @@ class TwoDimIndex(xr.core.indexes.Index):
         *,
         options: Mapping[str, Any],
     ) -> Self:
-        variables_ = dict(variables)
+        if len(variables) != 1:
+            raise ValueError("'variables' can contain exactly one item")
+        coord_axis, var = next(iter(variables.items()))
+        qty = var.data
+        idx = xr.core.indexes.PandasIndex.from_variables(
+            variables={
+                coord_axis: xr.Variable(
+                    dims=var.dims,
+                    data=qty.magnitude,
+                    attrs=var.attrs,
+                    encoding=var.encoding
+                )
+            },
+            options={}
+        )
+        return cls(idx, qty.units)
 
-        if len(variables_) != 2:
-            raise ValueError("'variables' must be a mapping with two items")
+    def sel(
+        self,
+        labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
+        method=None,
+        tolerance=None
+    ) -> xr.core.indexing.IndexSelResult:
+        if len(labels) != 1:
+            raise ValueError("'labels' can contain exactly one item")
+        coord_axis, label = next(iter(labels.items()))
+        result = self.index.sel(
+            labels={coord_axis: get_magnitude(label, self.units)},
+            method=method,
+            tolerance=tolerance
+        )
+        return xr.core.indexing.IndexSelResult(result.dim_indexers)
 
-        vars_ = iter(variables.values())
-        dims = next(vars_).dims
-        if next(vars_).dims != dims:
-            raise ValueError("'variables' must have same dimensions")
+
+@dataclass(frozen=True, slots=True)
+class TwoDimHorGridIndex(xr.core.indexes.Index):
+    latitude: pint.Quantity
+    longitude: pint.Quantity
+    dims: tuple[Hashable]
+
+    @classmethod
+    def from_variables(
+        cls,
+        variables: Mapping[Any, xr.Variable],
+        *,
+        options: Mapping[str, Any]
+    ) -> Self:
+        if len(variables) != 2:
+            raise ValueError("'variables' can contain exactly two items")
+
+        try:
+            lat = variables[axis.latitude]
+            lon = variables[axis.longitude]
+        except KeyError as err:
+            raise ValueError(
+                "'variables' must contain both latitude and longitude"
+            ) from err
+
+        lat_data, lon_data = lat.data, lon.data
+        if not (
+            isinstance(lat_data, pint.Quantity)
+            and isinstance(lon_data, pint.Quantity)
+        ):
+            raise TypeError("'variables' must contain data of type 'Quantity'")
+
+        all_dims = {lat.dims, lon.dims}
+        if len(all_dims) != 1:
+            raise ValueError("'variables' must have the same dimensions")
+        dims = all_dims.pop()
         if len(dims) != 2:
-            raise ValueError("'variables' must be two-dimensional")
+            raise ValueError("'variables' must contain two-dimensional data")
 
-        return cls(variables_, dims)
+        return cls(latitude=lat_data, longitude=lon_data, dims=dims)
 
-    def isel(
-        self, indexers: Mapping[Any, int | slice | np.ndarray | xr.Variable]
-    ) -> Self | None:
-        # TODO: Consider if this method is going to be implemented.
-        pass
+    def sel(
+        self,
+        labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
+        method: str | None = None,
+        tolerance: npt.ArrayLike | None = None
+    ) -> xr.core.indexing.IndexSelResult:
+        if len(labels) != 2:
+            raise ValueError("'labels' can contain exactly two items")
 
-    def sel(self, labels: dict[Any, Any]) -> xr.core.indexing.IndexSelResult:
-        # TODO: Consider using `_get_indexer_nd` here.
-        dims = self.dims
-        vars_ = self.variables
-        vars_iter = iter(vars_)
-        x_name = next(vars_iter)
-        x_vals = vars_[x_name].to_numpy()
-        y_name = next(vars_iter)
-        y_vals = vars_[y_name].to_numpy()
+        try:
+            lat = labels[axis.latitude]
+            lon = labels[axis.longitude]
+        except KeyError as err:
+            raise ValueError(
+                "'labels' must contain both latitude and longitude"
+            ) from err
 
-        indices = {}
+        lat_, lon_ = self.latitude, self.longitude
+        lat_label = get_magnitude(lat, lat_.units)
+        lon_label = get_magnitude(lon, lon_.units)
 
-        for name, var in vars_.items():
-            if (idx := labels.get(name)) is not None:
-                if isinstance(idx, slice):
-                    # TODO: Consider the case when `idx` has `None` for `start`
-                    # or `stop`.
-                    slices = True
-                    lower_bound, upper_bound = sorted([idx.start, idx.stop])
-                    vals = var.to_numpy()
-                    indices[name] = (
-                        (vals >= lower_bound) & (vals <= upper_bound)
-                    )
-                else:
-                    indices[name] = np.array(idx, ndmin=1)
-                    slices = False
+        match lat, lon:
+            case (slice(), slice()):
+                idx = get_slice_indexer(
+                    [lat_.magnitude, lon_.magnitude],
+                    [lat_label, lon_label],
+                    combine_result=True,
+                    return_type='int'
+                )
+                result = {
+                    dim: slice(incl_idx.min(), incl_idx.max() + 1)
+                    for dim, incl_idx in zip(self.dims, idx)
+                }
+            case _:
+                mgrid = np.meshgrid(lat_label, lon_label, indexing='ij')
+                labels_ = np.dstack(mgrid).reshape(-1, 2)
+                idx = get_array_indexer(
+                    [lat_.magnitude, lon_.magnitude],
+                    [labels_[:, 0], labels_[:, 1]],
+                    method=method,
+                    tolerance=np.inf if tolerance is None else tolerance,
+                    return_all=False,
+                    return_type='int'
+                )
+                result = dict(zip(self.dims, idx))
 
-        x_idx = indices[x_name]
-        y_idx = indices[y_name]
-        if slices:
-            nonzero_idx = np.nonzero(x_idx & y_idx)
-            sel_idx = {
-                dim: slice(incl_idx.min(), incl_idx.max() + 1)
-                for dim, incl_idx in zip(self.dims, nonzero_idx)
-            }
-        else:
-            # Calculating the squares of the Euclidean distance.
-            x_data = x_vals[np.newaxis, :, :]
-            y_data = y_vals[np.newaxis, :, :]
-            x_pts = x_idx[:, np.newaxis, np.newaxis]
-            y_pts = y_idx[:, np.newaxis, np.newaxis]
-            # x_pts = x_idx.reshape(-1, 1, 1)
-            # y_pts = y_idx.reshape(-1, 1, 1)
-            x_diff = x_data - x_pts
-            y_diff = y_data - y_pts
-            sum_sq_diff = x_diff * x_diff + y_diff * y_diff
-
-            # Selecting the indices that correspond to the squares of the
-            # Euclidean distance.
-            # TODO: Improve vectorization.
-            # TODO: Consider replacing `numpy.unravel_index` with
-            # `numpy.argwhere`, using the constructs like:
-            # `np.argwhere(diff_sq[i] == diff_sq[i].min())[0]`.
-            n_dims, *shape = sum_sq_diff.shape
-            idx_nd = tuple(
-                np.unravel_index(indices=sum_sq_diff[i].argmin(), shape=shape)
-                for i in range(n_dims)
-            )
-            idx_ = np.array(idx_nd, dtype=np.int64)
-            sel_idx = {dims[0]: idx_[:, 0], dims[1]: idx_[:, 1]}
-
-        return xr.core.indexing.IndexSelResult(sel_idx)
+        return xr.core.indexing.IndexSelResult(result)
