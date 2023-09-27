@@ -479,6 +479,7 @@ class GridField:
     __slots__ = (
         '__name',
         '__data',
+        '__dim_axes',
         '__anciliary',
         '__domain',
         '__properties',
@@ -492,6 +493,7 @@ class GridField:
         name: str,
         domain: Grid,
         data: npt.ArrayLike | pint.Quantity | None = None,
+        dim_axes: Sequence[axis.Axis] | None = None,
         anciliary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
@@ -506,6 +508,29 @@ class GridField:
         self.__domain = domain
         self.__properties = dict(properties) if properties else {}
         self.__encoding = dict(encoding) if encoding else {}
+
+        coord_system = domain.coord_system
+        coords = domain._coords
+        crs = coord_system.spatial.crs
+        dim_axes_: tuple[axis.Axis, ...]
+        aux_axes: tuple[axis.Axis, ...]
+        if dim_axes is None:
+            if isinstance(crs, Geodetic):
+                dim_axes_, aux_axes = coord_system.axes, ()
+            else:
+                default_axes = coord_system.axes
+                aux_hor_axes = {axis.latitude, axis.longitude}
+                dim_axes_tmp, aux_axes_tmp = [], []
+                for axis_ in default_axes:
+                    if axis_ in aux_hor_axes:
+                        aux_axes_tmp.append(axis_)
+                    else:
+                        dim_axes_tmp.append(axis_)
+                dim_axes_, aux_axes = tuple(dim_axes_tmp), tuple(aux_axes_tmp)
+        else:
+            dim_axes_ = tuple(dim_axes)
+            aux_axes = tuple(axis for axis in coords if axis not in dim_axes)
+        self.__dim_axes = dim_axes_
 
         match data:
             # case pint.Quantity() if isinstance(data.magnitude, _ARRAY_TYPES):
@@ -527,23 +552,16 @@ class GridField:
             case _:
                 data_ = pint.Quantity(np.asarray(data))
 
-        coord_system = domain.coord_system
-        crs = coord_system.spatial.crs
-        axes = coord_system.axes
-        dim_axes, aux_hor_axes = (
-            (axes, ()) if isinstance(crs, Geodetic) else (axes[:-2], axes[-2:])
-        )
-
         dset = xr.Dataset(
             data_vars={
-                self.__name: (tuple(f'_{axis}' for axis in dim_axes), data_)
+                self.__name: (tuple(f'_{axis}' for axis in dim_axes_), data_)
             },
             coords=domain._coords
         )
-        for axis_ in dim_axes:
+        for axis_ in dim_axes_:
             dset = dset.set_xindex(axis_, indexes.OneDimPandasIndex)
-        if aux_hor_axes == (axis.latitude, axis.longitude):
-            dset = dset.set_xindex(aux_hor_axes, indexes.TwoDimHorGridIndex)
+        if {axis.latitude, axis.longitude} <= set(aux_axes):
+            dset = dset.set_xindex(aux_axes, indexes.TwoDimHorGridIndex)
         self.__data = dset
 
     @property
@@ -592,7 +610,8 @@ class GridField:
                 },
                 coord_system=self.__domain.coord_system
             ),
-            data=new_data[name].data
+            data=new_data[name].data,
+            dim_axes=self.__dim_axes
         )
 
     # Spatial operations ------------------------------------------------------
