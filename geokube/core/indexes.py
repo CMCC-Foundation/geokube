@@ -7,7 +7,7 @@ import pint
 import xarray as xr
 
 from . import axis
-from .indexers import get_array_indexer, get_indexer, get_slice_indexer
+from .indexers import get_indexer, get_slice_indexer
 from .quantity import get_magnitude
 
 
@@ -403,16 +403,6 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
                     for dim, incl_idx in zip(self.dims, idx)
                 }
             case _:
-                mgrid = np.meshgrid(lat_label, lon_label, indexing='ij')
-                labels_ = np.dstack(mgrid).reshape(-1, 2)
-                idx = get_array_indexer(
-                    [lat_.magnitude, lon_.magnitude],
-                    [labels_[:, 0], labels_[:, 1]],
-                    method=method,
-                    tolerance=np.inf if tolerance is None else tolerance,
-                    return_all=False,
-                    return_type='int'
-                )
-                result = dict(zip(self.dims, idx))
+                raise NotImplementedError()
 
         return xr.core.indexing.IndexSelResult(result)
