@@ -10,10 +10,16 @@ def create_quantity(
     default_dtype: np.dtype
 ) -> pint.Quantity:
     match values:
-        case pint.Quantity() if isinstance(values.magnitude, np.ndarray):
-            return values
+        # case pint.Quantity() if isinstance(values.magnitude, np.ndarray):
+        #     return values
+        # case pint.Quantity():
+        #     return pint.Quantity(np.asarray(values.magnitude), values.units)
         case pint.Quantity():
-            return pint.Quantity(np.asarray(values.magnitude), values.units)
+            return (
+                values
+                if isinstance(values.magnitude, np.ndarray) else
+                pint.Quantity(np.asarray(values.magnitude), values.units)
+            )
         case np.ndarray():
             # NOTE: The pattern arr * unit does not work when arr has stings.
             return pint.Quantity(values, default_units)
