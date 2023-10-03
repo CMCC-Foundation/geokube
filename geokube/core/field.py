@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import abc
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from numbers import Number
@@ -13,7 +16,7 @@ import xarray as xr
 
 from . import axis, indexes
 from .crs import Geodetic
-from .domain import Grid, Points, Profile
+from .domain import Domain, Grid, Points, Profile
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
@@ -22,7 +25,9 @@ from .quantity import get_magnitude
 _ARRAY_TYPES = (np.ndarray, da.Array)
 
 
-class PointsField:
+class Field(abc.ABC):
+    _DOMAIN_TYPE: type[Domain]
+
     __slots__ = (
         '__name',
         '__data',
@@ -32,13 +37,11 @@ class PointsField:
         '__encoding'
     )
 
-    _DOMAIN_TYPE = Points
-
     def __init__(
         self,
         name: str,
-        domain: Points,
-        data: npt.ArrayLike | pint.Quantity | None = None,
+        domain: Domain,
+        data: xr.Dataset,
         anciliary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
@@ -49,11 +52,157 @@ class PointsField:
             raise TypeError(
                 f"'domain' must be an instance of '{domain_type.__name__}'"
             )
-        self.__anciliary = dict(anciliary) if anciliary else {}
         self.__domain = domain
+        if not isinstance(data, xr.Dataset):
+            raise TypeError("'data' must be an instance of 'xarray.Dataset'")
+        self.__data = data
+        self.__anciliary = dict(anciliary) if anciliary else {}
         self.__properties = dict(properties) if properties else {}
         self.__encoding = dict(encoding) if encoding else {}
 
+    @property
+    def name(self) -> str:
+        return self.__name
+
+    @property
+    def domain(self) -> Domain:
+        return self.__domain
+
+    @property
+    def _data(self) -> xr.Dataset:
+        return self.__data
+
+    @property
+    def data(self) -> pint.Quantity:
+        return self.__data[self.__name].data
+
+    @property
+    def anciliary(self) -> dict:
+        return self.__anciliary
+
+    @property
+    def properties(self) -> dict:
+        return self.__properties
+
+    @property
+    def encoding(self) -> dict:
+        return self.__encoding
+
+    def _new_field(
+        self, new_data: xr.Dataset, result_type: type[Any] | None = None
+    ) -> Self:
+        field_type = type(self) if result_type is None else result_type
+        domain_type = field_type._DOMAIN_TYPE
+        name = self.__name
+        return field_type(
+            name=name,
+            domain=domain_type(
+                coords={
+                    axis_: coord.data
+                    for axis_, coord in new_data.coords.items()
+                },
+                coord_system=self.__domain.coord_system
+            ),
+            data=new_data[name].data
+        )
+
+    # Spatial operations ------------------------------------------------------
+
+    def _bounding_box(
+        self,
+        south: Number | None = None,
+        north: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
+        bottom: Number | None = None,
+        top: Number | None = None
+    ) -> Self:
+        h_idx = {
+            axis.latitude: slice(south, north),
+            axis.longitude: slice(west, east)
+        }
+        new_data = self.__data.sel(h_idx)
+        if not (bottom is None and top is None):
+            v_idx = {axis.vertical: slice(bottom, top)}
+            new_data = self._new_field(new_data)._data
+            new_data = new_data.sel(v_idx)
+        return self._new_field(new_data)
+
+    def _nearest_horizontal(
+        self,
+        latitude: npt.ArrayLike | pint.Quantity,
+        longitude: npt.ArrayLike | pint.Quantity
+    ) -> Field:
+        idx = {axis.latitude: latitude, axis.longitude: longitude}
+        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
+        return self._new_field(new_data)
+
+    def _nearest_vertical(
+        self, elevation: npt.ArrayLike | pint.Quantity
+    ) -> Self:
+        idx = {axis.vertical: elevation}
+        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
+        return self._new_field(new_data)
+
+    @abc.abstractmethod
+    def bounding_box(
+        self,
+        south: Number | None = None,
+        north: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
+        bottom: Number | None = None,
+        top: Number | None = None
+    ) -> Self:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def nearest_horizontal(
+        self,
+        latitude: npt.ArrayLike | pint.Quantity,
+        longitude: npt.ArrayLike | pint.Quantity
+    ) -> Field:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def nearest_vertical(
+        self, elevation: npt.ArrayLike | pint.Quantity
+    ) -> Self:
+        raise NotImplementedError()
+
+    # Temporal operations -----------------------------------------------------
+
+    def time_range(
+        self,
+        start: date | datetime | str | None = None,
+        end: date | datetime | str | None = None
+    ) -> Self:
+        idx = {axis.time: slice(start, end)}
+        new_data = self.__data.sel(idx)
+        return self._new_field(new_data)
+
+    def nearest_time(
+        self, time: date | datetime | str | npt.ArrayLike
+    ) -> Self:
+        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
+        new_data = self.__data.sel(idx, method='nearest', tolerance=None)
+        return self._new_field(new_data)
+
+
+class PointsField(Field):
+    _DOMAIN_TYPE = Points
+
+    __slots__ = ()
+
+    def __init__(
+        self,
+        name: str,
+        domain: Points,
+        data: npt.ArrayLike | pint.Quantity | None = None,
+        anciliary: Mapping | None = None,
+        properties: Mapping | None = None,
+        encoding: Mapping | None = None
+    ) -> None:
         n_pts = domain.number_of_points
         match data:
             # case pint.Quantity() if isinstance(data.magnitude, _ARRAY_TYPES):
@@ -82,8 +231,7 @@ class PointsField:
                 "the coordinates"
             )
         dset = xr.Dataset(
-            data_vars={self.__name: (('_points',), data_)},
-            coords=domain._coords
+            data_vars={str(name): (('_points',), data_)}, coords=domain._coords
         )
         coord_system = domain.coord_system
         hor_axes = set(coord_system.spatial.crs.AXES)
@@ -93,56 +241,7 @@ class PointsField:
         dset = dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
-        self.__data = dset
-
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @property
-    def domain(self) -> Points:
-        return self.__domain
-
-    @property
-    def anciliary(self) -> dict:
-        return self.__anciliary
-
-    @property
-    def properties(self) -> dict:
-        return self.__properties
-
-    @property
-    def encoding(self) -> dict:
-        return self.__encoding
-
-    @property
-    def _data(self) -> xr.Dataset:
-        return self.__data
-
-    @property
-    def data(self) -> pint.Quantity:
-        return self.__data[self.__name].data
-
-    # TODO: Consider making this a method of a future base class.
-    # TODO: Replace `Any` with an appropriate `TypeVar` instance that
-    # represents all eligible types.
-    def _new_field(
-        self, new_data: xr.Dataset, result_type: type[Any] | None = None
-    ) -> Any:
-        field_type = type(self) if result_type is None else result_type
-        domain_type = field_type._DOMAIN_TYPE
-        name = self.__name
-        return field_type(
-            name=name,
-            domain=domain_type(
-                coords={
-                    axis_: coord.data
-                    for axis_, coord in new_data.coords.items()
-                },
-                coord_system=self.__domain.coord_system
-            ),
-            data=new_data[name].data
-        )
+        super().__init__(name, domain, dset, anciliary, properties, encoding)
 
     # Spatial operations ------------------------------------------------------
 
@@ -155,63 +254,25 @@ class PointsField:
         bottom: Number | None = None,
         top: Number | None = None
     ) -> Self:
-        h_idx = {
-            axis.latitude: slice(south, north),
-            axis.longitude: slice(west, east)
-        }
-        new_data = self.__data.sel(h_idx)
-        if not (bottom is None and top is None):
-            v_idx = {axis.vertical: slice(bottom, top)}
-            new_data = self._new_field(new_data)._data
-            new_data = new_data.sel(v_idx)
-        return self._new_field(new_data)
+        return self._bounding_box(south, north, west, east, bottom, top)
 
     def nearest_horizontal(
         self,
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        idx = {axis.latitude: latitude, axis.longitude: longitude}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
+        return self._nearest_horizontal(latitude, longitude)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        idx = {axis.vertical: elevation}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
-
-    # Temporal operations -----------------------------------------------------
-
-    def time_range(
-        self,
-        start: date | datetime | str | None = None,
-        end: date | datetime | str | None = None
-    ) -> Self:
-        idx = {axis.time: slice(start, end)}
-        new_data = self.__data.sel(idx)
-        return self._new_field(new_data)
-
-    def nearest_time(
-        self, time: date | datetime | str | npt.ArrayLike
-    ) -> Self:
-        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=None)
-        return self._new_field(new_data)
+        return self._nearest_vertical(elevation)
 
 
-class ProfileField:
-    __slots__ = (
-        '__name',
-        '__data',
-        '__anciliary',
-        '__domain',
-        '__properties',
-        '__encoding'
-    )
-
+class ProfileField(Field):
     _DOMAIN_TYPE = Profile
+
+    __slots__ = ()
 
     def __init__(
         self,
@@ -222,17 +283,6 @@ class ProfileField:
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-        self.__name = str(name)
-        domain_type = self._DOMAIN_TYPE
-        if not isinstance(domain, domain_type):
-            raise TypeError(
-                f"'domain' must be an instance of '{domain_type.__name__}'"
-            )
-        self.__anciliary = dict(anciliary) if anciliary else {}
-        self.__domain = domain
-        self.__properties = dict(properties) if properties else {}
-        self.__encoding = dict(encoding) if encoding else {}
-
         n_prof, n_lev = domain.number_of_profiles, domain.number_of_levels
         data_shape = (n_prof, n_lev)
         if isinstance(data, Sequence):
@@ -294,8 +344,9 @@ class ProfileField:
                     "'data' must be two-dimensional and have the same shape "
                     "as the coordinates"
                 )
+        name = str(name)
         dset = xr.Dataset(
-            data_vars={self.__name: (('_profiles', '_levels'), data_)},
+            data_vars={name: (('_profiles', '_levels'), data_)},
             coords=domain._coords
         )
         coord_system = domain.coord_system
@@ -306,62 +357,13 @@ class ProfileField:
         dset = dset.set_xindex(
             axis.vertical,
             indexes.TwoDimVertProfileIndex,
-            data=dset[self.__name],
-            name=self.__name
+            data=dset[name],
+            name=name
         )
         dset = dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
-        self.__data = dset
-
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @property
-    def domain(self) -> Profile:
-        return self.__domain
-
-    @property
-    def anciliary(self) -> dict:
-        return self.__anciliary
-
-    @property
-    def properties(self) -> dict:
-        return self.__properties
-
-    @property
-    def encoding(self) -> dict:
-        return self.__encoding
-
-    @property
-    def _data(self) -> xr.Dataset:
-        return self.__data
-
-    @property
-    def data(self) -> pint.Quantity:
-        return self.__data[self.__name].data
-
-    # TODO: Consider making this a method of a future base class.
-    # TODO: Replace `Any` with an appropriate `TypeVar` instance that
-    # represents all eligible types.
-    def _new_field(
-        self, new_data: xr.Dataset, result_type: type[Any] | None = None
-    ) -> Any:
-        field_type = type(self) if result_type is None else result_type
-        domain_type = field_type._DOMAIN_TYPE
-        name = self.__name
-        return field_type(
-            name=name,
-            domain=domain_type(
-                coords={
-                    axis_: coord.data
-                    for axis_, coord in new_data.coords.items()
-                },
-                coord_system=self.__domain.coord_system
-            ),
-            data=new_data[name].data
-        )
+        super().__init__(name, domain, dset, anciliary, properties, encoding)
 
     # Spatial operations ------------------------------------------------------
 
@@ -378,7 +380,7 @@ class ProfileField:
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        new_data = self.__data.sel(h_idx)
+        new_data = self._data.sel(h_idx)
         if not (bottom is None and top is None):
             # TODO: Try to move this functionality to
             # `indexes.TwoDimHorPointsIndex.sel`.
@@ -394,7 +396,7 @@ class ProfileField:
             vert_dims = vert.dims
             vert_data = vert.data
             vert_mag, vert_units = vert_data.magnitude, vert_data.units
-            data = new_data[self.__name].data
+            data = new_data[self.name].data
             mask = get_indexer(
                 [vert_mag], [get_magnitude(v_slice, vert_units)]
             )[0]
@@ -403,7 +405,7 @@ class ProfileField:
             new_data[axis.vertical] = xr.Variable(dims=vert_dims, data=vert_)
             masked_data = np.where(mask, data.magnitude, np.nan)
             data_ = pint.Quantity(masked_data, data.units)
-            new_data[self.__name] = xr.Variable(dims=vert_dims, data=data_)
+            new_data[self.name] = xr.Variable(dims=vert_dims, data=data_)
         return self._new_field(new_data)
 
     def nearest_horizontal(
@@ -411,17 +413,15 @@ class ProfileField:
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        idx = {axis.latitude: latitude, axis.longitude: longitude}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
+        return self._nearest_horizontal(latitude, longitude)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
         # TODO: Try to move this functionality to
         # `indexes.TwoDimHorPointsIndex.sel`.
-        dset = self.__data
-        data_qty = dset[self.__name].data
+        dset = self._data
+        data_qty = dset[self.name].data
         data_mag = data_qty.magnitude
         vert = dset[axis.vertical]
         vert_qty = vert.data
@@ -446,48 +446,22 @@ class ProfileField:
             p_l_idx = (p_idx, l_idx)[order]
             new_data_mag[all_l_idx] = data_mag[p_l_idx]
             new_vert_mag[all_l_idx] = vert_mag[p_l_idx]
-        domain = self.__domain
-        new_coords = self.__domain.coordinates().copy()
+        domain = self.domain
+        new_coords = self.domain.coordinates().copy()
         new_coords[axis.vertical] = pint.Quantity(new_vert_mag, vert_units)
         return type(self)(
-            name=self.__name,
+            name=self.name,
             domain=type(domain)(new_coords, domain.coord_system),
             data=pint.Quantity(new_data_mag, data_qty.units)
         )
 
-    # Temporal operations -----------------------------------------------------
 
-    def time_range(
-        self,
-        start: date | datetime | str | None = None,
-        end: date | datetime | str | None = None
-    ) -> Self:
-        idx = {axis.time: slice(start, end)}
-        new_data = self.__data.sel(idx)
-        return self._new_field(new_data)
-
-    def nearest_time(
-        self, time: date | datetime | str | npt.ArrayLike
-    ) -> Self:
-        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=None)
-        return self._new_field(new_data)
-
-
-class GridField:
+class GridField(Field):
     # NOTE: The default order of axes is assumed.
 
-    __slots__ = (
-        '__name',
-        '__data',
-        '__dim_axes',
-        '__anciliary',
-        '__domain',
-        '__properties',
-        '__encoding'
-    )
-
     _DOMAIN_TYPE = Grid
+
+    __slots__ = ('__dim_axes',)
 
     def __init__(
         self,
@@ -499,17 +473,6 @@ class GridField:
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-        self.__name = str(name)
-        domain_type = self._DOMAIN_TYPE
-        if not isinstance(domain, domain_type):
-            raise TypeError(
-                f"'domain' must be an instance of '{domain_type.__name__}'"
-            )
-        self.__anciliary = dict(anciliary) if anciliary else {}
-        self.__domain = domain
-        self.__properties = dict(properties) if properties else {}
-        self.__encoding = dict(encoding) if encoding else {}
-
         coord_system = domain.coord_system
         coords = domain._coords
         crs = coord_system.spatial.crs
@@ -555,7 +518,7 @@ class GridField:
 
         dset = xr.Dataset(
             data_vars={
-                self.__name: (tuple(f'_{axis}' for axis in dim_axes_), data_)
+                str(name): (tuple(f'_{axis}' for axis in dim_axes_), data_)
             },
             coords=domain._coords
         )
@@ -563,45 +526,14 @@ class GridField:
             dset = dset.set_xindex(axis_, indexes.OneDimPandasIndex)
         if {axis.latitude, axis.longitude} <= set(aux_axes):
             dset = dset.set_xindex(aux_axes, indexes.TwoDimHorGridIndex)
-        self.__data = dset
+        super().__init__(name, domain, dset, anciliary, properties, encoding)
 
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @property
-    def domain(self) -> Grid:
-        return self.__domain
-
-    @property
-    def anciliary(self) -> dict:
-        return self.__anciliary
-
-    @property
-    def properties(self) -> dict:
-        return self.__properties
-
-    @property
-    def encoding(self) -> dict:
-        return self.__encoding
-
-    @property
-    def _data(self) -> xr.Dataset:
-        return self.__data
-
-    @property
-    def data(self) -> pint.Quantity:
-        return self.__data[self.__name].data
-
-    # TODO: Consider making this a method of a future base class.
-    # TODO: Replace `Any` with an appropriate `TypeVar` instance that
-    # represents all eligible types.
     def _new_field(
         self, new_data: xr.Dataset, result_type: type[Any] | None = None
     ) -> Any:
         field_type = type(self) if result_type is None else result_type
         domain_type = field_type._DOMAIN_TYPE
-        name = self.__name
+        name = self.name
         return field_type(
             name=name,
             domain=domain_type(
@@ -609,7 +541,7 @@ class GridField:
                     axis_: coord.data
                     for axis_, coord in new_data.coords.items()
                 },
-                coord_system=self.__domain.coord_system
+                coord_system=self.domain.coord_system
             ),
             data=new_data[name].data,
             dim_axes=self.__dim_axes
@@ -626,16 +558,7 @@ class GridField:
         bottom: Number | None = None,
         top: Number | None = None
     ) -> Self:
-        h_idx = {
-            axis.latitude: slice(south, north),
-            axis.longitude: slice(west, east)
-        }
-        new_data = self.__data.sel(h_idx)
-        if not (bottom is None and top is None):
-            v_idx = {axis.vertical: slice(bottom, top)}
-            new_data = self._new_field(new_data)._data
-            new_data = new_data.sel(v_idx)
-        return self._new_field(new_data)
+        return self._bounding_box(south, north, west, east, bottom, top)
 
     def nearest_horizontal(
         self,
@@ -645,15 +568,15 @@ class GridField:
         # NOTE: This code works with geodetic grids and returns the Cartesian
         # product.
         # idx = {axis.latitude: latitude, axis.longitude: longitude}
-        # new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
+        # new_data = self._data.sel(idx, method='nearest', tolerance=np.inf)
         # return self._new_field(new_data)
 
         # NOTE: This code works with all tested grids and returns the nearest
         # points.
         # Preparing data, labels, units, and dimensions.
-        name = self.__name
-        coord_system = self.__domain.coord_system
-        dset = self.__data
+        name = self.name
+        coord_system = self.domain.coord_system
+        dset = self._data
         lat = dset[axis.latitude]
         lat_data = lat.data
         lat_vals = lat_data.magnitude
@@ -700,28 +623,7 @@ class GridField:
             data=new_data
         )
 
-
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        idx = {axis.vertical: elevation}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
-
-    # Temporal operations -----------------------------------------------------
-
-    def time_range(
-        self,
-        start: date | datetime | str | None = None,
-        end: date | datetime | str | None = None
-    ) -> Self:
-        idx = {axis.time: slice(start, end)}
-        new_data = self.__data.sel(idx)
-        return self._new_field(new_data)
-
-    def nearest_time(
-        self, time: date | datetime | str | npt.ArrayLike
-    ) -> Self:
-        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=None)
-        return self._new_field(new_data)
+        return self._nearest_vertical(elevation)

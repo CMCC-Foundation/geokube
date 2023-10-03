@@ -1,3 +1,4 @@
+import abc
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -8,11 +9,42 @@ import xarray as xr
 
 from . import axis
 from .coord_system import CoordinateSystem
-from .quantity import create_quantity, is_monotonic
+from .quantity import create_quantity
 
 
-class Points:
-    __slots__ = ('__coords', '__coord_system', '__n_pts')
+class Domain(abc.ABC):
+    __slots__ = ('__coords', '__coord_system')
+
+    def __init__(
+        self,
+        coords: dict[axis.Axis, xr.DataArray],
+        coord_system: CoordinateSystem
+    ) -> None:
+        if not isinstance(coord_system, CoordinateSystem):
+            raise TypeError(
+                "'coord_system' must be an instance of 'CoordinateSystem'"
+            )
+        self.__coord_system = coord_system
+        self.__coords = dict(coords)
+
+    @property
+    def _coords(self) -> dict[axis.Axis, xr.DataArray]:
+        return self.__coords
+
+    @property
+    def coord_system(self) -> CoordinateSystem:
+        return self.__coord_system
+
+    def coordinates(
+        self, coord_axis: axis.Axis | None = None
+    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
+        if coord_axis is None:
+            return {axis: coord.data for axis, coord in self.__coords.items()}
+        return self.__coords[coord_axis].data
+
+
+class Points(Domain):
+    __slots__ = ('__n_pts',)
 
     def __init__(
         self,
@@ -22,12 +54,6 @@ class Points:
         ),
         coord_system: CoordinateSystem
     ) -> None:
-        if not isinstance(coord_system, CoordinateSystem):
-            raise TypeError(
-                "'coord_system' must be an instance of 'CoordinateSystem'"
-            )
-        self.__coord_system = coord_system
-
         units = coord_system.units
         pts = ('_points',)
 
@@ -45,12 +71,11 @@ class Points:
                 n_pts.add(vals_.size)
             if len(n_pts) != 1:
                 raise ValueError("'coords' must have values of equal sizes")
-            if not set(self.__coord_system.axes) <= result_coords.keys():
+            if not set(coord_system.axes) <= result_coords.keys():
                 raise ValueError(
                     "'coords' must have all axes from the coordinate system"
                 )
             self.__n_pts = n_pts.pop()
-            self.__coords = result_coords
         elif isinstance(coords, Sequence):
             # NOTE: This approach currently does not allow providing units.
             n_dims = {len(point) for point in coords}
@@ -60,7 +85,7 @@ class Points:
                 )
             self.__n_pts = len(coords)
             data = pd.DataFrame(data=coords, columns=coord_system.axes)
-            self.__coords = {
+            result_coords = {
                 axis_: xr.DataArray(
                     pint.Quantity(
                         vals.to_numpy(dtype=axis_.dtype), units.get(axis_)
@@ -72,40 +97,21 @@ class Points:
         else:
             raise TypeError("'coords' must be a sequence or mapping")
 
-    @property
-    def coord_system(self) -> CoordinateSystem:
-        return self.__coord_system
-
-    @property
-    def _coords(self) -> dict[axis.Axis, xr.DataArray]:
-        return self.__coords
+        super().__init__(result_coords, coord_system)
 
     @property
     def number_of_points(self) -> int:
         return self.__n_pts
 
-    def coordinates(
-        self, coord_axis: axis.Axis | None = None
-    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
-        if coord_axis is None:
-            return {axis: coord.data for axis, coord in self.__coords.items()}
-        return self.__coords[coord_axis].data
 
-
-class Profile:
-    __slots__ = ('__coords', '__coord_system', '__n_prof', '__n_lev')
+class Profile(Domain):
+    __slots__ = ('__n_prof', '__n_lev')
 
     def __init__(
         self,
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
         coord_system: CoordinateSystem
     ) -> None:
-        if not isinstance(coord_system, CoordinateSystem):
-            raise TypeError(
-                "'coord_system' must be an instance of 'CoordinateSystem'"
-            )
-        self.__coord_system = coord_system
-
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
 
@@ -163,21 +169,13 @@ class Profile:
             )
         if n_prof_tot != n_prof.pop():
             raise ValueError("'coords' have items of with inappropriate sizes")
-        if not set(self.__coord_system.axes) <= result_coords.keys():
+        if not set(coord_system.axes) <= result_coords.keys():
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
             )
         self.__n_prof = n_prof_tot
         self.__n_lev = n_lev_tot
-        self.__coords = result_coords
-
-    @property
-    def coord_system(self) -> CoordinateSystem:
-        return self.__coord_system
-
-    @property
-    def _coords(self) -> dict[axis.Axis, xr.DataArray]:
-        return self.__coords
+        super().__init__(result_coords, coord_system)
 
     @property
     def number_of_profiles(self) -> int:
@@ -187,34 +185,21 @@ class Profile:
     def number_of_levels(self) -> int:
         return self.__n_lev
 
-    def coordinates(
-        self, coord_axis: axis.Axis | None = None
-    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
-        if coord_axis is None:
-            return {axis: coord.data for axis, coord in self.__coords.items()}
-        return self.__coords[coord_axis].data
 
-
-class Grid:
+class Grid(Domain):
     # TODO: Consider auxiliary coordinates other than the
     # latitude and longitude. Especially consider how to represent them in the
     # API.
     # NOTE: The assumption is that the latitude and longitude as auxiliary
     # coordinates must have the dimensions either
     # `(axis.grid_latitude, axis.grid_longitude)` or `(axis.y, axis.x)`.
-    __slots__ = ('__coords', '__coord_system')
+    __slots__ = ()
 
     def __init__(
         self,
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
         coord_system: CoordinateSystem
     ) -> None:
-        if not isinstance(coord_system, CoordinateSystem):
-            raise TypeError(
-                "'coord_system' must be an instance of 'CoordinateSystem'"
-            )
-        self.__coord_system = coord_system
-
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
 
@@ -257,19 +242,4 @@ class Grid:
                 "'coords' have auxiliary horizontal coordinates with different"
                 "shapes"
             )
-        self.__coords = result_coords
-
-    @property
-    def coord_system(self) -> CoordinateSystem:
-        return self.__coord_system
-
-    @property
-    def _coords(self) -> dict[axis.Axis, xr.DataArray]:
-        return self.__coords
-
-    def coordinates(
-        self, coord_axis: axis.Axis | None = None
-    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
-        if coord_axis is None:
-            return {axis: coord.data for axis, coord in self.__coords.items()}
-        return self.__coords[coord_axis].data
+        super().__init__(result_coords, coord_system)
