@@ -58,7 +58,7 @@ Repository = "https://github.com/geokube/geokube.git"
 # Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
-geo_science = ["cartopy>=0.20", "pyproj>=3.4", "shapely>=2.0"]
+geo_science = ["cartopy>=0.20", "gsw>=3.6", "pyproj>=3.4", "shapely>=2.0"]
 regridding = ["xesmf"]
 
 # [project.scripts]
