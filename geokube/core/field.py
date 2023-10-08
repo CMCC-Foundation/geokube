@@ -20,9 +20,22 @@ from .domain import Domain, Grid, Points, Profile
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
-
+import pyarrow as pa
 
 _ARRAY_TYPES = (np.ndarray, da.Array)
+
+def to_pyarrow_tensor(data):
+    # this method return a pyarrow tensor
+    # tensor_type = pa.fixed_shape_tensor(pa.int32(), (2, 3))
+    # arr = [[1, 2, 3, 4], [10, 20, 30, 40], [100, 200, 300, 400]]
+    # storage = pa.array(arr, pa.list_(pa.int32(), 4))
+    # tensor_array = pa.ExtensionArray.from_storage(tensor_type, storage)
+    # 
+    # arr = self.magnitude # this should be numpy array
+    # storage = pa.array(arr, pa.list_(self.patype, self.size))
+    # pa.ExtensionArray.from_storage(self._pyarrow_tensor_type(), storage)
+    # type is given by tensor.type
+    return pa.FixedShapeTensorArray.from_numpy_ndarray(data)
 
 
 class Field(abc.ABC):
@@ -187,6 +200,87 @@ class Field(abc.ABC):
         idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
         new_data = self.__data.sel(idx, method='nearest', tolerance=None)
         return self._new_field(new_data)
+
+    # Pyarrow conversions -----------------------------------------------------
+
+    def build_pyarrow_metadata(self):
+        # geokube Field JSON Schema
+        # -> name: ‘string’
+        # -> kind: ‘string’ (Gridded, Points, Profile, Timeseries)
+        # -> properties: dict
+        # -> cf-encoding: dict
+        # -> coord_system: list
+        import json
+        metadata = {'name': self.name,
+                    'kind': str(self._DOMAIN_TYPE),
+                    'properties': json.dumps(self.properties).encode('utf-8'),
+                    'cf_encoding': json.dumps(self.encoding).encode('utf-8')
+        }
+        metadata['coord_system'] = {} 
+        metadata['coord_system']['horizontal'] = str(self.domain.coord_system.spatial.crs)
+        metadata['coord_system']['elevation'] = str(self.domain.coord_system.spatial.elevation)
+        metadata['coord_system']['time'] = str(self.domain.coord_system.time)
+        metadata['coord_system']['ud_axes'] = []   
+        for axis in self.domain.coord_system.user_axes:
+             metadata['coord_system']['ud_axes'].append(str(axis))
+        metadata['coord_system'] = json.dumps(metadata['coord_system']).encode('utf-8')
+        
+        return metadata
+
+    def to_pyarrow_table(self): 
+        # this method return a pyarrow Table with a schema
+        # data contains tensors for the field and domain
+        # 
+        # schema -> schema for field and domain
+        tensor_data = []
+        schema_data = []
+
+        field_tensor = to_pyarrow_tensor(self.data.magnitude)
+        tensor_data.append(field_tensor)
+        schema_data.append(pa.field(self.name, field_tensor.type))
+
+        # Add coordinates to tensor and schema
+        for ax, coord in self.domain.coordinates().items():
+            coord_tensor = to_pyarrow_tensor(coord.magnitude)
+            tensor_data.append(coord_tensor)
+            schema_data.append(pa.field(ax, coord_tensor.type))
+
+        # create Table
+        return pa.Table.from_arrays(tensor_data, 
+                                    schema=pa.schema(schema_data, 
+                                                     metadata=self.build_pyarrow_metadata()) 
+                                    )
+    @classmethod
+    def from_pyarrow_table(cls, table): 
+        # this method return a geokube field starting from a pyarrow Table 
+        # the schema metadata contains 
+        # data contains tensors for the field and domain
+        # 
+        # schema -> schema for field and domain
+        import json 
+        from .coord_system import CoordinateSystem
+        from .crs import Geodetic
+
+        metadata = table.schema.metadata
+        name = metadata[b'name'].decode()
+        kind = metadata[b'kind'].decode()
+        properties = json.loads(metadata[b'properties'].decode())
+        encoding = json.loads(metadata[b'cf_encoding'].decode())
+        cs = json.loads(metadata[b'coord_system'].decode())
+
+        data = table[name].combine_chunks().to_numpy_ndarray()
+
+        coord_system = CoordinateSystem(
+            horizontal=Geodetic(),
+            elevation=axis._from_string(cs['elevation']),
+            time=axis._from_string(cs['time']),
+        )
+
+        coords = {}
+        for ax in coord_system.axes:
+            coords[ax] = table[ax].combine_chunks().to_numpy_ndarray()
+        domain = Points(coords = coords, coord_system = coord_system)
+        return PointsField(name = name, data = data, domain=domain,properties=properties,encoding=encoding)        
 
 
 class PointsField(Field):

@@ -47,14 +47,15 @@ dependencies = [
     "pint>=0.20",
     "pyproj>=3.4",
     "shapely>=2.0",
-    "xarray>=2023.6.0"
+    "xarray>=2023.6.0",
+    "pyarrow>=12.0.1"
 ]
 # dynamic = ["version", "description", "optional-dependencies"]
 
 [project.urls]
 Homepage = "https://github.com/geokube/geokube"
 # Documentation = "https://readthedocs.org"
-Repository = "https://github.com/geokube/geokube.git"
+Repository = "https://github.com/opengeokube/geokube.git"
 # Changelog = "https://github.com/me/spam/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]

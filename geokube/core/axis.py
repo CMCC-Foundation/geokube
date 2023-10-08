@@ -83,3 +83,20 @@ def create(
 ) -> None:
     # TODO: Implement this.
     pass
+
+__predefined_axis__ = {
+    'x': x,
+    'y': y,
+    'z': z,
+    'grid_latitude': grid_latitude,
+    'grid_longitude': grid_longitude,
+    'latitude': latitude,
+    'longitude': longitude,
+    'vertical': vertical,
+    'time': time,
+    'timedelta': timedelta
+}
+
+def _from_string(name: str):
+    if (name in __predefined_axis__):
+        return __predefined_axis__[name]
