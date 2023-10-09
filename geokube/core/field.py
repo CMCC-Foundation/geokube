@@ -188,6 +188,14 @@ class Field(abc.ABC):
         new_data = self.__data.sel(idx, method='nearest', tolerance=None)
         return self._new_field(new_data)
 
+    def latest(self) -> Self:
+        if axis.time not in self.__data.coords:
+            raise NotImplementedError()
+        latest_time = self.__data[axis.time].max().astype(str).item().magnitude
+        idx = {axis.time: slice(latest_time, latest_time)}
+        new_data = self.__data.sel(idx)
+        return self._new_field(new_data)
+
 
 class PointsField(Field):
     _DOMAIN_TYPE = Points
