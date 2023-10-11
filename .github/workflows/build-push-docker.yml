@@ -3,6 +3,7 @@ name: Build Docker image of the GEOKUBE component and push to the dev repository
 on:
   pull_request:
     types: [opened, synchronize]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
