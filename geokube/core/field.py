@@ -15,7 +15,7 @@ import pint
 import xarray as xr
 
 from . import axis, indexes
-from .crs import Geodetic
+from .crs import GeographicCRS
 from .domain import Domain, Grid, Points, Profile
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
@@ -581,7 +581,7 @@ class GridField(Field):
         dim_axes_: tuple[axis.Axis, ...]
         aux_axes: tuple[axis.Axis, ...]
         if dim_axes is None:
-            if isinstance(crs, Geodetic):
+            if isinstance(crs, GeographicCRS):
                 dim_axes_, aux_axes = coord_system.axes, ()
             else:
                 default_axes = coord_system.axes
@@ -689,7 +689,7 @@ class GridField(Field):
         lat_labels = get_magnitude(latitude, lat_data.units)
         lon_labels = get_magnitude(longitude, lon_data.units)
 
-        if isinstance(coord_system.spatial.crs, Geodetic):
+        if isinstance(coord_system.spatial.crs, GeographicCRS):
             lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
             dims = ('_latitude', '_longitude')
         else:

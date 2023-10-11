@@ -1,14 +1,27 @@
-from cartopy.crs import CRS, Geodetic, Projection, RotatedGeodetic
+from pyproj.crs import CRS, DerivedGeographicCRS, GeographicCRS, ProjectedCRS
 
 from . import axis
 
 
 CRS.AXES: tuple[axis.Horizontal, ...] = ()
-Geodetic.AXES = (axis.latitude, axis.longitude)
-RotatedGeodetic.AXES = (
+GeographicCRS.AXES = (axis.latitude, axis.longitude)
+DerivedGeographicCRS.AXES = (
     axis.grid_latitude, axis.grid_longitude, axis.latitude, axis.longitude
 )
-Projection.AXES = (axis.y, axis.x, axis.latitude, axis.longitude)
+ProjectedCRS.AXES = (axis.y, axis.x, axis.latitude, axis.longitude)
+
+
+# from cartopy.crs import CRS, Geodetic, Projection, RotatedGeodetic
+
+# from . import axis
+
+
+# CRS.AXES: tuple[axis.Horizontal, ...] = ()
+# Geodetic.AXES = (axis.latitude, axis.longitude)
+# RotatedGeodetic.AXES = (
+#     axis.grid_latitude, axis.grid_longitude, axis.latitude, axis.longitude
+# )
+# Projection.AXES = (axis.y, axis.x, axis.latitude, axis.longitude)
 
 
 # try:

@@ -218,10 +218,14 @@ class Grid(Domain):
             vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
             if axis_ in axes:
                 # Dimension coordinates.
-                if vals_.ndim != 1:
+                if not vals_.ndim:
+                    dim_axes = ()
+                elif vals_.ndim == 1:
+                    dim_axes = (f'_{axis_}',)
+                else:
                     raise ValueError(
-                        f"'coords' have a dimension axis {axis_} that does "
-                        "not have one-dimensional values"
+                        f"'coords' have a dimension axis {axis_} that has "
+                        "multi-dimensional values"
                     )
                 # if not is_monotonic(vals_):
                 #     raise ValueError(
@@ -229,11 +233,10 @@ class Grid(Domain):
                 #         "not have monotonic values"
                 #     )
                 # dim_axes = (axis_,)
-                dim_axes = (f'_{axis_}',)
             else:
                 # Auxiliary coordinates.
                 # dim_axes = hor_dim_axes
-                dim_axes = hor_dims
+                dim_axes = hor_dims if vals_.ndim else ()
                 if axis_ in hor_aux_axes:
                     hor_aux_shapes.add(vals_.shape)
             result_coords[axis_] = xr.DataArray(vals_, dims=dim_axes)

@@ -4,12 +4,12 @@ import xarray as xr
 from geokube import (
     axis,
     CoordinateSystem,
-    Geodetic,
+    DerivedGeographicCRS,
+    GeographicCRS,
     Grid,
     GridField,
     Profile,
     ProfileField,
-    RotatedGeodetic,
     units
 )
 
