@@ -17,10 +17,10 @@ class Axis(str):
     # hashables as dimensions, the inheritance from `str` will not be
     # necessary any more. In that case, `Axis` might inherit from `Hashable`.
 
-    __slots__ = ('__default_units', '__dtype', '__encoding')
-
     _DEFAULT_UNITS: pint.Unit
     _DEFAULT_DTYPE: np.dtype
+
+    __slots__ = ('__default_units', '__dtype', '__encoding')
 
     def __new__(
         cls,
