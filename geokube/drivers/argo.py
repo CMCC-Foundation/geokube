@@ -2,7 +2,7 @@ import pint
 import xarray as xr
 
 from geokube import (
-    axis, CoordinateSystem, GeographicCRS, Profile, ProfileField, units
+    axis, CoordinateSystem, Geodetic, Profile, ProfileField, units
 )
 
 

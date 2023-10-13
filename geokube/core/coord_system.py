@@ -21,7 +21,7 @@ class SpatialCoordinateSystem:
         if not isinstance(crs, CRS):
             raise TypeError("'crs' must be an instance of 'CRS'")
         self.__crs = crs
-        axes: list[axis.Spatial] = list(crs.AXES)
+        axes: list[axis.Spatial] = list(crs.axes)
         match elevation:
             case axis.Elevation():
                 self.__elevation = elevation

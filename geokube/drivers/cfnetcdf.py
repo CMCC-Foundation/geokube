@@ -1,14 +1,11 @@
 import pint
 import xarray as xr
 
-from geokube import axis, CoordinateSystem
+from geokube import axis, CoordinateSystem, CRS, Geodetic, RotatedGeodetic
 from geokube.core import domain, field
-from geokube.core.crs import (
-    CRS, DerivedGeographicCRS, GeographicCRS, ProjectedCRS
-)
 
 
-_FEATURE_MAP = {
+_FEATURE_MAP: dict[str | None, type[field.Field]] = {
     'point': field.PointsField,
     # 'timeSeries': ...,
     # 'trajectory': ...,
@@ -28,14 +25,11 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
 
         # Horizontal coordinate system:
         if gmn := dset_cf.grid_mapping_names:
-            assert len(gmn) == 1
-            crs_var_names = next(iter(gmn.values()))
-            assert len(crs_var_names) == 1
-            crs_var_name = crs_var_names[0]
+            crs_var_name = next(iter(gmn.values()))[0]
             hor_crs = CRS.from_cf(dset[crs_var_name].attrs)
             dset_coords.pop(crs_var_name)
         else:
-            hor_crs = GeographicCRS()
+            hor_crs = Geodetic()
 
         # Coordinates.
         coords = {}
@@ -53,7 +47,7 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
             if cf_axis_name in dset_coords:
                 coord = dset_coords.pop(cf_axis_name)
                 axis_ = axis._from_string(cf_axis.lower())
-                if isinstance(hor_crs, DerivedGeographicCRS):
+                if isinstance(hor_crs, RotatedGeodetic):
                     if axis_ is axis.x:
                         axis_ = axis.grid_longitude
                     elif axis_ is axis.y:

@@ -203,8 +203,8 @@ class Grid(Domain):
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
 
-        hor_axes = coord_system.spatial.crs.AXES
-        hor_dim_axes, hor_aux_axes = hor_axes[:2], hor_axes[2:]
+        crs = coord_system.spatial.crs
+        hor_dim_axes, hor_aux_axes = crs.dim_axes, crs.aux_axes
         hor_dims = tuple(f'_{axis_}' for axis_ in hor_dim_axes)
         dim_axes: tuple[str, ...]
         axes = set(coord_system.axes)

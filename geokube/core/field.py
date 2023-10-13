@@ -15,7 +15,7 @@ import pint
 import xarray as xr
 
 from . import axis, indexes
-from .crs import GeographicCRS
+from .crs import Geodetic
 from .domain import Domain, Grid, Points, Profile
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
@@ -336,7 +336,7 @@ class PointsField(Field):
             data_vars={str(name): (('_points',), data_)}, coords=domain._coords
         )
         coord_system = domain.coord_system
-        hor_axes = set(coord_system.spatial.crs.AXES)
+        hor_axes = set(coord_system.spatial.crs.axes)
         for axis_ in coord_system.axes:
             if axis_ not in hor_axes:
                 dset = dset.set_xindex(axis_, indexes.OneDimIndex)
@@ -581,7 +581,7 @@ class GridField(Field):
         dim_axes_: tuple[axis.Axis, ...]
         aux_axes: tuple[axis.Axis, ...]
         if dim_axes is None:
-            if isinstance(crs, GeographicCRS):
+            if isinstance(crs, Geodetic):
                 dim_axes_, aux_axes = coord_system.axes, ()
             else:
                 default_axes = coord_system.axes
@@ -689,7 +689,7 @@ class GridField(Field):
         lat_labels = get_magnitude(latitude, lat_data.units)
         lon_labels = get_magnitude(longitude, lon_data.units)
 
-        if isinstance(coord_system.spatial.crs, GeographicCRS):
+        if isinstance(coord_system.spatial.crs, Geodetic):
             lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
             dims = ('_latitude', '_longitude')
         else:
