@@ -91,6 +91,7 @@ class CRS:
     def to_cf(self) -> dict:
         return self._crs.to_cf()
 
+
 class Geodetic(CRS):
     _DIM_AXES_TYPES = (axis.Latitude, axis.Longitude)
     _AUX_AXES_TYPES = ()
@@ -102,13 +103,55 @@ class RotatedGeodetic(CRS):
     _AUX_AXES_TYPES = (axis.Latitude, axis.Longitude)
     _PYPROJ_TYPE = pyproj_crs.DerivedGeographicCRS
 
-    def __init__(self):
-        super().__init__(base_crs=pyproj_crs.DerivedGeographicCRS, conversion=None)
+    def __init__(
+        self,
+        grid_north_pole_latitude: float | None = None,
+        grid_north_pole_longitude: float | None = None,
+        north_pole_grid_longitude: float = 0.0,
+        crs: pyproj_crs.DerivedGeographicCRS | None = None,
+        dim_axes: tuple[axis.Horizontal, ...] | None = None,
+        aux_axes: tuple[axis.Horizontal, ...] | None = None
+    ) -> None:
+        if crs is None:
+            conversion = {
+                '$schema':
+                    'https://proj.org/schemas/v0.4/projjson.schema.json',
+                'type': 'Conversion',
+                'name': 'Pole rotation (netCDF CF convention)',
+                'method': {
+                    'name': 'Pole rotation (netCDF CF convention)'
+                },
+                'parameters': [
+                    {
+                        'name':
+                            'Grid north pole latitude (netCDF CF convention)',
+                        'value': float(grid_north_pole_latitude),
+                        'unit': 'degree'
+                    },
+                    {
+                        'name':
+                            'Grid north pole longitude (netCDF CF convention)',
+                        'value': float(grid_north_pole_longitude),
+                        'unit': 'degree'
+                    },
+                    {
+                        'name':
+                            'North pole grid longitude (netCDF CF convention)',
+                        'value': float(north_pole_grid_longitude),
+                        'unit': 'degree'
+                    }
+                ]
+            }
+            crs = pyproj_crs.DerivedGeographicCRS(
+                base_crs=pyproj_crs.GeographicCRS(), conversion=conversion
+            )
+        super().__init__(dim_axes=dim_axes, aux_axes=aux_axes, crs=crs)
+
 
 class Projection(CRS):
     _DIM_AXES_TYPES = (axis.Y, axis.X)
     _AUX_AXES_TYPES = (axis.Latitude, axis.Longitude)
     _PYPROJ_TYPE = pyproj_crs.ProjectedCRS
 
-    def __init__(self, conversion):
-        pass
+    # def __init__(self, conversion):
+    #     pass
