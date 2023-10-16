@@ -88,6 +88,8 @@ class CRS:
             case _:
                 raise TypeError(f"'crs' type {type(crs)} is not supported")
 
+    def to_cf(self) -> dict:
+        return self._crs.to_cf()
 
 class Geodetic(CRS):
     _DIM_AXES_TYPES = (axis.Latitude, axis.Longitude)
@@ -100,8 +102,13 @@ class RotatedGeodetic(CRS):
     _AUX_AXES_TYPES = (axis.Latitude, axis.Longitude)
     _PYPROJ_TYPE = pyproj_crs.DerivedGeographicCRS
 
+    def __init__(self):
+        super().__init__(base_crs=pyproj_crs.DerivedGeographicCRS, conversion=None)
 
 class Projection(CRS):
     _DIM_AXES_TYPES = (axis.Y, axis.X)
     _AUX_AXES_TYPES = (axis.Latitude, axis.Longitude)
     _PYPROJ_TYPE = pyproj_crs.ProjectedCRS
+
+    def __init__(self, conversion):
+        pass

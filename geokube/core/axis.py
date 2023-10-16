@@ -135,7 +135,7 @@ grid_longitude = GridLongitude()
 latitude = Latitude()
 longitude = Longitude()
 vertical = Vertical()
-time = Time()
+time = Time(dtype=np.datetime64)
 timedelta = Time(dtype=np.timedelta64)
 
 
