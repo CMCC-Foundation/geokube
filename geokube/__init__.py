@@ -7,3 +7,4 @@ from geokube.core.units import units
 from geokube.drivers._aux import open_eobs, open_era5, open_era5_it
 from geokube.drivers.argo import open_argo
 from geokube.drivers.cfnetcdf import open_cf_netcdf
+from geokube.drivers.sentinel import open_sentinel
