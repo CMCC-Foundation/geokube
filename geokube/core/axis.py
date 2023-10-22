@@ -122,7 +122,7 @@ class Time(Axis):
     _DEFAULT_DTYPE = np.dtype('datetime64')
 
 
-class UserDefined(Axis):
+class UserDefined(Axis): # Hash cannot be the class name -> redefine hash with axis name
     _DEFAULT_UNITS = units['']
     _DEFAULT_DTYPE = np.dtype('float64')
 

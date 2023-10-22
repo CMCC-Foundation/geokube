@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import abc
 from collections.abc import Mapping, Sequence
-from datetime import date, datetime
 from numbers import Number
 from typing import Any, Self
 from warnings import warn
@@ -21,8 +20,10 @@ from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
 import pyarrow as pa
+from .coord_system import CoordinateSystem
 
-_ARRAY_TYPES = (np.ndarray, da.Array)
+from .feature import PointsFeature
+
 
 def to_pyarrow_tensor(data):
     # this method return a pyarrow tensor
@@ -37,178 +38,80 @@ def to_pyarrow_tensor(data):
     # type is given by tensor.type
     return pa.FixedShapeTensorArray.from_numpy_ndarray(data)
 
+_ARRAY_TYPES = (np.ndarray, da.Array)
 
-class Field(abc.ABC):
-    _DOMAIN_TYPE: type[Domain]
+_FIELD_NAME_ATTR_ = '_geokube.field_name'
 
-    __slots__ = (
-        '__name',
-        '__data',
-        '__anciliary',
-        '__domain',
-        '__properties',
-        '__encoding'
-    )
+class Field():
+    _DOMAIN_CLS_ = type[Domain]
 
-    def __init__(
-        self,
-        name: str,
-        domain: Domain,
-        data: xr.Dataset,
-        anciliary: Mapping | None = None,
-        properties: Mapping | None = None,
-        encoding: Mapping | None = None
-    ) -> None:
-        self.__name = str(name)
-        domain_type = self._DOMAIN_TYPE
-        if not isinstance(domain, domain_type):
-            raise TypeError(
-                f"'domain' must be an instance of '{domain_type.__name__}'"
-            )
-        self.__domain = domain
-        if not isinstance(data, xr.Dataset):
-            raise TypeError("'data' must be an instance of 'xarray.Dataset'")
-        self.__data = data
-        self.__anciliary = dict(anciliary) if anciliary else {}
-        self.__properties = dict(properties) if properties else {}
-        self.__encoding = dict(encoding) if encoding else {}
+    # TODO: Add cell methods
+    # __slots__ = ('_cell_method_',)
 
-    @property
-    def name(self) -> str:
-        return self.__name
-
-    @property
-    def domain(self) -> Domain:
-        return self.__domain
-
-    @property
-    def _data(self) -> xr.Dataset:
-        return self.__data
-
-    @property
-    def data(self) -> pint.Quantity:
-        return self.__data[self.__name].data
-
-    @property
-    def anciliary(self) -> dict:
-        return self.__anciliary
-
-    @property
-    def properties(self) -> dict:
-        return self.__properties
-
-    @property
-    def encoding(self) -> dict:
-        return self.__encoding
-
-    def _new_field(
-        self, new_data: xr.Dataset, result_type: type[Any] | None = None
-    ) -> Self:
-        field_type = type(self) if result_type is None else result_type
-        domain_type = field_type._DOMAIN_TYPE
-        name = self.__name
-        return field_type(
+    # 
+    # - this is the same method name in Feature class ->
+    # in order to have precedence Field should be inherited first
+    # 
+    def _from_xrdset(self, ds: xr.Dataset) -> Self:
+        coords = {}        
+        for ax in self.coord_system.axes:
+            coords[ax] = ds.coords[ax]
+        domain = self._DOMAIN_CLS_(
+                    coords=coords, 
+                    coord_system=self.coord_system)
+        name = ds.attrs[_FIELD_NAME_ATTR_]
+        data = ds[name].data
+        properties = ds[name].attrs
+        encoding = ds[name].encoding        
+        ancillary = {}
+        for c in ds.data_vars:
+            if c != name:
+                ancillary[c] = ds[c].data
+        
+        return type(self)(
             name=name,
-            domain=domain_type(
-                coords={
-                    axis_: coord.data
-                    for axis_, coord in new_data.coords.items()
-                },
-                coord_system=self.__domain.coord_system
-            ),
-            data=new_data[name].data
+            domain=domain,
+            data=data,
+            ancillary=ancillary,
+            properties=properties,
+            encoding=encoding
         )
 
-    # Spatial operations ------------------------------------------------------
+    @property # TODO: define setter method
+    def domain(self) -> Domain:
+        coords = {}
+        for ax in self.coord_system.axes:
+            coords[ax] = self.coords[ax]
+        return self._DOMAIN_CLS_(
+                coords=coords, 
+                coord_system=self._coord_system)    
 
-    def _bounding_box(
-        self,
-        south: Number | None = None,
-        north: Number | None = None,
-        west: Number | None = None,
-        east: Number | None = None,
-        bottom: Number | None = None,
-        top: Number | None = None
-    ) -> Self:
-        h_idx = {
-            axis.latitude: slice(south, north),
-            axis.longitude: slice(west, east)
-        }
-        new_data = self.__data.sel(h_idx)
-        if not (bottom is None and top is None):
-            v_idx = {axis.vertical: slice(bottom, top)}
-            new_data = self._new_field(new_data)._data
-            new_data = new_data.sel(v_idx)
-        return self._new_field(new_data)
+    @property
+    def ancillary(self, name: str | None = None) -> dict | pint.Quantity:
+        if name is not None:
+            return self[name].data
+        ancillary = {}
+        for c in self.data_vars:
+            if c != self.name:
+                ancillary[c] = self._dset[c].data
+        return self.ancillary
 
-    def _nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> Field:
-        idx = {axis.latitude: latitude, axis.longitude: longitude}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
+    @property # return field name
+    def name(self) -> str:
+        return self._dset.attrs[_FIELD_NAME_ATTR_]
+    
+    @property # define data method to return field data
+    def data(self):
+        return self._dset[self.name].data
 
-    def _nearest_vertical(
-        self, elevation: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        idx = {axis.vertical: elevation}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=np.inf)
-        return self._new_field(new_data)
+    @property
+    def properties(self):
+        return self._dset[self.name].attrs
 
-    @abc.abstractmethod
-    def bounding_box(
-        self,
-        south: Number | None = None,
-        north: Number | None = None,
-        west: Number | None = None,
-        east: Number | None = None,
-        bottom: Number | None = None,
-        top: Number | None = None
-    ) -> Self:
-        raise NotImplementedError()
+    @property
+    def encoding(self):
+        return self._dset[self.name].encoding
 
-    @abc.abstractmethod
-    def nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> Field:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def nearest_vertical(
-        self, elevation: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        raise NotImplementedError()
-
-    # Temporal operations -----------------------------------------------------
-
-    def time_range(
-        self,
-        start: date | datetime | str | None = None,
-        end: date | datetime | str | None = None
-    ) -> Self:
-        idx = {axis.time: slice(start, end)}
-        new_data = self.__data.sel(idx)
-        return self._new_field(new_data)
-
-    def nearest_time(
-        self, time: date | datetime | str | npt.ArrayLike
-    ) -> Self:
-        idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
-        new_data = self.__data.sel(idx, method='nearest', tolerance=None)
-        return self._new_field(new_data)
-
-    def latest(self) -> Self:
-        if axis.time not in self.__data.coords:
-            raise NotImplementedError()
-        latest_time = self.__data[axis.time].max().astype(str).item().magnitude
-        idx = {axis.time: slice(latest_time, latest_time)}
-        new_data = self.__data.sel(idx)
-        return self._new_field(new_data)
-      
     # Pyarrow conversions -----------------------------------------------------
 
     def build_pyarrow_metadata(self):
@@ -217,15 +120,15 @@ class Field(abc.ABC):
         # -> kind: ‘string’ (Gridded, Points, Profile, Timeseries)
         # -> properties: dict
         # -> cf-encoding: dict
-        # -> coord_system: list
+        # -> coord_system: dict
         import json
         metadata = {'name': self.name,
-                    'kind': str(self._DOMAIN_TYPE),
+                    'kind': str(type(self.domain)),
                     'properties': json.dumps(self.properties).encode('utf-8'),
                     'cf_encoding': json.dumps(self.encoding).encode('utf-8')
         }
         metadata['coord_system'] = {} 
-        metadata['coord_system']['horizontal'] = str(self.domain.coord_system.spatial.crs)
+        metadata['coord_system']['horizontal'] = str(self.coord_system.spatial.crs)
         metadata['coord_system']['elevation'] = str(self.domain.coord_system.spatial.elevation)
         metadata['coord_system']['time'] = str(self.domain.coord_system.time)
         metadata['coord_system']['ud_axes'] = []   
@@ -258,59 +161,22 @@ class Field(abc.ABC):
                                     schema=pa.schema(schema_data, 
                                                      metadata=self.build_pyarrow_metadata()) 
                                     )
-    @classmethod
-    def from_pyarrow_table(cls, table): 
-        # this method return a geokube field starting from a pyarrow Table 
-        # the schema metadata contains 
-        # data contains tensors for the field and domain
-        # 
-        # schema -> schema for field and domain
-        import json 
-        from .coord_system import CoordinateSystem
-        from .crs import Geodetic
-
-        metadata = table.schema.metadata
-        name = metadata[b'name'].decode()
-        kind = metadata[b'kind'].decode()
-        properties = json.loads(metadata[b'properties'].decode())
-        encoding = json.loads(metadata[b'cf_encoding'].decode())
-        cs = json.loads(metadata[b'coord_system'].decode())
-
-        data = table[name].combine_chunks().to_numpy_ndarray()
-
-        coord_system = CoordinateSystem(
-            horizontal=Geodetic(),
-            elevation=axis._from_string(cs['elevation']),
-            time=axis._from_string(cs['time']),
-        )
-
-        coords = {}
-        for ax in coord_system.axes:
-            coords[ax] = table[ax].combine_chunks().to_numpy_ndarray()
-        domain = Points(coords = coords, coord_system = coord_system)
-        return PointsField(name = name, data = data, domain=domain,properties=properties,encoding=encoding)        
 
 
-class PointsField(Field):
-    _DOMAIN_TYPE = Points
-
-    __slots__ = ()
+class PointsField(Field, PointsFeature):
+    _DOMAIN_CLS_ = Points
 
     def __init__(
         self,
         name: str,
         domain: Points,
         data: npt.ArrayLike | pint.Quantity | None = None,
-        anciliary: Mapping | None = None,
+        ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-        n_pts = domain.number_of_points
+        self._n_points = domain.number_of_points
         match data:
-            # case pint.Quantity() if isinstance(data.magnitude, _ARRAY_TYPES):
-            #     data_ = data
-            # case pint.Quantity():
-            #     data_ = pint.Quantity(np.asarray(data.magnitude), data.units)
             case pint.Quantity():
                 data_ = (
                     data
@@ -319,57 +185,37 @@ class PointsField(Field):
                 )
             case np.ndarray() | da.Array():
                 # NOTE: The pattern arr * unit does not work when arr has
-                # stings.
+                # strings.
                 data_ = pint.Quantity(data)
             case None:
                 data_ = pint.Quantity(
-                    np.full(shape=n_pts, fill_value=np.nan, dtype=np.float32)
+                    np.full(shape=self._n_points, fill_value=np.nan, dtype=np.float32)
                 )
             case _:
                 data_ = pint.Quantity(np.asarray(data))
-        if data_.shape != (n_pts,):
+        if data_.shape != (self._n_points,):
             raise ValueError(
                 "'data' must have one-dimensional values and the same size as "
                 "the coordinates"
             )
-        dset = xr.Dataset(
-            data_vars={str(name): (('_points',), data_)}, coords=domain._coords
+        
+        data_vars = {}
+        attrs = properties if not None else {}
+        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS, attrs=attrs)
+        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+        
+        if ancillary is not None:
+            for anc_name, anc_data in ancillary.items():
+                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
+        
+        ds_attrs = {_FIELD_NAME_ATTR_: name}
+
+        super().__init__(
+            data_vars = data_vars,
+            coords = domain.coords,
+            attrs = ds_attrs,
+            coord_system=domain.coord_system
         )
-        coord_system = domain.coord_system
-        hor_axes = set(coord_system.spatial.crs.axes)
-        for axis_ in coord_system.axes:
-            if axis_ not in hor_axes:
-                dset = dset.set_xindex(axis_, indexes.OneDimIndex)
-        dset = dset.set_xindex(
-            [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
-        )
-        super().__init__(name, domain, dset, anciliary, properties, encoding)
-
-    # Spatial operations ------------------------------------------------------
-
-    def bounding_box(
-        self,
-        south: Number | None = None,
-        north: Number | None = None,
-        west: Number | None = None,
-        east: Number | None = None,
-        bottom: Number | None = None,
-        top: Number | None = None
-    ) -> Self:
-        return self._bounding_box(south, north, west, east, bottom, top)
-
-    def nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        return self._nearest_horizontal(latitude, longitude)
-
-    def nearest_vertical(
-        self, elevation: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        return self._nearest_vertical(elevation)
-
 
 class ProfileField(Field):
     _DOMAIN_TYPE = Profile
@@ -381,7 +227,7 @@ class ProfileField(Field):
         name: str,
         domain: Profile,
         data: npt.ArrayLike | pint.Quantity | None = None,
-        anciliary: Mapping | None = None,
+        ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
@@ -446,7 +292,12 @@ class ProfileField(Field):
                     "'data' must be two-dimensional and have the same shape "
                     "as the coordinates"
                 )
+        
         name = str(name)
+        dims = ('_profiles', '_levels')
+
+        _create_feature_dset(name)
+
         dset = xr.Dataset(
             data_vars={name: (('_profiles', '_levels'), data_)},
             coords=domain._coords
@@ -465,7 +316,7 @@ class ProfileField(Field):
         dset = dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
-        super().__init__(name, domain, dset, anciliary, properties, encoding)
+        super().__init__(name, domain, dset, ancillary, properties, encoding)
 
     # Spatial operations ------------------------------------------------------
 
@@ -509,13 +360,6 @@ class ProfileField(Field):
             data_ = pint.Quantity(masked_data, data.units)
             new_data[self.name] = xr.Variable(dims=vert_dims, data=data_)
         return self._new_field(new_data)
-
-    def nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        return self._nearest_horizontal(latitude, longitude)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
@@ -651,17 +495,6 @@ class GridField(Field):
 
     # Spatial operations ------------------------------------------------------
 
-    def bounding_box(
-        self,
-        south: Number | None = None,
-        north: Number | None = None,
-        west: Number | None = None,
-        east: Number | None = None,
-        bottom: Number | None = None,
-        top: Number | None = None
-    ) -> Self:
-        return self._bounding_box(south, north, west, east, bottom, top)
-
     def nearest_horizontal(
         self,
         latitude: npt.ArrayLike | pint.Quantity,
@@ -725,7 +558,62 @@ class GridField(Field):
             data=new_data
         )
 
-    def nearest_vertical(
-        self, elevation: npt.ArrayLike | pint.Quantity
+    def regrid(
+        self, 
+        target: GridField | Grid,
+        method: str
     ) -> Self:
-        return self._nearest_vertical(elevation)
+        
+        if not isinstance(target, Domain):
+            if isinstance(target, GridField):
+                target = target.domain
+            else:
+                raise TypeError(
+                    "'target' must be an instance of Domain or Field"
+                )
+        #
+        # TODO: check if they have the same CRS
+        # if source CRS and target CRS are different
+        # first transform source CRS to target CRS
+        # 
+        # get spatial coordinates
+        # 
+        lat = target.coordinates(axis.latitude)
+        lon = target.coordinates(axis.longitude)
+        ds_out = xr.Dataset(
+            {
+                "lat": (["lat"], lat.magnitude, lat.units),
+                "lon": (["lon"], lon.magnitude, lon.units)
+            }
+        )
+
+def from_pyarrow_table(table): 
+    # this method return a geokube field starting from a pyarrow Table 
+    # the schema metadata contains 
+    # data contains tensors for the field and domain
+    # 
+    # schema -> schema for field and domain
+    import json 
+    from .coord_system import CoordinateSystem
+    from .crs import Geodetic
+
+    metadata = table.schema.metadata
+    name = metadata[b'name'].decode()
+    feature_type = metadata[b'feature_type'].decode()
+    properties = json.loads(metadata[b'properties'].decode())
+    encoding = json.loads(metadata[b'cf_encoding'].decode())
+    cs = json.loads(metadata[b'coord_system'].decode())
+
+    data = table[name].combine_chunks().to_numpy_ndarray()
+
+    coord_system = CoordinateSystem(
+        horizontal=Geodetic(),
+        elevation=axis._from_string(cs['elevation']),
+        time=axis._from_string(cs['time']),
+    )
+
+    coords = {}
+    for ax in coord_system.axes:
+        coords[ax] = table[ax].combine_chunks().to_numpy_ndarray()
+    domain = cls.__DOMAIN_CLS__(coords = coords, coord_system = coord_system)
+    return cls(name = name, data = data, domain=domain,properties=properties,encoding=encoding)        

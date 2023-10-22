@@ -1,5 +1,5 @@
 import abc
-from typing import Mapping, Sequence
+from typing import Mapping, Sequence, Self
 
 import numpy as np
 import numpy.typing as npt
@@ -10,41 +10,20 @@ import xarray as xr
 from . import axis
 from .coord_system import CoordinateSystem
 from .quantity import create_quantity
+from .feature import PointsFeature
 
+class Domain():
 
-class Domain(abc.ABC):
-    __slots__ = ('__coords', '__coord_system')
-
-    def __init__(
-        self,
-        coords: dict[axis.Axis, xr.DataArray],
-        coord_system: CoordinateSystem
-    ) -> None:
-        if not isinstance(coord_system, CoordinateSystem):
-            raise TypeError(
-                "'coord_system' must be an instance of 'CoordinateSystem'"
+    def _from_xrdset(self, ds: xr.Dataset) -> Self:
+        return type(self)(
+                coords={
+                    axis_: coord.data
+                    for axis_, coord in ds.coords.items()
+                },
+                coord_system=self.coord_system
             )
-        self.__coord_system = coord_system
-        self.__coords = dict(coords)
 
-    @property
-    def _coords(self) -> dict[axis.Axis, xr.DataArray]:
-        return self.__coords
-
-    @property
-    def coord_system(self) -> CoordinateSystem:
-        return self.__coord_system
-
-    def coordinates(
-        self, coord_axis: axis.Axis | None = None
-    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
-        if coord_axis is None:
-            return {axis: coord.data for axis, coord in self.__coords.items()}
-        return self.__coords[coord_axis].data
-
-
-class Points(Domain):
-    __slots__ = ('__n_pts',)
+class Points(Domain, PointsFeature):
 
     def __init__(
         self,
@@ -54,8 +33,8 @@ class Points(Domain):
         ),
         coord_system: CoordinateSystem
     ) -> None:
+        
         units = coord_system.units
-        pts = ('_points',)
 
         if isinstance(coords, Mapping):
             result_coords = {}
@@ -67,7 +46,7 @@ class Points(Domain):
                         f"'coords' have axis {axis_} that does not have "
                         "one-dimensional values"
                     )
-                result_coords[axis_] = xr.DataArray(vals_, dims=pts)
+                result_coords[axis_] = vals_
                 n_pts.add(vals_.size)
             if len(n_pts) != 1:
                 raise ValueError("'coords' must have values of equal sizes")
@@ -75,7 +54,7 @@ class Points(Domain):
                 raise ValueError(
                     "'coords' must have all axes from the coordinate system"
                 )
-            self.__n_pts = n_pts.pop()
+            self._n_points = n_pts.pop()
         elif isinstance(coords, Sequence):
             # NOTE: This approach currently does not allow providing units.
             n_dims = {len(point) for point in coords}
@@ -83,26 +62,19 @@ class Points(Domain):
                 raise ValueError(
                     "'coords' must have points of equal number of dimensions"
                 )
-            self.__n_pts = len(coords)
+            self._n_points = len(coords)
             data = pd.DataFrame(data=coords, columns=coord_system.axes)
             result_coords = {
-                axis_: xr.DataArray(
-                    pint.Quantity(
+                axis_: pint.Quantity(
                         vals.to_numpy(dtype=axis_.dtype), units.get(axis_)
-                    ),
-                    dims=pts
-                )
+                    )
                 for axis_, vals in data.items()
             }
         else:
             raise TypeError("'coords' must be a sequence or mapping")
 
-        super().__init__(result_coords, coord_system)
-
-    @property
-    def number_of_points(self) -> int:
-        return self.__n_pts
-
+        super().__init__(coords=result_coords,
+                         coord_system=coord_system)
 
 class Profile(Domain):
     __slots__ = ('__n_prof', '__n_lev')
@@ -175,7 +147,7 @@ class Profile(Domain):
             )
         self.__n_prof = n_prof_tot
         self.__n_lev = n_lev_tot
-        super().__init__(result_coords, coord_system)
+        super().__init__(domtype.Points, result_coords, coord_system)
 
     @property
     def number_of_profiles(self) -> int:

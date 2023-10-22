@@ -61,7 +61,7 @@ Repository = "https://github.com/opengeokube/geokube.git"
 [project.optional-dependencies]
 geo_science = ["gsw>=3.6", "shapely>=2.0"]
 regridding = ["xesmf"]
-sentinel_data = ["rasterio>=1.3.8.post2", "rioxarray 0.15"]
+#sentinel_data = ["rasterio>=1.3.8.post2", "rioxarray>=0.15"]
 
 # [project.scripts]
 # spam-cli = "spam:main_cli"

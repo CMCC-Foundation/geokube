@@ -112,6 +112,14 @@ class CoordinateSystem:
         return self.__all_axes
 
     @property
+    def dim_axes(self) -> tuple[axis.Axis, ...]:
+        return self.spatial.crs.__dim_axes + self.spatial.elevation + self.time + self.user_axes
+
+    @property
+    def aux_axes(self) -> tuple[axis.Axis, ...]:
+        return self.spatial.crs.aux_axes
+
+    @property
     def units(self) -> dict[axis.Axis, pint.Unit]:
         return self.__units
 
