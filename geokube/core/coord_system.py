@@ -91,7 +91,7 @@ class CoordinateSystem:
 
         self.__all_axes = tuple(all_axes)
 
-        self.__units = {axis: axis.default_units for axis in self.__all_axes}
+        self.__units = {axis: axis.units for axis in self.__all_axes}
         if units:
             self.__units |= units
 
@@ -113,8 +113,16 @@ class CoordinateSystem:
 
     @property
     def dim_axes(self) -> tuple[axis.Axis, ...]:
-        return self.spatial.crs.__dim_axes + self.spatial.elevation + self.time + self.user_axes
-
+        # TODO: add dim only if not None!!
+        res = ()
+        if self.user_axes:
+            res = self.user_axes
+        if self.time:
+            res = res + (self.time,)
+        if self.spatial.elevation:
+            res = res + (self.spatial.elevation,)
+        return res + self.spatial.crs.dim_axes
+    
     @property
     def aux_axes(self) -> tuple[axis.Axis, ...]:
         return self.spatial.crs.aux_axes

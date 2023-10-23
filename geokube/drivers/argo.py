@@ -2,7 +2,7 @@ import pint
 import xarray as xr
 
 from geokube import (
-    axis, CoordinateSystem, Geodetic, Profile, ProfileField, units
+    axis, CoordinateSystem, Geodetic, Profiles, ProfilesField, units
 )
 
 
@@ -27,7 +27,7 @@ _ARGO_DATA_VARS = (
 )
 
 
-def open_argo(path: str, variable: str, **kwargs) -> ProfileField:
+def open_argo(path: str, variable: str, **kwargs) -> ProfilesField:
     import gsw
 
     var = str(variable)
@@ -54,10 +54,10 @@ def open_argo(path: str, variable: str, **kwargs) -> ProfileField:
         coord_system = CoordinateSystem(
             horizontal=Geodetic(), elevation=axis.vertical, time=axis.time
         )
-        domain = Profile(coords=coords, coord_system=coord_system)
+        domain = Profiles(coords=coords, coord_system=coord_system)
         data_var = dset[var]
         data_vals, data_units = data_var.data, data_var.attrs.get('units', '')
-        field = ProfileField(
+        field = ProfilesField(
             name=var.lower(),
             domain=domain,
             data=pint.Quantity(data_vals, data_units),

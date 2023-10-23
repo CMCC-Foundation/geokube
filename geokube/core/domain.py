@@ -10,7 +10,7 @@ import xarray as xr
 from . import axis
 from .coord_system import CoordinateSystem
 from .quantity import create_quantity
-from .feature import PointsFeature
+from .feature import PointsFeature, ProfilesFeature, GridFeature
 
 class Domain():
 
@@ -76,8 +76,7 @@ class Points(Domain, PointsFeature):
         super().__init__(coords=result_coords,
                          coord_system=coord_system)
 
-class Profile(Domain):
-    __slots__ = ('__n_prof', '__n_lev')
+class Profiles(Domain, ProfilesFeature):
 
     def __init__(
         self,
@@ -90,7 +89,7 @@ class Profile(Domain):
         units = coord_system.units
         interm_coords = dict(coords)
         result_coords: dict[axis.Axis, xr.DataArray] = {}
-        prof = ('_profiles',)
+        prof = (self._DIMS_[0],)
         n_prof = set()
         vert = interm_coords.pop(axis.vertical)
 
@@ -120,8 +119,9 @@ class Profile(Domain):
                     "structure"
                 )
             n_prof_tot, n_lev_tot = vert_shape
+
         result_coords[axis.vertical] = xr.DataArray(
-            vert_, dims=('_profiles', '_levels')
+            vert_, dims=self._DIMS_
         )
 
         # All coordinates except the vertical.
@@ -145,20 +145,13 @@ class Profile(Domain):
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
             )
-        self.__n_prof = n_prof_tot
-        self.__n_lev = n_lev_tot
-        super().__init__(domtype.Points, result_coords, coord_system)
+        self._n_profiles = n_prof_tot
+        self._n_levels = n_lev_tot
 
-    @property
-    def number_of_profiles(self) -> int:
-        return self.__n_prof
+        super.__init__(coords = result_coords,
+                       coord_system=coord_system)
 
-    @property
-    def number_of_levels(self) -> int:
-        return self.__n_lev
-
-
-class Grid(Domain):
+class Grid(Domain, GridFeature):
     # TODO: Consider auxiliary coordinates other than the
     # latitude and longitude. Especially consider how to represent them in the
     # API.
@@ -176,45 +169,40 @@ class Grid(Domain):
             raise TypeError("'coords' must be a mapping")
 
         crs = coord_system.spatial.crs
-        hor_dim_axes, hor_aux_axes = crs.dim_axes, crs.aux_axes
-        hor_dims = tuple(f'_{axis_}' for axis_ in hor_dim_axes)
-        dim_axes: tuple[str, ...]
-        axes = set(coord_system.axes)
-        if hor_aux_axes:
-            axes -= set(hor_aux_axes)
+        self._DIMS_ = coord_system.dim_axes
+
+        xr_dims = tuple(f'_{axis_}' for axis_ in crs.dim_axes)
+        xr_dim_axes: tuple[str, ...]
+
+
         units = coord_system.units
         result_coords: dict[axis.Axis, xr.DataArray] = {}
+
         hor_aux_shapes = set()
 
         for axis_, vals in coords.items():
             vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
-            if axis_ in axes:
+            if axis_ in coord_system.dim_axes:
                 # Dimension coordinates.
                 if not vals_.ndim:
-                    dim_axes = ()
+                    xr_dim_axes = ()
                 elif vals_.ndim == 1:
-                    dim_axes = (f'_{axis_}',)
+                    xr_dim_axes = (f'_{axis_}',)
                 else:
                     raise ValueError(
                         f"'coords' have a dimension axis {axis_} that has "
                         "multi-dimensional values"
                     )
-                # if not is_monotonic(vals_):
-                #     raise ValueError(
-                #         f"'coords' have a dimension axis {axis_} that does "
-                #         "not have monotonic values"
-                #     )
-                # dim_axes = (axis_,)
             else:
                 # Auxiliary coordinates.
-                # dim_axes = hor_dim_axes
-                dim_axes = hor_dims if vals_.ndim else ()
-                if axis_ in hor_aux_axes:
+                xr_dim_axes = xr_dims if vals_.ndim else ()
+                if axis_ in crs.aux_axes:
                     hor_aux_shapes.add(vals_.shape)
-            result_coords[axis_] = xr.DataArray(vals_, dims=dim_axes)
+            result_coords[axis_] = xr.DataArray(vals_, dims=xr_dim_axes)
         if len(hor_aux_shapes) > 1:
             raise ValueError(
                 "'coords' have auxiliary horizontal coordinates with different"
                 "shapes"
             )
+
         super().__init__(result_coords, coord_system)

@@ -15,14 +15,14 @@ import xarray as xr
 
 from . import axis, indexes
 from .crs import Geodetic
-from .domain import Domain, Grid, Points, Profile
+from .domain import Domain, Grid, Points, Profiles
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
 import pyarrow as pa
 from .coord_system import CoordinateSystem
 
-from .feature import PointsFeature
+from .feature import PointsFeature, ProfilesFeature, GridFeature
 
 
 def to_pyarrow_tensor(data):
@@ -77,6 +77,31 @@ class Field():
             encoding=encoding
         )
 
+    # def _prepare_dset(self,
+    #                   name,
+    #                   data, 
+    #                   domain,
+    #                   ancillary,
+    #                   encoding: Mapping | None = None,
+    #                   properties: Mapping | None = None):
+    #     data_vars = {}
+    #     attrs = properties if not None else {}
+    #     data_vars[name] = xr.DataArray(data=data, dims=self._DIMS_, attrs=attrs)
+    #     data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+        
+    #     if ancillary is not None:
+    #         for anc_name, anc_data in ancillary.items():
+    #             data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
+        
+    #     ds_attrs = {_FIELD_NAME_ATTR_: name}
+
+    #     self.super().__init__(
+    #         data_vars = data_vars,
+    #         coords = domain.coords,
+    #         attrs = ds_attrs,
+    #         coord_system=domain.coord_system
+    #     )
+
     @property # TODO: define setter method
     def domain(self) -> Domain:
         coords = {}
@@ -84,7 +109,7 @@ class Field():
             coords[ax] = self.coords[ax]
         return self._DOMAIN_CLS_(
                 coords=coords, 
-                coord_system=self._coord_system)    
+                coord_system=self.coord_system)    
 
     @property
     def ancillary(self, name: str | None = None) -> dict | pint.Quantity:
@@ -217,15 +242,15 @@ class PointsField(Field, PointsFeature):
             coord_system=domain.coord_system
         )
 
-class ProfileField(Field):
-    _DOMAIN_TYPE = Profile
+class ProfilesField(Field, ProfilesFeature):
+    _DOMAIN_CLS_ = Profiles
 
     __slots__ = ()
 
     def __init__(
         self,
         name: str,
-        domain: Profile,
+        domain: Profiles,
         data: npt.ArrayLike | pint.Quantity | None = None,
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
@@ -293,30 +318,23 @@ class ProfileField(Field):
                     "as the coordinates"
                 )
         
-        name = str(name)
-        dims = ('_profiles', '_levels')
+        data_vars = {}
+        attrs = properties if not None else {}
+        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
+        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+        
+        if ancillary is not None:
+            for anc_name, anc_data in ancillary.items():
+                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
+        
+        ds_attrs = {_FIELD_NAME_ATTR_: name}
 
-        _create_feature_dset(name)
-
-        dset = xr.Dataset(
-            data_vars={name: (('_profiles', '_levels'), data_)},
-            coords=domain._coords
+        super().__init__(
+            data_vars = data_vars,
+            coords = domain.coords,
+            attrs = ds_attrs,
+            coord_system=domain.coord_system
         )
-        coord_system = domain.coord_system
-        spat_axes = set(coord_system.spatial.axes)
-        for axis_ in coord_system.axes:
-            if axis_ not in spat_axes:
-                dset = dset.set_xindex(axis_, indexes.OneDimIndex)
-        dset = dset.set_xindex(
-            axis.vertical,
-            indexes.TwoDimVertProfileIndex,
-            data=dset[name],
-            name=name
-        )
-        dset = dset.set_xindex(
-            [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
-        )
-        super().__init__(name, domain, dset, ancillary, properties, encoding)
 
     # Spatial operations ------------------------------------------------------
 
@@ -333,7 +351,8 @@ class ProfileField(Field):
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        new_data = self._data.sel(h_idx)
+        new_data = self._dset.sel(h_idx)
+
         if not (bottom is None and top is None):
             # TODO: Try to move this functionality to
             # `indexes.TwoDimHorPointsIndex.sel`.
@@ -343,8 +362,8 @@ class ProfileField(Field):
             )
             v_slice = slice(bottom, top)
             v_idx = {axis.vertical: v_slice}
-            new_data = self._new_field(new_data)._data
-            new_data = new_data.sel(v_idx)
+            new_data = self._from_xrdset(new_data)
+            new_data = new_data._dset.sel(v_idx)
             vert = new_data[axis.vertical]
             vert_dims = vert.dims
             vert_data = vert.data
@@ -359,14 +378,15 @@ class ProfileField(Field):
             masked_data = np.where(mask, data.magnitude, np.nan)
             data_ = pint.Quantity(masked_data, data.units)
             new_data[self.name] = xr.Variable(dims=vert_dims, data=data_)
-        return self._new_field(new_data)
+        
+        return self._from_xrdset(new_data)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
         # TODO: Try to move this functionality to
         # `indexes.TwoDimHorPointsIndex.sel`.
-        dset = self._data
+        dset = self._dset
         data_qty = dset[self.name].data
         data_mag = data_qty.magnitude
         vert = dset[axis.vertical]
@@ -402,12 +422,10 @@ class ProfileField(Field):
         )
 
 
-class GridField(Field):
+class GridField(Field, GridFeature):
     # NOTE: The default order of axes is assumed.
 
-    _DOMAIN_TYPE = Grid
-
-    __slots__ = ('__dim_axes',)
+    _DOMAIN_CLS_ = Grid
 
     def __init__(
         self,
@@ -415,38 +433,15 @@ class GridField(Field):
         domain: Grid,
         data: npt.ArrayLike | pint.Quantity | None = None,
         dim_axes: Sequence[axis.Axis] | None = None,
-        anciliary: Mapping | None = None,
+        ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-        coord_system = domain.coord_system
-        coords = domain._coords
-        crs = coord_system.spatial.crs
-        dim_axes_: tuple[axis.Axis, ...]
-        aux_axes: tuple[axis.Axis, ...]
-        if dim_axes is None:
-            if isinstance(crs, Geodetic):
-                dim_axes_, aux_axes = coord_system.axes, ()
-            else:
-                default_axes = coord_system.axes
-                aux_hor_axes = {axis.latitude, axis.longitude}
-                dim_axes_tmp, aux_axes_tmp = [], []
-                for axis_ in default_axes:
-                    if axis_ in aux_hor_axes:
-                        aux_axes_tmp.append(axis_)
-                    else:
-                        dim_axes_tmp.append(axis_)
-                dim_axes_, aux_axes = tuple(dim_axes_tmp), tuple(aux_axes_tmp)
-        else:
-            dim_axes_ = tuple(dim_axes)
-            aux_axes = tuple(axis for axis in coords if axis not in dim_axes)
-        self.__dim_axes = dim_axes_
 
+#        aux_axes = domain.coord_system.aux_axes
+        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
+        
         match data:
-            # case pint.Quantity() if isinstance(data.magnitude, _ARRAY_TYPES):
-            #     data_ = data
-            # case pint.Quantity():
-            #     data_ = pint.Quantity(np.asarray(data.magnitude), data.units)
             case pint.Quantity():
                 data_ = (
                     data
@@ -462,35 +457,22 @@ class GridField(Field):
             case _:
                 data_ = pint.Quantity(np.asarray(data))
 
-        dset = xr.Dataset(
-            data_vars={
-                str(name): (tuple(f'_{axis}' for axis in dim_axes_), data_)
-            },
-            coords=domain._coords
-        )
-        for axis_ in dim_axes_:
-            dset = dset.set_xindex(axis_, indexes.OneDimPandasIndex)
-        if {axis.latitude, axis.longitude} <= set(aux_axes):
-            dset = dset.set_xindex(aux_axes, indexes.TwoDimHorGridIndex)
-        super().__init__(name, domain, dset, anciliary, properties, encoding)
+        data_vars = {}
+        attrs = properties if not None else {}
+        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
+        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+        
+        if ancillary is not None:
+            for anc_name, anc_data in ancillary.items():
+                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS_)
+        
+        ds_attrs = {_FIELD_NAME_ATTR_: name}
 
-    def _new_field(
-        self, new_data: xr.Dataset, result_type: type[Any] | None = None
-    ) -> Any:
-        field_type = type(self) if result_type is None else result_type
-        domain_type = field_type._DOMAIN_TYPE
-        name = self.name
-        return field_type(
-            name=name,
-            domain=domain_type(
-                coords={
-                    axis_: coord.data
-                    for axis_, coord in new_data.coords.items()
-                },
-                coord_system=self.domain.coord_system
-            ),
-            data=new_data[name].data,
-            dim_axes=self.__dim_axes
+        super().__init__(
+            data_vars = data_vars,
+            coords = domain.coords,
+            attrs = ds_attrs,
+            coord_system=domain.coord_system
         )
 
     # Spatial operations ------------------------------------------------------
@@ -500,33 +482,25 @@ class GridField(Field):
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity
     ) -> PointsField:  # Self:
-        # NOTE: This code works with geodetic grids and returns the Cartesian
-        # product.
-        # idx = {axis.latitude: latitude, axis.longitude: longitude}
-        # new_data = self._data.sel(idx, method='nearest', tolerance=np.inf)
-        # return self._new_field(new_data)
-
         # NOTE: This code works with all tested grids and returns the nearest
         # points.
         # Preparing data, labels, units, and dimensions.
-        name = self.name
         coord_system = self.domain.coord_system
-        dset = self._data
-        lat = dset[axis.latitude]
-        lat_data = lat.data
-        lat_vals = lat_data.magnitude
-        lon = dset[axis.longitude]
-        lon_data = lon.data
-        lon_vals = lon_data.magnitude
 
-        lat_labels = get_magnitude(latitude, lat_data.units)
-        lon_labels = get_magnitude(longitude, lon_data.units)
+        lat = self.coords[axis.latitude]
+        lon = self.coords[axis.latitude]
+
+        lat_vals = lat.magnitude
+        lon_vals = lon.magnitude
+
+        lat_labels = get_magnitude(latitude, lat.units)
+        lon_labels = get_magnitude(longitude, lon.units)
 
         if isinstance(coord_system.spatial.crs, Geodetic):
             lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
             dims = ('_latitude', '_longitude')
         else:
-            all_dims = {lat.dims, lon.dims}
+            all_dims = {lat.dims, lon.dims} # TODO: Review!!
             if len(all_dims) != 1:
                 raise ValueError(
                     "'dset' must contain latitude and longitude with the same"
@@ -547,6 +521,7 @@ class GridField(Field):
         result_idx = dict(zip(dims, pts_idx))
         dset = dset.isel(indexers=result_idx)
 
+        name = self.name
         # Creating the resulting points field.
         new_coords = to_points_dict(name=name, dset=dset)
         del new_coords['points']

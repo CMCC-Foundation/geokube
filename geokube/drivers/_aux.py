@@ -7,8 +7,8 @@ from geokube import (
     Geodetic,
     Grid,
     GridField,
-    Profile,
-    ProfileField,
+    Profiles,
+    ProfilesField,
     RotatedGeodetic,
     units
 )

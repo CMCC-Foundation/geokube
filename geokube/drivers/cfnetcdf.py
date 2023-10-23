@@ -9,7 +9,7 @@ _FEATURE_MAP: dict[str | None, type[field.Field]] = {
     'point': field.PointsField,
     # 'timeSeries': ...,
     # 'trajectory': ...,
-    'profile': field.ProfileField,
+    'profile': field.ProfilesField,
     # 'timeSeriesProfile': ...,
     # 'trajectoryProfile': ...,
     None: field.GridField

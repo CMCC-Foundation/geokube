@@ -17,14 +17,14 @@ class Axis(str):
     # hashables as dimensions, the inheritance from `str` will not be
     # necessary any more. In that case, `Axis` might inherit from `Hashable`.
 
-    _DEFAULT_UNITS: pint.Unit
-    _DEFAULT_DTYPE: np.dtype
+    _DEFAULT_UNITS_: pint.Unit
+    _DEFAULT_DTYPE_: np.dtype
 
-    __slots__ = ('__default_units', '__dtype', '__encoding')
+    __slots__ = ('_units', '_dtype', '_encoding')
 
     def __new__(
         cls,
-        default_units: pint.Unit | str | None = None,
+        units: pint.Unit | str | None = None,
         dtype: npt.DTypeLike | None = None,
         encoding: Mapping[str, Any] | None = None
     ):
@@ -32,28 +32,28 @@ class Axis(str):
 
     def __init__(
         self,
-        default_units: pint.Unit | str | None = None,
+        units: pint.Unit | str | None = None,
         dtype: npt.DTypeLike | None = None,
         encoding: Mapping[str, Any] | None = None
     ) -> None:
-        self.__dtype = np.dtype(dtype) or self._DEFAULT_DTYPE
-        self.__default_units = pint.Unit(default_units or self._DEFAULT_UNITS)
+        self.__dtype = np.dtype(dtype) or self._DEFAULT_DTYPE_
+        self.__units = pint.Unit(units or self._DEFAULT_UNITS_)
         self.__encoding = {} if encoding is None else dict(encoding)
 
     def __repr__(self) -> str:
         cls_ = self.__class__.__name__
-        default_units = f"default_units='{self.__default_units}'"
+        units = f"units='{self.__units}'"
         dtype = f"dtype='{self.__dtype}'"
         encoding = f"encoding={self.__encoding}"
-        return f"{cls_}({default_units}, {dtype}, {encoding})"
+        return f"{cls_}({units}, {dtype}, {encoding})"
 
     @property
     def name(self) -> str:
         return str(self)
 
     @property
-    def default_units(self) -> pint.Unit:
-        return self.__default_units
+    def units(self) -> pint.Unit:
+        return self.__units
 
     @property
     def dtype(self) -> np.dtype:
@@ -65,8 +65,8 @@ class Axis(str):
 
 
 class Spatial(Axis):
-    _DEFAULT_UNITS = units['meter']
-    _DEFAULT_DTYPE = np.dtype('float64')
+    _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_DTYPE_ = np.dtype('float64')
 
 
 class Horizontal(Spatial):
@@ -74,31 +74,31 @@ class Horizontal(Spatial):
 
 
 class Longitude(Horizontal):
-    _DEFAULT_UNITS = units['degrees_north']
+    _DEFAULT_UNITS_ = units['degrees_north']
 
 
 class Latitude(Horizontal):
-    _DEFAULT_UNITS = units['degrees_east']
+    _DEFAULT_UNITS_ = units['degrees_east']
 
 
 class GridLongitude(Horizontal):
-    _DEFAULT_UNITS = units['degrees']
+    _DEFAULT_UNITS_ = units['degrees']
 
 
 class GridLatitude(Horizontal):
-    _DEFAULT_UNITS = units['degrees']
+    _DEFAULT_UNITS_ = units['degrees']
 
 
 class X(Horizontal):
-    _DEFAULT_UNITS = units['meter']
+    _DEFAULT_UNITS_ = units['meter']
 
 
 class Y(Horizontal):
-    _DEFAULT_UNITS = units['meter']
+    _DEFAULT_UNITS_ = units['meter']
 
 
 class Elevation(Spatial):
-    _DEFAULT_UNITS = units['meter']
+    _DEFAULT_UNITS_ = units['meter']
 
 
 class Vertical(Elevation):
@@ -118,13 +118,13 @@ class Z(Elevation):
 
 
 class Time(Axis):
-    _DEFAULT_UNITS = units['']
-    _DEFAULT_DTYPE = np.dtype('datetime64')
+    _DEFAULT_UNITS_ = units['']
+    _DEFAULT_DTYPE_ = np.dtype('datetime64')
 
 
 class UserDefined(Axis): # Hash cannot be the class name -> redefine hash with axis name
-    _DEFAULT_UNITS = units['']
-    _DEFAULT_DTYPE = np.dtype('float64')
+    _DEFAULT_UNITS_ = units['']
+    _DEFAULT_DTYPE_ = np.dtype('float64')
 
 
 x = X()
@@ -140,7 +140,7 @@ timedelta = Time(dtype=np.timedelta64)
 
 
 def create(
-    name: str, default_units: pint.Unit | str, dtype: npt.DTypeLike
+    name: str, units: pint.Unit | str, dtype: npt.DTypeLike
 ) -> None:
     # TODO: Implement this.
     pass

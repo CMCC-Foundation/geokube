@@ -33,7 +33,7 @@ class Feature():
 
     def __init__(
         self,
-        coords: xr.Coordinates,
+        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
         coord_system: CoordinateSystem,
         data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
         attrs: Mapping | None = None,
@@ -45,7 +45,7 @@ class Feature():
             attrs=attrs
         )
 
-        self._coord_system = coord_system
+        self.__coord_system = coord_system
 
     def _from_xrdset(self, dset:xr.Dataset) -> Self:
         return type(self)(
@@ -58,19 +58,15 @@ class Feature():
     #TODO: does __getitem__ works with Axis? does it returns an xr.DataArray?
 
     @property  # override xr.Dataset coords method to return Mapping axis -> data
-    def coords(
-        self, coord_axis: axis.Axis | None = None
-    ) -> dict[axis.Axis, pint.Quantity] | pint.Quantity:
-        if coord_axis is None:
-            coords = {}
-            for ax in self.coord_system.axes:
-                 coords[ax] = self._dset[ax].data
-            return coords
-        return self.coords[coord_axis]
+    def coords(self) -> dict[axis.Axis, pint.Quantity]:
+        coords = {}
+        for ax in self.coord_system.axes:
+            coords[ax] = self._dset[ax].data
+        return coords
 
     @property
     def coord_system(self):
-        return self._coord_system
+        return self.__coord_system
 
 # CF Methods 
     @property  # return dimensional axes
@@ -82,8 +78,21 @@ class Feature():
     @property
     def dim_coords(self) -> Mapping[axis.Axis, pint.Quantity]:
         return {
-            ax: coord.data
-            for ax, coord in self._dset[self.dim_axes]
+            ax: self._dset[ax].data
+            for ax in self.coord_system.dim_axes
+        }
+
+    @property  # return dimensional axes
+    def aux_axes(
+        self
+    ) -> Sequence[axis.Axis]:
+        return self.coord_system.aux_axes
+
+    @property
+    def aux_coords(self) -> Mapping[axis.Axis, pint.Quantity]:
+        return {
+            ax: self._dset[ax].data
+            for ax in self.coord_system.aux_axes
         }
 
     # spatial operations
@@ -146,7 +155,7 @@ class Feature():
         return self._from_xrdset(dset)
 
 class PointsFeature(Feature):
-    _DIMS = ('_points')
+    _DIMS_ = ('_points')
     __slots__ = ('_n_points')
 
     def __init__(
@@ -160,7 +169,7 @@ class PointsFeature(Feature):
         res_coords = {
             axis_: xr.DataArray(
                 vals,
-                dims=self._DIMS
+                dims=self._DIMS_
             ) if isinstance(vals, pint.Quantity) else vals 
             for axis_, vals in coords.items()
         } if isinstance (coords, Mapping) else coords
@@ -168,19 +177,19 @@ class PointsFeature(Feature):
         res_data_vars = {
             name: xr.DataArray(
                     vals,
-                    dims=self._DIMS
+                    dims=self._DIMS_
                 ) if isinstance(vals, pint.Quantity) else vals
                     for name, vals in data_vars.items()
             } if data_vars is not None else None
-        
+
         super().__init__(data_vars=res_data_vars,
                          coords=res_coords,
                          coord_system=coord_system,
                          attrs=attrs)
 
-        hor_axes = set(coord_system.spatial.crs.axes)
+        spat_axes = set(coord_system.spatial.crs.axes)
         for axis_ in coord_system.axes:
-            if axis_ not in hor_axes:
+            if axis_ not in spat_axes:
                 self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
    
         self._dset = self._dset.set_xindex(
@@ -190,3 +199,67 @@ class PointsFeature(Feature):
     @property
     def number_of_points(self) -> int:
         return self._n_points
+
+class ProfilesFeature(Feature):
+    _DIMS_ = ('_profiles', '_levels')
+    __slots__ = ('_n_profiles', '_n_levels')
+
+    def __init__(
+        self,
+        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
+        coord_system: CoordinateSystem,
+        data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
+        attrs: Mapping | None = None
+    ) -> None:
+        
+        super().__init__(data_vars=data_vars,
+                         coords=coords,
+                         coord_system=coord_system,
+                         attrs=attrs)
+
+        spat_axes = set(coord_system.spatial.axes)
+        for axis_ in coord_system.axes:
+            if axis_ not in spat_axes:
+                self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
+        
+        self._dset = self._dset.set_xindex(
+            axis.vertical,
+            indexes.TwoDimVertProfileIndex,
+            data=self._dset[self.name], # why is this needed?
+            name=self.name # why is this needed?
+        )
+
+        self._dset = self._dset.set_xindex(
+            [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
+        )
+
+    @property
+    def number_of_profiles(self) -> int:
+        return self._n_profiles
+
+    @property
+    def number_of_levels(self) -> int:
+        return self._n_levels
+
+
+class GridFeature(Feature):
+    __slots__ = ('_DIMS_',)
+
+    def __init__(
+        self,
+        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
+        coord_system: CoordinateSystem,
+        data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
+        attrs: Mapping | None = None
+    ) -> None:
+        
+        super().__init__(data_vars=data_vars,
+                         coords=coords,
+                         coord_system=coord_system,
+                         attrs=attrs)
+
+        for axis_ in self._DIMS_:
+            self._dset = self._dset.set_xindex(axis_, indexes.OneDimPandasIndex)
+        
+        if {axis.latitude, axis.longitude} <= set(self.aux_axes):
+            self._dset = self._dset.set_xindex(self.aux_axes, indexes.TwoDimHorGridIndex)
