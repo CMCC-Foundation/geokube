@@ -226,12 +226,12 @@ class PointsField(Field, PointsFeature):
         
         data_vars = {}
         attrs = properties if not None else {}
-        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS, attrs=attrs)
+        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
         data_vars[name].encoding = encoding if not None else {} # This is not working!!!
         
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
-                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
+                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS_)
         
         ds_attrs = {_FIELD_NAME_ATTR_: name}
 
