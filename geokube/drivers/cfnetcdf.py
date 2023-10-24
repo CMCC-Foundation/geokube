@@ -1,5 +1,6 @@
 import pint
 import xarray as xr
+import cf_xarray as cfxr
 
 from geokube import axis, CoordinateSystem, CRS, Geodetic, RotatedGeodetic
 from geokube.core import domain, field
@@ -19,7 +20,7 @@ _FEATURE_MAP: dict[str | None, type[field.Field]] = {
 def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
     var_name = str(variable)
     kwargs.setdefault('decode_coords', 'all')
-    with xr.open_mfdataset(path, **kwargs) as dset:
+    with xr.open_dataset(path, **kwargs) as dset:
         dset_cf = dset.cf
         dset_coords = dict(dset.coords)
 
@@ -79,7 +80,7 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
 
         # Domain.
         field_type = _FEATURE_MAP[dset.attrs.get('featureType')]
-        domain_type = field_type._DOMAIN_TYPE
+        domain_type = field_type._DOMAIN_CLS_
         domain_ = domain_type(coords=coords, coord_system=crs)
 
         # Data.
