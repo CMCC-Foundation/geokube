@@ -52,13 +52,16 @@ class Field():
     # - this is the same method name in Feature class ->
     # in order to have precedence Field should be inherited first
     # 
-    def _from_xrdset(self, ds: xr.Dataset) -> Self:
+    @classmethod
+    def _from_xrdset(cls, 
+                     ds: xr.Dataset, 
+                     coord_system: CoordinateSystem) -> Self:
         coords = {}        
-        for ax in self.coord_system.axes:
+        for ax in coord_system.axes:
             coords[ax] = ds.coords[ax]
-        domain = self._DOMAIN_CLS_(
+        domain = cls._DOMAIN_CLS_(
                     coords=coords, 
-                    coord_system=self.coord_system)
+                    coord_system=coord_system)
         name = ds.attrs[_FIELD_NAME_ATTR_]
         data = ds[name].data
         properties = ds[name].attrs
@@ -68,7 +71,7 @@ class Field():
             if c != name:
                 ancillary[c] = ds[c].data
         
-        return type(self)(
+        return cls(
             name=name,
             domain=domain,
             data=data,
@@ -186,7 +189,38 @@ class Field():
                                     schema=pa.schema(schema_data, 
                                                      metadata=self.build_pyarrow_metadata()) 
                                     )
+# TODO: move outside of the class and associate featuretype with class
+    @classmethod
+    def from_pyarrow_table(cls, table): 
+        # this method return a geokube field starting from a pyarrow Table 
+        # the schema metadata contains 
+        # data contains tensors for the field and domain
+        # 
+        # schema -> schema for field and domain
+        import json 
+        from .coord_system import CoordinateSystem
+        from .crs import Geodetic
 
+        metadata = table.schema.metadata
+        name = metadata[b'name'].decode()
+        feature_type = metadata[b'feature_type'].decode()
+        properties = json.loads(metadata[b'properties'].decode())
+        encoding = json.loads(metadata[b'cf_encoding'].decode())
+        cs = json.loads(metadata[b'coord_system'].decode())
+
+        data = table[name].combine_chunks().to_numpy_ndarray()
+
+        coord_system = CoordinateSystem(
+            horizontal=Geodetic(),
+            elevation=axis._from_string(cs['elevation']),
+            time=axis._from_string(cs['time']),
+        )
+
+        coords = {}
+        for ax in coord_system.axes:
+            coords[ax] = table[ax].combine_chunks().to_numpy_ndarray()
+        domain = cls.__DOMAIN_CLS__(coords = coords, coord_system = coord_system)
+        return cls(name = name, data = data, domain=domain,properties=properties,encoding=encoding)
 
 class PointsField(Field, PointsFeature):
     _DOMAIN_CLS_ = Points
@@ -432,15 +466,15 @@ class GridField(Field, GridFeature):
         name: str,
         domain: Grid,
         data: npt.ArrayLike | pint.Quantity | None = None,
-        dim_axes: Sequence[axis.Axis] | None = None,
+        dim_axes: Sequence[axis.Axis] | None = None, # This should not be used ... we fix the field to have all axis of the Domain!
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
 
 #        aux_axes = domain.coord_system.aux_axes
-        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
-        
+#        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
+#        
         match data:
             case pint.Quantity():
                 data_ = (
@@ -456,21 +490,37 @@ class GridField(Field, GridFeature):
                 data_ = None
             case _:
                 data_ = pint.Quantity(np.asarray(data))
+        
+        coords = {}
+        for ax, coord in domain.coords.items():
+            coords[ax] = xr.DataArray(coord, 
+                                      dims=domain._dset[ax].dims, 
+                                      attrs=domain._dset[ax].attrs)
+        
+        grid_mapping_attrs = domain.coord_system.spatial.crs.to_cf()
+        grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
+        coords[grid_mapping_name] = xr.DataArray(data=np.byte(1),
+                                                 name=grid_mapping_name,
+                                                 attrs = grid_mapping_attrs)
 
         data_vars = {}
-        attrs = properties if not None else {}
-        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
-        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+
+        field_attrs = properties if not None else {} # TODO: attrs can contain both properties and CF attrs
+        data_vars[name] = xr.DataArray(data=data_, dims=domain._dset.dims, attrs=field_attrs)
+        data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name'] 
+#        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
         
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
-                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS_)
+                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=domain._dset.dims)
+                data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name']
         
         ds_attrs = {_FIELD_NAME_ATTR_: name}
 
         super().__init__(
             data_vars = data_vars,
-            coords = domain.coords,
+            # coords = domain._dset.coords, # TODO: REVIEW THIS!!
+            coords = coords, # TODO: REVIEW THIS!!
             attrs = ds_attrs,
             coord_system=domain.coord_system
         )
@@ -536,59 +586,98 @@ class GridField(Field, GridFeature):
     def regrid(
         self, 
         target: GridField | Grid,
-        method: str
+        method: str = 'bilinear'
     ) -> Self:
-        
+        import xesmf as xe
         if not isinstance(target, Domain):
             if isinstance(target, GridField):
                 target = target.domain
             else:
                 raise TypeError(
-                    "'target' must be an instance of Domain or Field"
+                    "'target' must be an instance of Domain or GridField"
                 )
         #
         # TODO: check if they have the same CRS
         # if source CRS and target CRS are different
         # first transform source CRS to target CRS
         # 
-        # get spatial coordinates
+        # get spatial lat/lon coordinates
+        # we should get all horizontal coordinates -> e.g. Projection, RotatedPole ...
         # 
-        lat = target.coordinates(axis.latitude)
-        lon = target.coordinates(axis.longitude)
+        lat = target.coords[axis.latitude]
+        lon = target.coords[axis.longitude]
+        
         ds_out = xr.Dataset(
             {
-                "lat": (["lat"], lat.magnitude, lat.units),
-                "lon": (["lon"], lon.magnitude, lon.units)
+                "lat": (["lat"], lat),
+                "lon": (["lon"], lon)
             }
         )
 
-def from_pyarrow_table(table): 
-    # this method return a geokube field starting from a pyarrow Table 
-    # the schema metadata contains 
-    # data contains tensors for the field and domain
-    # 
-    # schema -> schema for field and domain
-    import json 
-    from .coord_system import CoordinateSystem
-    from .crs import Geodetic
+        # NOTE: before regridding we need to dequantify  
+        ds = self._dset.pint.dequantify()
+        #
+        # if we have ancillary data how they should be regridded?
+        # for the moment we assume the same method for the field
+        # TODO: maybe user should specify method for ancillary too!
+        #
+        regridder = xe.Regridder(ds, ds_out, method)
+        dset_reg = regridder(ds, keep_attrs=True)
+        
+        ancillary = {}
+        for v in dset_reg.data_vars:
+            if v != self.name:
+                ancillary[v] = dset_reg[v].pint.quantify()
 
-    metadata = table.schema.metadata
-    name = metadata[b'name'].decode()
-    feature_type = metadata[b'feature_type'].decode()
-    properties = json.loads(metadata[b'properties'].decode())
-    encoding = json.loads(metadata[b'cf_encoding'].decode())
-    cs = json.loads(metadata[b'coord_system'].decode())
+        new_cs = CoordinateSystem(horizontal=target.coord_system.spatial.crs,
+                            elevation=self.coord_system.spatial.elevation,
+                            time=self.coord_system.time,
+                            user_axes=self.coord_system.user_axes)
+    
+        coords = {}
+        for ax in new_cs.axes:
+            if isinstance(ax, axis.Horizontal):
+                coords[ax] = target.coords[ax]
+            else:
+                coords[ax] = self.coords[ax]
 
-    data = table[name].combine_chunks().to_numpy_ndarray()
+        return GridField(
+            name=self.name,
+            data=dset_reg[self.name].pint.quantify(),
+            domain=Grid(coords=coords, coord_system=new_cs),
+            ancillary=ancillary,
+            properties=self.properties,
+            encoding=self.encoding
+        )
+    
+    def to_cfxarray(self) -> xr.Dataset:
+        # we assume that we do not have any CF attributes in the xarray data structure
+        # underline the Field. We need to convert Field to an xarray Dataset with CF attributes
 
-    coord_system = CoordinateSystem(
-        horizontal=Geodetic(),
-        elevation=axis._from_string(cs['elevation']),
-        time=axis._from_string(cs['time']),
-    )
+        grid_mapping = self.domain.coord_system.spatial.crs.to_cf()
+        # add grid_mapping variable
+        grid_mapping_var = xr.DataArray(name=grid_mapping['grid_mapping_name'],
+                                        attrs = grid_mapping)
 
-    coords = {}
-    for ax in coord_system.axes:
-        coords[ax] = table[ax].combine_chunks().to_numpy_ndarray()
-    domain = cls.__DOMAIN_CLS__(coords = coords, coord_system = coord_system)
-    return cls(name = name, data = data, domain=domain,properties=properties,encoding=encoding)        
+        dims = 'points'
+        coords = {}
+        for ax, coord in self.domain._coords.items():
+            coords[ax] = xr.DataArray(name=str(ax), 
+                                      data=coord.data, 
+                                      dims=dims, 
+                                      attrs=axis.to_cf(ax))
+
+        field_var = xr.DataArray(data=self.data, 
+                                 coords=coords,
+                                 dims=dims)
+        field_var.attrs={}
+        field_var.attrs['grid_mapping'] = grid_mapping['grid_mapping_name'] 
+
+        ds = xr.Dataset(
+            data_vars = {
+                self.name: field_var,
+                grid_mapping_var.name: grid_mapping_var,
+            },
+            coords = coords
+        )
+        return ds

@@ -9,6 +9,7 @@ from .crs import Geodetic
 from .indexers import get_array_indexer, get_indexer
 import xarray as xr
 import pint
+import pint_xarray
 from .coord_system import CoordinateSystem
 import pandas as pd
 
@@ -47,21 +48,24 @@ class Feature():
 
         self.__coord_system = coord_system
 
-    def _from_xrdset(self, dset:xr.Dataset) -> Self:
-        return type(self)(
+    @classmethod
+    def _from_xrdset(cls, 
+                     dset:xr.Dataset, 
+                     coord_system: CoordinateSystem) -> Self:
+        return type(cls)(
                 data_vars = dset.data_vars,
                 coords = dset.coords,
                 attrs = dset.attrs,
-                coord_system = self.coord_system
+                coord_system = coord_system
         )
 
-    #TODO: does __getitem__ works with Axis? does it returns an xr.DataArray?
+    #TODO: Implement __getitem__ ??
 
-    @property  # override xr.Dataset coords method to return Mapping axis -> data
+    @property
     def coords(self) -> dict[axis.Axis, pint.Quantity]:
         coords = {}
         for ax in self.coord_system.axes:
-            coords[ax] = self._dset[ax].data
+            coords[ax] = self._dset[ax].pint.quantify().data
         return coords
 
     @property
@@ -109,11 +113,11 @@ class Feature():
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        new_ds = self._dset.sel(h_idx)
+        dset = self._dset.sel(h_idx)
         if not (bottom is None and top is None):
             v_idx = {axis.vertical: slice(bottom, top)}
-            new_ds = new_ds._dset.sel(v_idx)
-        return self._from_xrdset(new_ds)
+            dset = dset.sel(v_idx)
+        return type(self)._from_xrdset(dset, self.coord_system)
     
     def nearest_horizontal(
         self,
@@ -122,14 +126,14 @@ class Feature():
     ) -> Self:
         idx = {axis.latitude: latitude, axis.longitude: longitude}
         dset = self._dset.sel(idx, method='nearest', tolerance=np.inf)
-        return self._from_xrdset(dset)
+        return type(self)._from_xrdset(dset, self.coord_system)
         
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
         idx = {axis.vertical: elevation}
         dset = self._dset.sel(idx, method='nearest', tolerance=np.inf)
-        return self._from_xrdset(dset)
+        return self._from_xrdset(dset, self.coord_system)
 
     def time_range(
         self,
@@ -137,14 +141,14 @@ class Feature():
         end: date | datetime | str | None = None
     ) -> Self:
         dset = self._dset.sel({axis.time: slice(start, end)})
-        return self._from_xrdset(dset)
+        return self._from_xrdset(dset, self.coord_system)
         
     def nearest_time(
         self, time: date | datetime | str | npt.ArrayLike
     ) -> Self:
         idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
         dset = self._dset.sel(idx, method='nearest', tolerance=None)
-        return self._from_xrdset(dset)
+        return self._from_xrdset(dset, self.coord_system)
 
     def latest(self) -> Self:
         if axis.time not in self.coordinates():
@@ -152,7 +156,7 @@ class Feature():
         latest = self._dset[axis.time].max().astype(str).item().magnitude
         idx = {axis.time: slice(latest, latest)}
         dset = self._dset.sel(idx)
-        return self._from_xrdset(dset)
+        return self._from_xrdset(dset, self.coord_system)
 
 class PointsFeature(Feature):
     _DIMS_ = ('_points')
@@ -257,9 +261,10 @@ class GridFeature(Feature):
                          coords=coords,
                          coord_system=coord_system,
                          attrs=attrs)
-
-        for axis_ in self._DIMS_:
-            self._dset = self._dset.set_xindex(axis_, indexes.OneDimPandasIndex)
+ 
+        # for axis_ in self.dim_axes:
+        #     ds = self._dset.reset_index(axis_).pint.quantify()
+        #     self._dset = ds.set_xindex(axis_, indexes.OneDimPandasIndex)
         
         if {axis.latitude, axis.longitude} <= set(self.aux_axes):
-            self._dset = self._dset.set_xindex(self.aux_axes, indexes.TwoDimHorGridIndex)
+           self._dset = self._dset.set_xindex(self.aux_axes, indexes.TwoDimHorGridIndex)

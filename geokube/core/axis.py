@@ -74,11 +74,11 @@ class Horizontal(Spatial):
 
 
 class Longitude(Horizontal):
-    _DEFAULT_UNITS_ = units['degrees_north']
+    _DEFAULT_UNITS_ = units['degrees_east']
 
 
 class Latitude(Horizontal):
-    _DEFAULT_UNITS_ = units['degrees_east']
+    _DEFAULT_UNITS_ = units['degrees_north']
 
 
 class GridLongitude(Horizontal):
@@ -127,17 +127,16 @@ class UserDefined(Axis): # Hash cannot be the class name -> redefine hash with a
     _DEFAULT_DTYPE_ = np.dtype('float64')
 
 
-x = X()
-y = Y()
-z = Z()
-grid_latitude = GridLatitude()
-grid_longitude = GridLongitude()
-latitude = Latitude()
-longitude = Longitude()
-vertical = Vertical()
-time = Time(dtype=np.datetime64)
+x = X(encoding={'axis': 'X'})
+y = Y(encoding={'axis': 'Y'})
+z = Z(encoding={'axis': 'Z'})
+grid_latitude = GridLatitude(encoding={'standard_name': 'grid_latitude'})
+grid_longitude = GridLongitude(encoding={'standard_name': 'grid_longitude'})
+latitude = Latitude(encoding={'standard_name': 'latitude'})
+longitude = Longitude(encoding={'standard_name': 'longitude'})
+vertical = Vertical(encoding={'standard_name': 'height', 'positive': 'up'})
+time = Time(dtype=np.datetime64, encoding={'standard_name': 'time'})
 timedelta = Time(dtype=np.timedelta64)
-
 
 def create(
     name: str, units: pint.Unit | str, dtype: npt.DTypeLike

@@ -5,6 +5,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
+import pint_xarray
 import xarray as xr
 
 from . import axis
@@ -14,13 +15,14 @@ from .feature import PointsFeature, ProfilesFeature, GridFeature
 
 class Domain():
 
-    def _from_xrdset(self, ds: xr.Dataset) -> Self:
-        return type(self)(
+    @classmethod
+    def _from_xrdset(cls, ds: xr.Dataset, coord_system: CoordinateSystem) -> Self:
+        return cls(
                 coords={
                     axis_: coord.data
                     for axis_, coord in ds.coords.items()
                 },
-                coord_system=self.coord_system
+                coord_system=coord_system
             )
 
 class Points(Domain, PointsFeature):
@@ -169,11 +171,8 @@ class Grid(Domain, GridFeature):
             raise TypeError("'coords' must be a mapping")
 
         crs = coord_system.spatial.crs
-        self._DIMS_ = coord_system.dim_axes
-
-        xr_dims = tuple(f'_{axis_}' for axis_ in crs.dim_axes)
+        self._DIMS_ = ()
         xr_dim_axes: tuple[str, ...]
-
 
         units = coord_system.units
         result_coords: dict[axis.Axis, xr.DataArray] = {}
@@ -185,9 +184,10 @@ class Grid(Domain, GridFeature):
             if axis_ in coord_system.dim_axes:
                 # Dimension coordinates.
                 if not vals_.ndim:
-                    xr_dim_axes = ()
+                    dim_axes = ()
                 elif vals_.ndim == 1:
-                    xr_dim_axes = (f'_{axis_}',)
+                    dim_axes = (axis_,)
+                    self._DIMS_ = self._DIMS_ + dim_axes
                 else:
                     raise ValueError(
                         f"'coords' have a dimension axis {axis_} that has "
@@ -195,10 +195,19 @@ class Grid(Domain, GridFeature):
                     )
             else:
                 # Auxiliary coordinates.
-                xr_dim_axes = xr_dims if vals_.ndim else ()
+                dim_axes = crs.dim_axes if vals_.ndim else ()
                 if axis_ in crs.aux_axes:
                     hor_aux_shapes.add(vals_.shape)
-            result_coords[axis_] = xr.DataArray(vals_, dims=xr_dim_axes)
+                self._DIMS_ = dim_axes
+            
+            #
+            # dequantify is needed because xarray do not keep quantity 
+            # in the coordinates
+            # -> dequantify put units as attributes in the dataset
+            # we need to add also cf-attributes
+            result_coords[axis_] = xr.DataArray(vals_, 
+                                                dims=dim_axes,
+                                                attrs=axis_.encoding).pint.dequantify()
         if len(hor_aux_shapes) > 1:
             raise ValueError(
                 "'coords' have auxiliary horizontal coordinates with different"
