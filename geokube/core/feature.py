@@ -29,6 +29,10 @@ class FeatureType(Enum):
 #
 # class Feature(xr.Dataset):
 #
+# This is a wrapper for an xarray Dataset CF-compliant with indexes 
+# which allow to perform spatial operations like bbox, nearest, ...
+# enhanced with the coordinate system class.
+# 
 class Feature():
     __slots__ = ('_dset', '_coord_system')
 

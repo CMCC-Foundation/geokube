@@ -466,7 +466,7 @@ class GridField(Field, GridFeature):
         name: str,
         domain: Grid,
         data: npt.ArrayLike | pint.Quantity | None = None,
-        dim_axes: Sequence[axis.Axis] | None = None, # This should not be used ... we fix the field to have all axis of the Domain!
+#        dim_axes: Sequence[axis.Axis] | None = None, # This should not be used ... we fix the field to have all axis of the Domain!
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None
@@ -491,6 +491,7 @@ class GridField(Field, GridFeature):
             case _:
                 data_ = pint.Quantity(np.asarray(data))
         
+        #NOTE: THIS CODE CAN BE PUT IN ONE METHOD COMMON FOR ALL FIELDS! (MAYBE!)
         coords = {}
         for ax, coord in domain.coords.items():
             coords[ax] = xr.DataArray(coord, 
@@ -508,7 +509,7 @@ class GridField(Field, GridFeature):
         field_attrs = properties if not None else {} # TODO: attrs can contain both properties and CF attrs
         data_vars[name] = xr.DataArray(data=data_, dims=domain._dset.dims, attrs=field_attrs)
         data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name'] 
-#        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+        data_vars[name].encoding = encoding if encoding is not None else {}
         
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
@@ -517,10 +518,11 @@ class GridField(Field, GridFeature):
         
         ds_attrs = {_FIELD_NAME_ATTR_: name}
 
+# UNTIL HERE
+
         super().__init__(
             data_vars = data_vars,
-            # coords = domain._dset.coords, # TODO: REVIEW THIS!!
-            coords = coords, # TODO: REVIEW THIS!!
+            coords = coords, 
             attrs = ds_attrs,
             coord_system=domain.coord_system
         )
