@@ -20,12 +20,11 @@ class Axis(str):
     _DEFAULT_UNITS_: pint.Unit
     _DEFAULT_DTYPE_: np.dtype
 
-    __slots__ = ('_units', '_dtype', '_encoding')
+    __slots__ = ('_units', '_encoding')
 
     def __new__(
         cls,
         units: pint.Unit | str | None = None,
-        dtype: npt.DTypeLike | None = None,
         encoding: Mapping[str, Any] | None = None
     ):
         return str.__new__(cls, cls.__name__)
@@ -33,19 +32,17 @@ class Axis(str):
     def __init__(
         self,
         units: pint.Unit | str | None = None,
-        dtype: npt.DTypeLike | None = None,
         encoding: Mapping[str, Any] | None = None
     ) -> None:
-        self.__dtype = np.dtype(dtype) or self._DEFAULT_DTYPE_
-        self.__units = pint.Unit(units or self._DEFAULT_UNITS_)
-        self.__encoding = {} if encoding is None else dict(encoding)
+        self._units = pint.Unit(units or self._DEFAULT_UNITS_)
+        self._encoding = {} if encoding is None else dict(encoding)
+        self._encoding.setdefault('dtype', self._DEFAULT_DTYPE_)
 
     def __repr__(self) -> str:
-        cls_ = self.__class__.__name__
-        units = f"units='{self.__units}'"
-        dtype = f"dtype='{self.__dtype}'"
-        encoding = f"encoding={self.__encoding}"
-        return f"{cls_}({units}, {dtype}, {encoding})"
+        return (
+            f"{self.__class__.__name__}"
+            f"(units='{self._units}', encoding={self._encoding})"
+        )
 
     @property
     def name(self) -> str:
@@ -53,15 +50,11 @@ class Axis(str):
 
     @property
     def units(self) -> pint.Unit:
-        return self.__units
-
-    @property
-    def dtype(self) -> np.dtype:
-        return self.__dtype
+        return self._units
 
     @property
     def encoding(self) -> dict[str, Any]:
-        return self.__encoding
+        return self._encoding
 
 
 class Spatial(Axis):
@@ -122,7 +115,8 @@ class Time(Axis):
     _DEFAULT_DTYPE_ = np.dtype('datetime64')
 
 
-class UserDefined(Axis): # Hash cannot be the class name -> redefine hash with axis name
+class UserDefined(Axis):
+    # FIXME: Hash cannot be the class name -> redefine hash with axis name.
     _DEFAULT_UNITS_ = units['']
     _DEFAULT_DTYPE_ = np.dtype('float64')
 
@@ -135,8 +129,8 @@ grid_longitude = GridLongitude(encoding={'standard_name': 'grid_longitude'})
 latitude = Latitude(encoding={'standard_name': 'latitude'})
 longitude = Longitude(encoding={'standard_name': 'longitude'})
 vertical = Vertical(encoding={'standard_name': 'height', 'positive': 'up'})
-time = Time(dtype=np.datetime64, encoding={'standard_name': 'time'})
-timedelta = Time(dtype=np.timedelta64)
+time = Time(encoding={'standard_name': 'time'})
+timedelta = Time(encoding={'dtype': np.timedelta64})
 
 def create(
     name: str, units: pint.Unit | str, dtype: npt.DTypeLike
