@@ -45,6 +45,7 @@ dependencies = [
     "numpy>=1.25",
     "pandas>=2.0",
     "pint>=0.20",
+    "pint-xarray>=0.3",
     "pyproj>=3.4",
     "shapely>=2.0",
     "xarray>=2023.6.0",
