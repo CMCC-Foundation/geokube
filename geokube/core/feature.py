@@ -1,26 +1,22 @@
-from typing import Mapping, Sequence, Self
-import numpy.typing as npt
-import numpy as np
-import pyarrow as pa
+from collections.abc import Mapping
 from datetime import date, datetime
+from itertools import chain
+from numbers import Number
+from typing import Self
 
-from . import axis, indexes
-from .crs import Geodetic
-from .indexers import get_array_indexer, get_indexer
-import xarray as xr
+import numpy as np
+import numpy.typing as npt
+import pandas as pd
 import pint
 import pint_xarray
+import pyarrow as pa
+import xarray as xr
+
+from . import axis, indexes
 from .coord_system import CoordinateSystem
-import pandas as pd
+from .crs import Geodetic
+from .indexers import get_array_indexer, get_indexer
 
-from numbers import Number
-
-from enum import Enum
-
-class FeatureType(Enum):
-    Points = 1
-    Profile = 2
-    Grid = 3
 
 # NOTE:
 # inherit from xr Dataset do not work since it is not possible to create 
@@ -33,75 +29,70 @@ class FeatureType(Enum):
 # which allow to perform spatial operations like bbox, nearest, ...
 # enhanced with the coordinate system class.
 # 
-class Feature():
+
+
+class Feature:
     __slots__ = ('_dset', '_coord_system')
 
     def __init__(
         self,
-        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
+        coords: (
+            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
+            | xr.core.coordinates.DatasetCoordinates
+        ),
         coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
-        attrs: Mapping | None = None,
+        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
+        attrs: Mapping | None = None
     ) -> None:
-
+        if not isinstance(coord_system, CoordinateSystem):
+            raise TypeError(
+                "'coord_system' must be an instance of 'CoordinateSystem'"
+            )
+        self._coord_system = coord_system
         self._dset = xr.Dataset(
-            data_vars=data_vars, 
-            coords=coords, 
-            attrs=attrs
+            data_vars=data_vars, coords=coords, attrs=attrs
         )
 
-        self.__coord_system = coord_system
-
     @classmethod
-    def _from_xrdset(cls, 
-                     dset:xr.Dataset, 
-                     coord_system: CoordinateSystem) -> Self:
-        return type(cls)(
-                data_vars = dset.data_vars,
-                coords = dset.coords,
-                attrs = dset.attrs,
-                coord_system = coord_system
+    def _from_xrdset(
+        cls, dset: xr.Dataset, coord_system: CoordinateSystem
+    ) -> Self:
+        return cls(
+            data_vars=dset.data_vars,
+            coords=dset.coords,
+            attrs=dset.attrs,
+            coord_system=coord_system
         )
 
     #TODO: Implement __getitem__ ??
 
     @property
     def coords(self) -> dict[axis.Axis, pint.Quantity]:
-        coords = {}
-        for ax in self.coord_system.axes:
-            coords[ax] = self._dset[ax].pint.quantify().data
-        return coords
+        return {
+            axis_: self._dset[axis_].pint.quantify().data
+            for axis_ in self.coord_system.axes
+        }
 
     @property
     def coord_system(self):
-        return self.__coord_system
+        return self._coord_system
 
-# CF Methods 
+    # CF Methods 
     @property  # return dimensional axes
-    def dim_axes(
-        self
-    ) -> Sequence[axis.Axis]:
+    def dim_axes(self) -> tuple[axis.Axis]:
         return self.coord_system.dim_axes
 
     @property
-    def dim_coords(self) -> Mapping[axis.Axis, pint.Quantity]:
-        return {
-            ax: self._dset[ax].data
-            for ax in self.coord_system.dim_axes
-        }
+    def dim_coords(self) -> dict[axis.Axis, pint.Quantity]:
+        return {ax: self._dset[ax].data for ax in self.coord_system.dim_axes}
 
-    @property  # return dimensional axes
-    def aux_axes(
-        self
-    ) -> Sequence[axis.Axis]:
+    @property  # return auxiliary axes
+    def aux_axes(self) -> tuple[axis.Horizontal]:
         return self.coord_system.aux_axes
 
     @property
-    def aux_coords(self) -> Mapping[axis.Axis, pint.Quantity]:
-        return {
-            ax: self._dset[ax].data
-            for ax in self.coord_system.aux_axes
-        }
+    def aux_coords(self) -> dict[axis.Axis, pint.Quantity]:
+        return {ax: self._dset[ax].data for ax in self.coord_system.aux_axes}
 
     # spatial operations
     def bounding_box(
@@ -118,11 +109,13 @@ class Feature():
             axis.longitude: slice(west, east)
         }
         dset = self._dset.sel(h_idx)
+        obj = type(self)._from_xrdset(dset, self.coord_system)
         if not (bottom is None and top is None):
             v_idx = {axis.vertical: slice(bottom, top)}
-            dset = dset.sel(v_idx)
-        return type(self)._from_xrdset(dset, self.coord_system)
-    
+            dset = obj._dset.sel(v_idx)
+            obj = type(self)._from_xrdset(dset, self.coord_system)
+        return obj
+
     def nearest_horizontal(
         self,
         latitude: npt.ArrayLike | pint.Quantity,
@@ -131,7 +124,7 @@ class Feature():
         idx = {axis.latitude: latitude, axis.longitude: longitude}
         dset = self._dset.sel(idx, method='nearest', tolerance=np.inf)
         return type(self)._from_xrdset(dset, self.coord_system)
-        
+
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
@@ -144,9 +137,10 @@ class Feature():
         start: date | datetime | str | None = None,
         end: date | datetime | str | None = None
     ) -> Self:
-        dset = self._dset.sel({axis.time: slice(start, end)})
+        idx = {axis.time: slice(start, end)}
+        dset = self._dset.sel(idx)
         return self._from_xrdset(dset, self.coord_system)
-        
+
     def nearest_time(
         self, time: date | datetime | str | npt.ArrayLike
     ) -> Self:
@@ -155,58 +149,88 @@ class Feature():
         return self._from_xrdset(dset, self.coord_system)
 
     def latest(self) -> Self:
-        if axis.time not in self.coordinates():
+        if axis.time not in self._dset.coords:
             raise NotImplementedError()
         latest = self._dset[axis.time].max().astype(str).item().magnitude
         idx = {axis.time: slice(latest, latest)}
         dset = self._dset.sel(idx)
         return self._from_xrdset(dset, self.coord_system)
 
+
 class PointsFeature(Feature):
-    _DIMS_ = ('_points')
-    __slots__ = ('_n_points')
+    __slots__ = ('_n_points',)
+    _DIMS_ = ('_points',)
 
     def __init__(
         self,
-        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
+        coords: (
+            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
+            | xr.core.coordinates.DatasetCoordinates
+        ),
         coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
+        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
         attrs: Mapping | None = None
     ) -> None:
-        
-        res_coords = {
-            axis_: xr.DataArray(
-                vals,
-                dims=self._DIMS_
-            ) if isinstance(vals, pint.Quantity) else vals 
-            for axis_, vals in coords.items()
-        } if isinstance (coords, Mapping) else coords
+        match coords:
+            case Mapping():
+                res_coords = {
+                    axis_: (
+                        coord
+                        if isinstance(coord, xr.DataArray) else
+                        xr.DataArray(data=coord, dims=self._DIMS_)
+                    )
+                    for axis_, coord in coords.items()
+                }
+            case xr.core.coordinates.DatasetCoordinates():
+                res_coords = coords
+            case _:
+                raise TypeError(
+                    "'coords' can be a mapping or coordinates object"
+                )
 
-        res_data_vars = {
-            name: xr.DataArray(
-                    vals,
-                    dims=self._DIMS_
-                ) if isinstance(vals, pint.Quantity) else vals
-                    for name, vals in data_vars.items()
-            } if data_vars is not None else None
+        match data_vars:
+            case Mapping():
+                res_data_vars = {
+                    str(name): (
+                        var
+                        if isinstance(var, xr.DataArray) else
+                        xr.DataArray(data=var, dims=self._DIMS_)
+                    )
+                    for name, var in data_vars.items()
+                }
+                res_vals = chain(res_coords.values(), res_data_vars.values())
+            case None:
+                res_data_vars = None
+                res_vals = res_coords.values()
+            case _:
+                raise TypeError("'data_vars' can be a mapping or 'None'")
 
-        super().__init__(data_vars=res_data_vars,
-                         coords=res_coords,
-                         coord_system=coord_system,
-                         attrs=attrs)
+        super().__init__(
+            coords=res_coords,
+            coord_system=coord_system,
+            data_vars=res_data_vars,
+            attrs=attrs
+        )
 
-        spat_axes = set(coord_system.spatial.crs.axes)
+        n_pts = {val.size for val in res_vals}
+        if len(n_pts) != 1:
+            raise ValueError(
+                "'coords' and 'data_vars' must have values of equal sizes"
+            )
+        self._n_points = n_pts.pop()
+
+        hor_axes = set(coord_system.spatial.crs.axes)
         for axis_ in coord_system.axes:
-            if axis_ not in spat_axes:
+            if axis_ not in hor_axes:
                 self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
-   
         self._dset = self._dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
-    
+
     @property
     def number_of_points(self) -> int:
         return self._n_points
+
 
 class ProfilesFeature(Feature):
     _DIMS_ = ('_profiles', '_levels')
@@ -214,9 +238,12 @@ class ProfilesFeature(Feature):
 
     def __init__(
         self,
-        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
+        coords: (
+            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
+            | xr.core.coordinates.DatasetCoordinates
+        ),
         coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
+        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
         attrs: Mapping | None = None
     ) -> None:
         
@@ -251,24 +278,26 @@ class ProfilesFeature(Feature):
 
 
 class GridFeature(Feature):
+    # TODO: Clarify whether/why is this required.
     __slots__ = ('_DIMS_',)
 
     def __init__(
         self,
-        coords: Mapping[axis.Axis, pint.Quantity] | xr.Coordinates,
+        coords: (
+            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
+            | xr.core.coordinates.DatasetCoordinates
+        ),
         coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray ] | None = None,
+        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
         attrs: Mapping | None = None
     ) -> None:
-        
-        super().__init__(data_vars=data_vars,
-                         coords=coords,
-                         coord_system=coord_system,
-                         attrs=attrs)
- 
-        # for axis_ in self.dim_axes:
-        #     ds = self._dset.reset_index(axis_).pint.quantify()
-        #     self._dset = ds.set_xindex(axis_, indexes.OneDimPandasIndex)
-        
-        if {axis.latitude, axis.longitude} <= set(self.aux_axes):
-           self._dset = self._dset.set_xindex(self.aux_axes, indexes.TwoDimHorGridIndex)
+        super().__init__(
+            data_vars=data_vars,
+            coords=coords,
+            coord_system=coord_system,
+            attrs=attrs
+        )
+        if {axis.latitude, axis.longitude} == set(self.aux_axes):
+            self._dset = self._dset.set_xindex(
+                self.aux_axes, indexes.TwoDimHorGridIndex
+            )

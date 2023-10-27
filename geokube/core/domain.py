@@ -1,5 +1,5 @@
-import abc
-from typing import Mapping, Sequence, Self
+from collections.abc import Mapping, Sequence
+from typing import Self
 
 import numpy as np
 import numpy.typing as npt
@@ -10,22 +10,23 @@ import xarray as xr
 
 from . import axis
 from .coord_system import CoordinateSystem
+from .feature import GridFeature, PointsFeature, ProfilesFeature
 from .quantity import create_quantity
-from .feature import PointsFeature, ProfilesFeature, GridFeature
 
-class Domain():
+
+# TODO: Consider renaming this class to `DomainMixin`.
+class Domain:
+    __slots__ = ()
 
     @classmethod
-    def _from_xrdset(cls, ds: xr.Dataset, coord_system: CoordinateSystem) -> Self:
-        return cls(
-                coords={
-                    axis_: coord.data
-                    for axis_, coord in ds.coords.items()
-                },
-                coord_system=coord_system
-            )
+    def _from_xrdset(
+        cls, dset: xr.Dataset, coord_system: CoordinateSystem
+    ) -> Self:
+        return cls(coords=dset.coords, coord_system=coord_system)
+
 
 class Points(Domain, PointsFeature):
+    __slots__ = ()
 
     def __init__(
         self,
@@ -35,48 +36,46 @@ class Points(Domain, PointsFeature):
         ),
         coord_system: CoordinateSystem
     ) -> None:
-        
         units = coord_system.units
 
-        if isinstance(coords, Mapping):
-            result_coords = {}
-            n_pts = set()
-            for axis_, vals in coords.items():
-                vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
-                if vals_.ndim != 1:
+        match coords:
+            case Mapping():
+                result_coords = {}
+                for axis_, coord in coords.items():
+                    result_coords[axis_] = qty = create_quantity(
+                        coord, units.get(axis_), axis_.encoding['dtype']
+                    )
+                    if qty.ndim != 1:
+                        raise ValueError(
+                            f"'coords' have axis {axis_} that does not have "
+                            "one-dimensional values"
+                        )
+                if not set(coord_system.axes) <= result_coords.keys():
                     raise ValueError(
-                        f"'coords' have axis {axis_} that does not have "
-                        "one-dimensional values"
+                        "'coords' must have all axes contained in the "
+                        "coordinate system"
                     )
-                result_coords[axis_] = vals_
-                n_pts.add(vals_.size)
-            if len(n_pts) != 1:
-                raise ValueError("'coords' must have values of equal sizes")
-            if not set(coord_system.axes) <= result_coords.keys():
-                raise ValueError(
-                    "'coords' must have all axes from the coordinate system"
-                )
-            self._n_points = n_pts.pop()
-        elif isinstance(coords, Sequence):
-            # NOTE: This approach currently does not allow providing units.
-            n_dims = {len(point) for point in coords}
-            if len(n_dims) != 1:
-                raise ValueError(
-                    "'coords' must have points of equal number of dimensions"
-                )
-            self._n_points = len(coords)
-            data = pd.DataFrame(data=coords, columns=coord_system.axes)
-            result_coords = {
-                axis_: pint.Quantity(
-                        vals.to_numpy(dtype=axis_.dtype), units.get(axis_)
+            case Sequence():
+                # NOTE: This approach currently does not allow providing units.
+                n_dims = {len(point) for point in coords}
+                if len(n_dims) != 1:
+                    raise ValueError(
+                        "'coords' must have points of equal number of "
+                        "dimensions"
                     )
-                for axis_, vals in data.items()
-            }
-        else:
-            raise TypeError("'coords' must be a sequence or mapping")
+                data = pd.DataFrame(data=coords, columns=coord_system.axes)
+                result_coords = {
+                    axis_: pint.Quantity(
+                        vals.to_numpy(dtype=axis_.encoding['dtype']),
+                        units.get(axis_)
+                    )
+                    for axis_, vals in data.items()
+                }
+            case _:
+                raise TypeError("'coords' must be a sequence or mapping")
 
-        super().__init__(coords=result_coords,
-                         coord_system=coord_system)
+        super().__init__(coords=result_coords, coord_system=coord_system)
+
 
 class Profiles(Domain, ProfilesFeature):
 
