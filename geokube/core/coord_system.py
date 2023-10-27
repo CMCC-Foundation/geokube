@@ -8,11 +8,12 @@ from .crs import CRS
 
 
 class SpatialCoordinateSystem:
-    __slots__ = ('__crs', '__elevation', '__axes')
+    __slots__ = ('__crs', '__elevation', '__dim_axes', '__axes')
 
     if TYPE_CHECKING:
         __crs: CRS
         __elevation: axis.Elevation | None
+        __dim_axes: tuple[axis.Spatial, ...]
         __axes: tuple[axis.Spatial, ...]
 
     def __init__(
@@ -21,18 +22,19 @@ class SpatialCoordinateSystem:
         if not isinstance(crs, CRS):
             raise TypeError("'crs' must be an instance of 'CRS'")
         self.__crs = crs
-        axes: list[axis.Spatial] = list(crs.axes)
+        dim_axes: list[axis.Spatial] = list(crs.dim_axes)
         match elevation:
             case axis.Elevation():
                 self.__elevation = elevation
-                axes.insert(0, elevation)
+                dim_axes.insert(0, elevation)
             case None:
                 self.__elevation = None
             case _:
                 raise TypeError(
                     "'elevation' must be an instance of 'Elevation' or 'None'"
                 )
-        self.__axes = tuple(axes)
+        self.__dim_axes = tuple(dim_axes)
+        self.__axes = self.__dim_axes + self.aux_axes
 
     @property
     def crs(self) -> CRS:
@@ -43,18 +45,34 @@ class SpatialCoordinateSystem:
         return self.__elevation
 
     @property
+    def dim_axes(self) -> tuple[axis.Spatial, ...]:
+        return self.__dim_axes
+
+    @property
+    def aux_axes(self) -> tuple[axis.Horizontal, ...]:
+        return self.__crs.aux_axes
+
+    @property
     def axes(self) -> tuple[axis.Spatial, ...]:
         return self.__axes
 
 
 class CoordinateSystem:
-    __slots__ = ('__spatial', '__time', '__user_axes', '__all_axes', '__units')
+    __slots__ = (
+        '__spatial',
+        '__time',
+        '__user_axes',
+        '__all_axes',
+        '__dim_axes',
+        '__units'
+    )
 
     if TYPE_CHECKING:
         __spatial: SpatialCoordinateSystem
         __time: axis.Time | None
         __user_axes: tuple[axis.UserDefined, ...]
         __all_axes: tuple[axis.Axis, ...]
+        __dim_axes: tuple[axis.Axis, ...]
         __units: dict[axis.Axis, pint.Unit]
 
     def __init__(
@@ -66,14 +84,15 @@ class CoordinateSystem:
         units: Mapping[axis.Axis, pint.Unit] | None = None
     ) -> None:
         self.__spatial = SpatialCoordinateSystem(horizontal, elevation)
-        all_axes: list[axis.Axis] = list(self.__spatial.axes)
+        axes: tuple[axis.Axis, ...]
 
         match time:
             case axis.Time():
                 self.__time = time
-                all_axes.insert(0, time)
+                axes = (time,)
             case None:
                 self.__time = None
+                axes = ()
             case _:
                 raise TypeError(
                     "'time' must be an instance of 'Time' or 'None'"
@@ -83,13 +102,15 @@ class CoordinateSystem:
             for user_axis in user_axes:
                 if not isinstance(user_axis, axis.UserDefined):
                     raise TypeError(
-                        "'user_axis' must be an instance of 'UserDefined'")
+                        "'user_axis' must be an instance of 'UserDefined'"
+                    )
             self.__user_axes = tuple(user_axes)
-            all_axes[:0] = self.__user_axes
+            axes = self.__user_axes + axes
         else:
             self.__user_axes = ()
 
-        self.__all_axes = tuple(all_axes)
+        self.__dim_axes = axes + self.__spatial.dim_axes
+        self.__all_axes = axes + self.__spatial.axes
 
         self.__units = {axis: axis.units for axis in self.__all_axes}
         if units:
@@ -113,18 +134,10 @@ class CoordinateSystem:
 
     @property
     def dim_axes(self) -> tuple[axis.Axis, ...]:
-        # TODO: add dim only if not None!!
-        res = ()
-        if self.user_axes:
-            res = self.user_axes
-        if self.time:
-            res = res + (self.time,)
-        if self.spatial.elevation:
-            res = res + (self.spatial.elevation,)
-        return res + self.spatial.crs.dim_axes
-    
+        return self.__dim_axes
+
     @property
-    def aux_axes(self) -> tuple[axis.Axis, ...]:
+    def aux_axes(self) -> tuple[axis.Horizontal, ...]:
         return self.spatial.crs.aux_axes
 
     @property
