@@ -22,6 +22,8 @@ class FeatureType(Enum):
     Profile = 2
     Grid = 3
 
+# class FeatureMixin():
+
 # NOTE:
 # inherit from xr Dataset do not work since it is not possible to create 
 # a new dataset with our own index!!!

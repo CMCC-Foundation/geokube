@@ -48,22 +48,20 @@ class SpatialCoordinateSystem:
 
 
 class CoordinateSystem:
-    __slots__ = ('__spatial', '__time', '__user_axes', '__all_axes', '__units')
+    __slots__ = ('__spatial', '__time', '__user_axes', '__all_axes')
 
     if TYPE_CHECKING:
         __spatial: SpatialCoordinateSystem
         __time: axis.Time | None
         __user_axes: tuple[axis.UserDefined, ...]
         __all_axes: tuple[axis.Axis, ...]
-        __units: dict[axis.Axis, pint.Unit]
 
     def __init__(
         self,
         horizontal: CRS,
         elevation: axis.Elevation | None = None,
         time: axis.Time | None = None,
-        user_axes: Sequence[axis.UserDefined] = (),
-        units: Mapping[axis.Axis, pint.Unit] | None = None
+        user_axes: Sequence[axis.UserDefined] = ()
     ) -> None:
         self.__spatial = SpatialCoordinateSystem(horizontal, elevation)
         all_axes: list[axis.Axis] = list(self.__spatial.axes)
@@ -91,10 +89,6 @@ class CoordinateSystem:
 
         self.__all_axes = tuple(all_axes)
 
-        self.__units = {axis: axis.units for axis in self.__all_axes}
-        if units:
-            self.__units |= units
-
     @property
     def spatial(self) -> SpatialCoordinateSystem:
         return self.__spatial
@@ -113,7 +107,6 @@ class CoordinateSystem:
 
     @property
     def dim_axes(self) -> tuple[axis.Axis, ...]:
-        # TODO: add dim only if not None!!
         res = ()
         if self.user_axes:
             res = self.user_axes
@@ -129,7 +122,7 @@ class CoordinateSystem:
 
     @property
     def units(self) -> dict[axis.Axis, pint.Unit]:
-        return self.__units
+        return {axis: axis.units for axis in self.__all_axes}
 
     def add_axis(self, new_axis: axis.UserDefined) -> Self:
         return type(self)(
