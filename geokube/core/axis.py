@@ -20,6 +20,7 @@ class Axis(str):
     _DEFAULT_UNITS_: pint.Unit
     _DEFAULT_ENCODING_: { 'dtype': np.dtype }
 
+
     __slots__ = ('__units', '__encoding')
 
     def __new__(
@@ -34,15 +35,15 @@ class Axis(str):
         units: pint.Unit | str | None = None,
         encoding: Mapping[str, Any] | None = None
     ) -> None:
+
         self.__units = pint.Unit(units or self._DEFAULT_UNITS_)
         self.__encoding = self._DEFAULT_ENCODING_ if encoding is None else dict(encoding)
 
     def __repr__(self) -> str:
-        cls_ = self.__class__.__name__
-        units = f"units='{self.__units}'"
-        dtype = f"dtype='{self.__encoding['dtype']}'"
-        encoding = f"encoding={self.__encoding}"
-        return f"{cls_}({units}, {dtype}, {encoding})"
+        return (
+            f"{self.__class__.__name__}"
+            f"(units='{self._units}', encoding={self._encoding})"
+        )
 
     @property
     def name(self) -> str:
@@ -58,7 +59,7 @@ class Axis(str):
 
     @property
     def encoding(self) -> dict[str, Any]:
-        return self.__encoding
+        return self._encoding
 
 
 class Spatial(Axis):
@@ -134,7 +135,8 @@ class Time(Axis):
                            'dtype': 'datetime64'}
 
 
-class UserDefined(Axis): # Hash cannot be the class name -> redefine hash with axis name
+class UserDefined(Axis):
+    # FIXME: Hash cannot be the class name -> redefine hash with axis name.
     _DEFAULT_UNITS_ = units['']
     _DEFAULT_DTYPE_ = 'str'
 
