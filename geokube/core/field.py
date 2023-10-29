@@ -65,11 +65,11 @@ class Field():
         name = ds.attrs[_FIELD_NAME_ATTR_]
         data = ds[name].data
         properties = ds[name].attrs
-        encoding = ds[name].encoding        
-        ancillary = {}
-        for c in ds.data_vars:
-            if c != name:
-                ancillary[c] = ds[c].data
+        encoding = ds[name].encoding
+        if 'ancillary_variables' in ds[name].attrs:
+            ancillary = {}
+            for c in ds[name].attrs['ancillary_variables'].split():
+                    ancillary[c] = ds[c].data
         
         return cls(
             name=name,
@@ -140,6 +140,42 @@ class Field():
     def encoding(self):
         return self._dset[self.name].encoding
 
+    # return an xarray dataset CF-Compliant
+    def to_xarray(self) -> xr.Dataset:
+        # we assume that we do not have any CF attributes in the xarray data structure
+        # underline the Field. We need to convert Field to an xarray Dataset with CF attributes
+
+        # grid_mapping = self.domain.coord_system.spatial.crs.to_cf()
+        # # add grid_mapping variable
+        # grid_mapping_var = xr.DataArray(name=grid_mapping['grid_mapping_name'],
+        #                                 attrs = grid_mapping)
+
+        # coords = {}
+        # for ax, coord in self.coords.items():
+        #     coords[ax] = xr.DataArray(name=str(ax), 
+        #                               data=coord.data, 
+        #                               dims=self._dset.coords[ax].dims, 
+        #                               attrs=ax.encoding)
+
+        # coords[grid_mapping_var.name] = grid_mapping_var
+
+        # field_var = xr.DataArray(data=self.data, 
+        #                          coords=coords,
+        #                          dims=self.coord_system.dim_axes)
+        # field_var.attrs={}
+        # field_var.attrs['grid_mapping'] = grid_mapping['grid_mapping_name'] 
+
+        # ds = xr.Dataset(
+        #     data_vars = {
+        #         self.name: field_var,
+        #     },
+        #     coords = coords
+        # )
+        # return ds
+                
+        ds = self._dset  # we need to copy the ds metadata (and not the data) maybe .copy()
+        return ds
+    
     # Pyarrow conversions -----------------------------------------------------
 
     def build_pyarrow_metadata(self):
@@ -512,9 +548,13 @@ class GridField(Field, GridFeature):
         data_vars[name].encoding = encoding if encoding is not None else {}
         
         if ancillary is not None:
+            ancillary_names = []
             for anc_name, anc_data in ancillary.items():
                 data_vars[anc_name] = xr.DataArray(data=anc_data, dims=domain._dset.dims)
                 data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name']
+                ancillary_names.append(anc_name)
+
+            data_vars[name].attrs['ancillary_variables'] = " ".join(ancillary_names)
         
         ds_attrs = {_FIELD_NAME_ATTR_: name}
 
@@ -623,7 +663,7 @@ class GridField(Field, GridFeature):
         # for the moment we assume the same method for the field
         # TODO: maybe user should specify method for ancillary too!
         #
-        regridder = xe.Regridder(ds, ds_out, method)
+        regridder = xe.Regridder(ds, ds_out, method, unmapped_to_nan=True)
         dset_reg = regridder(ds, keep_attrs=True)
         
         ancillary = {}
@@ -651,35 +691,3 @@ class GridField(Field, GridFeature):
             properties=self.properties,
             encoding=self.encoding
         )
-    
-    def to_cfxarray(self) -> xr.Dataset:
-        # we assume that we do not have any CF attributes in the xarray data structure
-        # underline the Field. We need to convert Field to an xarray Dataset with CF attributes
-
-        grid_mapping = self.domain.coord_system.spatial.crs.to_cf()
-        # add grid_mapping variable
-        grid_mapping_var = xr.DataArray(name=grid_mapping['grid_mapping_name'],
-                                        attrs = grid_mapping)
-
-        dims = 'points'
-        coords = {}
-        for ax, coord in self.domain._coords.items():
-            coords[ax] = xr.DataArray(name=str(ax), 
-                                      data=coord.data, 
-                                      dims=dims, 
-                                      attrs=axis.to_cf(ax))
-
-        field_var = xr.DataArray(data=self.data, 
-                                 coords=coords,
-                                 dims=dims)
-        field_var.attrs={}
-        field_var.attrs['grid_mapping'] = grid_mapping['grid_mapping_name'] 
-
-        ds = xr.Dataset(
-            data_vars = {
-                self.name: field_var,
-                grid_mapping_var.name: grid_mapping_var,
-            },
-            coords = coords
-        )
-        return ds

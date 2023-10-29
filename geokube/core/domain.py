@@ -197,10 +197,11 @@ class Grid(Domain, GridFeature):
                     hor_aux_shapes.add(vals_.shape)
             
             #
-            # dequantify is needed because xarray do not keep quantity 
+            # dequantify is needed because pandas index do not keep quantity 
             # in the coordinates
             # -> dequantify put units as attributes in the dataset
             # we need to add also cf-attributes
+            # 
             result_coords[axis_] = xr.DataArray(vals_, 
                                                 dims=dim_axes,
                                                 attrs=axis_.encoding).pint.dequantify()

@@ -18,9 +18,10 @@ class Axis(str):
     # necessary any more. In that case, `Axis` might inherit from `Hashable`.
 
     _DEFAULT_UNITS_: pint.Unit
-    _DEFAULT_DTYPE_: np.dtype
+    _DEFAULT_ENCODING_: { 'dtype': np.dtype }
 
-    __slots__ = ('_units', '_encoding')
+
+    __slots__ = ('__units', '__encoding')
 
     def __new__(
         cls,
@@ -34,9 +35,9 @@ class Axis(str):
         units: pint.Unit | str | None = None,
         encoding: Mapping[str, Any] | None = None
     ) -> None:
-        self._units = pint.Unit(units or self._DEFAULT_UNITS_)
-        self._encoding = {} if encoding is None else dict(encoding)
-        self._encoding.setdefault('dtype', self._DEFAULT_DTYPE_)
+
+        self.__units = pint.Unit(units or self._DEFAULT_UNITS_)
+        self.__encoding = self._DEFAULT_ENCODING_ if encoding is None else dict(encoding)
 
     def __repr__(self) -> str:
         return (
@@ -50,7 +51,11 @@ class Axis(str):
 
     @property
     def units(self) -> pint.Unit:
-        return self._units
+        return self.__units
+
+    @property
+    def dtype(self) -> np.dtype:
+        return np.dtype(self.__encoding['dtype'])
 
     @property
     def encoding(self) -> dict[str, Any]:
@@ -59,7 +64,7 @@ class Axis(str):
 
 class Spatial(Axis):
     _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_DTYPE_ = np.dtype('float64')
+    _DEFAULT_DTYPE_ = 'float64'
 
 
 class Horizontal(Spatial):
@@ -68,72 +73,87 @@ class Horizontal(Spatial):
 
 class Longitude(Horizontal):
     _DEFAULT_UNITS_ = units['degrees_east']
-
+    _DEFAULT_ENCODING_ = { 'standard_name': 'longitude',
+                           'dtype': 'float64'}
 
 class Latitude(Horizontal):
     _DEFAULT_UNITS_ = units['degrees_north']
-
+    _DEFAULT_ENCODING_ = { 'standard_name': 'latitude',
+                           'dtype': 'float64'}
 
 class GridLongitude(Horizontal):
     _DEFAULT_UNITS_ = units['degrees']
-
+    _DEFAULT_ENCODING_ = { 'standard_name': 'grid_longitude',
+                           'dtype': 'float64'}
 
 class GridLatitude(Horizontal):
     _DEFAULT_UNITS_ = units['degrees']
-
+    _DEFAULT_ENCODING_ = { 'standard_name': 'grid_latitude',
+                           'dtype': 'float64'}
 
 class X(Horizontal):
     _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_ENCODING_ = { 'axis': 'X',
+                           'dtype': 'float64'}
 
 
 class Y(Horizontal):
     _DEFAULT_UNITS_ = units['meter']
-
+    _DEFAULT_ENCODING_ = { 'axis': 'Y',
+                           'dtype': 'float64'}
 
 class Elevation(Spatial):
     _DEFAULT_UNITS_ = units['meter']
 
+class Z(Elevation):
+    _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_ENCODING_ = { 'axis': 'Z',
+                           'dtype': 'float64'}
 
 class Vertical(Elevation):
-    pass
-
+    _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_ENCODING_ = { 'standard_name': 'height',
+                           'positive': 'up',
+                           'dtype': 'float64'}
 
 class Height(Elevation):
-    pass
-
+    _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_ENCODING_ = { 'standard_name': 'height',
+                           'positive': 'up',
+                           'dtype': 'float64'}
 
 class Depth(Elevation):
-    pass
-
-
-class Z(Elevation):
-    pass
+    _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_ENCODING_ = { 'standard_name': 'depth',
+                           'positive': 'down',
+                           'dtype': 'float64'}
 
 
 class Time(Axis):
     _DEFAULT_UNITS_ = units['']
-    _DEFAULT_DTYPE_ = np.dtype('datetime64')
+    _DEFAULT_ENCODING_ = { 'standard_name': 'time',
+                           'dtype': 'datetime64'}
 
 
 class UserDefined(Axis):
     # FIXME: Hash cannot be the class name -> redefine hash with axis name.
     _DEFAULT_UNITS_ = units['']
-    _DEFAULT_DTYPE_ = np.dtype('float64')
+    _DEFAULT_DTYPE_ = 'str'
 
 
-x = X(encoding={'axis': 'X'})
-y = Y(encoding={'axis': 'Y'})
-z = Z(encoding={'axis': 'Z'})
-grid_latitude = GridLatitude(encoding={'standard_name': 'grid_latitude'})
-grid_longitude = GridLongitude(encoding={'standard_name': 'grid_longitude'})
-latitude = Latitude(encoding={'standard_name': 'latitude'})
-longitude = Longitude(encoding={'standard_name': 'longitude'})
-vertical = Vertical(encoding={'standard_name': 'height', 'positive': 'up'})
-time = Time(encoding={'standard_name': 'time'})
-timedelta = Time(encoding={'dtype': np.timedelta64})
+x = X()
+y = Y()
+z = Z()
+grid_latitude = GridLatitude()
+grid_longitude = GridLongitude()
+latitude = Latitude()
+longitude = Longitude()
+vertical = Vertical()
+time = Time()
+timedelta = Time(encoding={'dtype': 'timedelta64'})
 
 def create(
-    name: str, units: pint.Unit | str, dtype: npt.DTypeLike
+    name: str, units: pint.Unit | str, encoding: dict
 ) -> None:
     # TODO: Implement this.
     pass

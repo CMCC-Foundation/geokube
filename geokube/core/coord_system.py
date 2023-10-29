@@ -73,15 +73,14 @@ class CoordinateSystem:
         __user_axes: tuple[axis.UserDefined, ...]
         __all_axes: tuple[axis.Axis, ...]
         __dim_axes: tuple[axis.Axis, ...]
-        __units: dict[axis.Axis, pint.Unit]
+
 
     def __init__(
         self,
         horizontal: CRS,
         elevation: axis.Elevation | None = None,
         time: axis.Time | None = None,
-        user_axes: Sequence[axis.UserDefined] = (),
-        units: Mapping[axis.Axis, pint.Unit] | None = None
+        user_axes: Sequence[axis.UserDefined] = ()
     ) -> None:
         self.__spatial = SpatialCoordinateSystem(horizontal, elevation)
         axes: tuple[axis.Axis, ...]
@@ -112,10 +111,6 @@ class CoordinateSystem:
         self.__dim_axes = axes + self.__spatial.dim_axes
         self.__all_axes = axes + self.__spatial.axes
 
-        self.__units = {axis: axis.units for axis in self.__all_axes}
-        if units:
-            self.__units |= units
-
     @property
     def spatial(self) -> SpatialCoordinateSystem:
         return self.__spatial
@@ -142,7 +137,7 @@ class CoordinateSystem:
 
     @property
     def units(self) -> dict[axis.Axis, pint.Unit]:
-        return self.__units
+        return {axis: axis.units for axis in self.__all_axes}
 
     def add_axis(self, new_axis: axis.UserDefined) -> Self:
         return type(self)(

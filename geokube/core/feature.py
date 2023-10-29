@@ -18,6 +18,8 @@ from .crs import Geodetic
 from .indexers import get_array_indexer, get_indexer
 
 
+# class FeatureMixin():
+
 # NOTE:
 # inherit from xr Dataset do not work since it is not possible to create 
 # a new dataset with our own index!!!
