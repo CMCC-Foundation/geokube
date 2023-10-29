@@ -42,7 +42,7 @@ class Axis(str):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
-            f"(units='{self._units}', encoding={self._encoding})"
+            f"(units='{self.__units}', encoding={self.__encoding})"
         )
 
     @property
@@ -59,7 +59,7 @@ class Axis(str):
 
     @property
     def encoding(self) -> dict[str, Any]:
-        return self._encoding
+        return self.__encoding
 
 
 class Spatial(Axis):

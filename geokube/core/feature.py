@@ -111,12 +111,14 @@ class Feature:
             axis.longitude: slice(west, east)
         }
         dset = self._dset.sel(h_idx)
-        obj = type(self)._from_xrdset(dset, self.coord_system)
+#        obj = type(self)._from_xrdset(dset, self.coord_system)
         if not (bottom is None and top is None):
             v_idx = {axis.vertical: slice(bottom, top)}
-            dset = obj._dset.sel(v_idx)
-            obj = type(self)._from_xrdset(dset, self.coord_system)
-        return obj
+            dset = dset.sel(v_idx)
+#            dset = obj._dset.sel(v_idx)
+#            obj = type(self)._from_xrdset(dset, self.coord_system)
+#        return obj
+        return type(self)._from_xrdset(dset, self.coord_system)
 
     def nearest_horizontal(
         self,
