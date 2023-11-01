@@ -111,14 +111,13 @@ class Feature:
             axis.longitude: slice(west, east)
         }
         dset = self._dset.sel(h_idx)
-#        obj = type(self)._from_xrdset(dset, self.coord_system)
+        obj = type(self)._from_xrdset(dset, self.coord_system)
         if not (bottom is None and top is None):
             v_idx = {axis.vertical: slice(bottom, top)}
-            dset = dset.sel(v_idx)
-#            dset = obj._dset.sel(v_idx)
-#            obj = type(self)._from_xrdset(dset, self.coord_system)
-#        return obj
-        return type(self)._from_xrdset(dset, self.coord_system)
+            dset = obj._dset.sel(v_idx)
+            obj = type(self)._from_xrdset(dset, self.coord_system)
+        return obj
+        # return type(self)._from_xrdset(dset, self.coord_system)
 
     def nearest_horizontal(
         self,
@@ -250,26 +249,43 @@ class ProfilesFeature(Feature):
         data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
         attrs: Mapping | None = None
     ) -> None:
-        
-        super().__init__(data_vars=data_vars,
-                         coords=coords,
-                         coord_system=coord_system,
-                         attrs=attrs)
+        match coords:
+            case Mapping():
+                res_coords = {
+                    axis_: (
+                        coord
+                        if isinstance(coord, xr.DataArray) else
+                        xr.DataArray(data=coord, dims=self._DIMS_)
+                    )
+                    for axis_, coord in coords.items()
+                }
+            case xr.core.coordinates.DatasetCoordinates():
+                res_coords = coords
+            case _:
+                raise TypeError(
+                    "'coords' can be a mapping or coordinates object"
+                )
+        self._n_profiles, self._n_levels = res_coords[axis.vertical].shape
 
-        spat_axes = set(coord_system.spatial.axes)
+        super().__init__(
+            data_vars=data_vars,
+            coords=res_coords,
+            coord_system=coord_system,
+            attrs=attrs
+        )
+
+        hor_axes = set(coord_system.spatial.crs.axes)
         for axis_ in coord_system.axes:
-            if axis_ not in spat_axes:
+            if axis_ not in hor_axes:
                 self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
-        
+        self._dset = self._dset.set_xindex(
+            [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
+        )
         self._dset = self._dset.set_xindex(
             axis.vertical,
             indexes.TwoDimVertProfileIndex,
             data=self._dset[self.name], # why is this needed?
             name=self.name # why is this needed?
-        )
-
-        self._dset = self._dset.set_xindex(
-            [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
 
     @property

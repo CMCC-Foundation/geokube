@@ -42,8 +42,10 @@ _ARRAY_TYPES = (np.ndarray, da.Array)
 
 _FIELD_NAME_ATTR_ = '_geokube.field_name'
 
+
 class Field():
-    _DOMAIN_CLS_ = type[Domain]
+    __slots__ = ()
+    _DOMAIN_CLS_: type[Domain]
 
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
@@ -70,6 +72,8 @@ class Field():
             ancillary = {}
             for c in ds[name].attrs['ancillary_variables'].split():
                     ancillary[c] = ds[c].data
+        else:
+            ancillary = None
         
         return cls(
             name=name,
@@ -258,7 +262,9 @@ class Field():
         domain = cls.__DOMAIN_CLS__(coords = coords, coord_system = coord_system)
         return cls(name = name, data = data, domain=domain,properties=properties,encoding=encoding)
 
+
 class PointsField(Field, PointsFeature):
+    __slots__ = ()
     _DOMAIN_CLS_ = Points
 
     def __init__(
@@ -270,7 +276,7 @@ class PointsField(Field, PointsFeature):
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-        self._n_points = domain.number_of_points
+        n_pts = domain.number_of_points
         match data:
             case pint.Quantity():
                 data_ = (
@@ -284,35 +290,40 @@ class PointsField(Field, PointsFeature):
                 data_ = pint.Quantity(data)
             case None:
                 data_ = pint.Quantity(
-                    np.full(shape=self._n_points, fill_value=np.nan, dtype=np.float32)
+                    np.full(shape=n_pts, fill_value=np.nan, dtype=np.float32)
                 )
             case _:
                 data_ = pint.Quantity(np.asarray(data))
-        if data_.shape != (self._n_points,):
+        if data_.shape != (n_pts,):
             raise ValueError(
                 "'data' must have one-dimensional values and the same size as "
                 "the coordinates"
             )
-        
+
         data_vars = {}
         attrs = properties if not None else {}
-        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
-        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
-        
+        data_vars[name] = xr.DataArray(
+            data=data_, dims=self._DIMS_, attrs=attrs
+        )
+        data_vars[name].encoding = encoding if encoding is not None else {}
+
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
-                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS_)
-        
+                data_vars[anc_name] = xr.DataArray(
+                    data=anc_data, dims=self._DIMS_
+                )
+
         ds_attrs = {_FIELD_NAME_ATTR_: name}
 
         super().__init__(
-            data_vars = data_vars,
-            coords = domain.coords,
-            attrs = ds_attrs,
+            data_vars=data_vars,
+            coords=domain.coords,
+            attrs=ds_attrs,
             coord_system=domain.coord_system
         )
 
 class ProfilesField(Field, ProfilesFeature):
+    __slots__ = ()
     _DOMAIN_CLS_ = Profiles
 
     __slots__ = ()
