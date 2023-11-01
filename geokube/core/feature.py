@@ -3,6 +3,7 @@ from datetime import date, datetime
 from itertools import chain
 from numbers import Number
 from typing import Self
+from warnings import warn
 
 import numpy as np
 import numpy.typing as npt
@@ -16,6 +17,7 @@ from . import axis, indexes
 from .coord_system import CoordinateSystem
 from .crs import Geodetic
 from .indexers import get_array_indexer, get_indexer
+from .quantity import get_magnitude
 
 
 # class FeatureMixin():
@@ -251,14 +253,17 @@ class ProfilesFeature(Feature):
     ) -> None:
         match coords:
             case Mapping():
-                res_coords = {
-                    axis_: (
-                        coord
-                        if isinstance(coord, xr.DataArray) else
-                        xr.DataArray(data=coord, dims=self._DIMS_)
-                    )
-                    for axis_, coord in coords.items()
-                }
+                res_coords = {}
+                for axis_, coord in coords.items():
+                    if isinstance(coord, xr.DataArray):
+                        res_coords[axis_] = coord
+                    else:
+                        dims = (
+                            self._DIMS_
+                            if axis_ is axis.vertical else
+                            ('_profiles',)
+                        )
+                        res_coords[axis_] = xr.DataArray(data=coord, dims=dims)
             case xr.core.coordinates.DatasetCoordinates():
                 res_coords = coords
             case _:
@@ -274,18 +279,15 @@ class ProfilesFeature(Feature):
             attrs=attrs
         )
 
-        hor_axes = set(coord_system.spatial.crs.axes)
+        spat_axes = set(coord_system.spatial.axes)
         for axis_ in coord_system.axes:
-            if axis_ not in hor_axes:
+            if axis_ not in spat_axes:
                 self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
         self._dset = self._dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
         self._dset = self._dset.set_xindex(
-            axis.vertical,
-            indexes.TwoDimVertProfileIndex,
-            data=self._dset[self.name], # why is this needed?
-            name=self.name # why is this needed?
+            axis.vertical, indexes.TwoDimVertProfileIndex
         )
 
     @property
@@ -295,6 +297,104 @@ class ProfilesFeature(Feature):
     @property
     def number_of_levels(self) -> int:
         return self._n_levels
+
+    def bounding_box(
+        self,
+        south: Number | None = None,
+        north: Number | None = None,
+        west: Number | None = None,
+        east: Number | None = None,
+        bottom: Number | None = None,
+        top: Number | None = None
+    ) -> Self:
+        h_idx = {
+            axis.latitude: slice(south, north),
+            axis.longitude: slice(west, east)
+        }
+        new_data = self._dset.sel(h_idx)
+        new_obj = self._from_xrdset(new_data, self._coord_system)
+
+        if not (bottom is None and top is None):
+            # TODO: Try to move this functionality to
+            # `indexes.TwoDimHorPointsIndex.sel`.
+            warn(
+                "'bounding_box' loads in memory and makes a copy of the data "
+                "and vertical coordinate when 'bottom' or 'top' is not 'None'"
+            )
+            v_slice = slice(bottom, top)
+            v_idx = {axis.vertical: v_slice}
+            new_data = new_obj._dset.sel(v_idx)
+            vert = new_data[axis.vertical]
+            vert_dims = vert.dims
+            vert_data = vert.data
+            vert_mag, vert_units = vert_data.magnitude, vert_data.units
+            mask = get_indexer(
+                [vert_mag], [get_magnitude(v_slice, vert_units)]
+            )[0]
+            masked_vert = np.where(mask, vert_mag, np.nan)
+            vert_ = pint.Quantity(masked_vert, vert_units)
+            new_data[axis.vertical] = xr.Variable(dims=vert_dims, data=vert_)
+            for name, darr in new_data.data_vars.items():
+                data = darr.data
+                masked_data = np.where(mask, data.magnitude, np.nan)
+                data_ = pint.Quantity(masked_data, data.units)
+                new_data[name] = xr.Variable(dims=vert_dims, data=data_)
+            new_obj = self._from_xrdset(new_data, self._coord_system)
+        return new_obj
+
+    def nearest_vertical(
+        self, elevation: npt.ArrayLike | pint.Quantity
+    ) -> Self:
+        # TODO: Try to move this functionality to
+        # `indexes.TwoDimHorPointsIndex.sel`.
+        dset = self._dset
+        new_coords = {
+            axis_: coord.variable for axis_, coord in dset.coords.items()
+        }
+        vert_axis = (new_coords.keys() & {axis.vertical}).pop()
+        vert = dset[vert_axis]
+        vert_qty = vert.data
+        vert_mag, vert_units = vert_qty.magnitude, vert_qty.units
+        n_profiles = vert_mag.shape[0]
+        shape = (n_profiles, len(elevation))
+        new_vert_mag = np.empty(shape=shape, dtype=vert_mag.dtype)
+        # TODO: Try to implement this in a more efficient way.
+        level_indices = []
+        for profile_idx in range(n_profiles):
+            level_idx = get_indexer(
+                [vert_mag[profile_idx, :]],
+                [get_magnitude(elevation, vert_units)],
+                return_all=False,
+                method='nearest',
+                tolerance=np.inf
+            )
+            level_indices.append(level_idx)
+            new_vert_mag[profile_idx, :] = vert_mag[profile_idx, level_idx]
+        new_coords[vert_axis] = xr.Variable(
+            dims=vert.dims, data=pint.Quantity(new_vert_mag, vert_units)
+        )
+
+        new_data_vars = {}
+        for name, darr in dset.data_vars.items():
+            data_qty = darr.data
+            data_mag = data_qty.magnitude
+            new_data_mag = np.empty(shape=shape, dtype=data_mag.dtype)
+            # TODO: Try to implement this in a more efficient way.
+            for profile_idx in range(n_profiles):
+                level_idx = level_indices[profile_idx]
+                new_data_mag[profile_idx, :] = vert_mag[profile_idx, level_idx]
+            new_data_vars[name] = xr.DataArray(
+                data=pint.Quantity(new_data_mag, data_qty.units),
+                dims=self._DIMS_,
+                coords=new_coords,
+                attrs=darr.attrs
+            )
+
+        new_dset = xr.Dataset(
+            data_vars=new_data_vars, coords=new_coords, attrs=dset.attrs
+        )
+        new_obj = self._from_xrdset(new_dset, self._coord_system)
+        return new_obj
 
 
 class GridFeature(Feature):

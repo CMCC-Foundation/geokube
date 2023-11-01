@@ -78,6 +78,7 @@ class Points(Domain, PointsFeature):
 
 
 class Profiles(Domain, ProfilesFeature):
+    __slots__ = ()
 
     def __init__(
         self,
@@ -100,7 +101,8 @@ class Profiles(Domain, ProfilesFeature):
             n_lev_tot = max(n_lev)
             n_prof_tot = len(vert)
             vert_vals = np.empty(
-                shape=(n_prof_tot, n_lev_tot), dtype=axis.vertical.dtype
+                shape=(n_prof_tot, n_lev_tot),
+                dtype=axis.vertical.encoding['dtype']
             )
             for i, (stop_idx, vals) in enumerate(zip(n_lev, vert)):
                 if stop_idx == n_lev_tot:
@@ -111,7 +113,7 @@ class Profiles(Domain, ProfilesFeature):
             vert_ = pint.Quantity(vert_vals, units[axis.vertical])
         else:
             vert_ = create_quantity(
-                vert, units.get(axis.vertical), axis.vertical.dtype
+                vert, units.get(axis.vertical), axis.vertical.encoding['dtype']
             )
             vert_shape = vert_.shape
             if len(vert_shape) != 2:
@@ -127,14 +129,16 @@ class Profiles(Domain, ProfilesFeature):
 
         # All coordinates except the vertical.
         for axis_, vals in interm_coords.items():
-            vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
-            if vals_.ndim != 1:
+            qty = create_quantity(
+                vals, units.get(axis_), axis_.encoding['dtype']
+            )
+            if qty.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
                     "one-dimensional values"
                 )
-            result_coords[axis_] = xr.DataArray(vals_, dims=prof)
-            n_prof.add(vals_.size)
+            result_coords[axis_] = xr.DataArray(qty, dims=prof)
+            n_prof.add(qty.size)
         if len(n_prof) != 1:
             raise ValueError(
                 "'coords' with the exception of vertical must have values of "
@@ -146,11 +150,9 @@ class Profiles(Domain, ProfilesFeature):
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
             )
-        self._n_profiles = n_prof_tot
-        self._n_levels = n_lev_tot
 
-        super.__init__(coords = result_coords,
-                       coord_system=coord_system)
+        super().__init__(coords=result_coords, coord_system=coord_system)
+
 
 class Grid(Domain, GridFeature):
     # TODO: Consider auxiliary coordinates other than the

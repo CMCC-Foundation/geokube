@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections.abc import Mapping, Sequence
-from numbers import Number
 from typing import Any, Self
-from warnings import warn
 
 import dask.array as da
 import numpy as np
@@ -322,6 +320,7 @@ class PointsField(Field, PointsFeature):
             coord_system=domain.coord_system
         )
 
+
 class ProfilesField(Field, ProfilesFeature):
     __slots__ = ()
     _DOMAIN_CLS_ = Profiles
@@ -402,7 +401,7 @@ class ProfilesField(Field, ProfilesFeature):
         data_vars = {}
         attrs = properties if not None else {}
         data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
-        data_vars[name].encoding = encoding if not None else {} # This is not working!!!
+        data_vars[name].encoding = encoding if encoding is not None else {}
         
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
@@ -411,95 +410,10 @@ class ProfilesField(Field, ProfilesFeature):
         ds_attrs = {_FIELD_NAME_ATTR_: name}
 
         super().__init__(
-            data_vars = data_vars,
-            coords = domain.coords,
-            attrs = ds_attrs,
+            data_vars=data_vars,
+            coords=domain.coords,
+            attrs=ds_attrs,
             coord_system=domain.coord_system
-        )
-
-    # Spatial operations ------------------------------------------------------
-
-    def bounding_box(
-        self,
-        south: Number | None = None,
-        north: Number | None = None,
-        west: Number | None = None,
-        east: Number | None = None,
-        bottom: Number | None = None,
-        top: Number | None = None
-    ) -> Self:
-        h_idx = {
-            axis.latitude: slice(south, north),
-            axis.longitude: slice(west, east)
-        }
-        new_data = self._dset.sel(h_idx)
-
-        if not (bottom is None and top is None):
-            # TODO: Try to move this functionality to
-            # `indexes.TwoDimHorPointsIndex.sel`.
-            warn(
-                "'bounding_box' loads in memory and makes a copy of the data "
-                "and vertical coordinate when 'bottom' or 'top' is not 'None'"
-            )
-            v_slice = slice(bottom, top)
-            v_idx = {axis.vertical: v_slice}
-            new_data = self._from_xrdset(new_data)
-            new_data = new_data._dset.sel(v_idx)
-            vert = new_data[axis.vertical]
-            vert_dims = vert.dims
-            vert_data = vert.data
-            vert_mag, vert_units = vert_data.magnitude, vert_data.units
-            data = new_data[self.name].data
-            mask = get_indexer(
-                [vert_mag], [get_magnitude(v_slice, vert_units)]
-            )[0]
-            masked_vert = np.where(mask, vert_mag, np.nan)
-            vert_ = pint.Quantity(masked_vert, vert_units)
-            new_data[axis.vertical] = xr.Variable(dims=vert_dims, data=vert_)
-            masked_data = np.where(mask, data.magnitude, np.nan)
-            data_ = pint.Quantity(masked_data, data.units)
-            new_data[self.name] = xr.Variable(dims=vert_dims, data=data_)
-        
-        return self._from_xrdset(new_data)
-
-    def nearest_vertical(
-        self, elevation: npt.ArrayLike | pint.Quantity
-    ) -> Self:
-        # TODO: Try to move this functionality to
-        # `indexes.TwoDimHorPointsIndex.sel`.
-        dset = self._dset
-        data_qty = dset[self.name].data
-        data_mag = data_qty.magnitude
-        vert = dset[axis.vertical]
-        vert_qty = vert.data
-        vert_mag, vert_units = vert_qty.magnitude, vert_qty.units
-        dims = vert.dims
-        profile_idx = dims.index('_profiles')
-        n_profiles = vert_mag.shape[profile_idx]
-        kwa = {
-            'y_data': [get_magnitude(elevation, vert_units)],
-            'return_all': False,
-            'method': 'nearest',
-            'tolerance': np.inf
-        }
-        order = slice(None, None, -1 if profile_idx else 1)
-        shape = (n_profiles, len(elevation))[order]
-        new_data_mag = np.empty(shape=shape, dtype=data_mag.dtype)
-        new_vert_mag = np.empty(shape=shape, dtype=vert_mag.dtype)
-        # TODO: Try to implement this in a more efficient way.
-        for p_idx in range(n_profiles):
-            all_l_idx = (p_idx, slice(None))[order]
-            l_idx = get_indexer([vert_mag[all_l_idx]], **kwa)
-            p_l_idx = (p_idx, l_idx)[order]
-            new_data_mag[all_l_idx] = data_mag[p_l_idx]
-            new_vert_mag[all_l_idx] = vert_mag[p_l_idx]
-        domain = self.domain
-        new_coords = self.domain.coordinates().copy()
-        new_coords[axis.vertical] = pint.Quantity(new_vert_mag, vert_units)
-        return type(self)(
-            name=self.name,
-            domain=type(domain)(new_coords, domain.coord_system),
-            data=pint.Quantity(new_data_mag, data_qty.units)
         )
 
 

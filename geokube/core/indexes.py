@@ -143,8 +143,6 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
 @dataclass(frozen=True, slots=True)
 class TwoDimVertProfileIndex(xr.core.indexes.Index):
     vertical: pint.Quantity
-    data: pint.Quantity
-    name: str
     dims: tuple[Hashable, Hashable]
 
     @classmethod
@@ -164,45 +162,18 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
                 "'variables' must contain the vertical coordinate"
             ) from err
 
-        try:
-            opts = dict(options)
-            data = opts.pop('data')
-            name = str(opts.pop('name'))
-        except KeyError as err:
-            raise ValueError(
-                "'options' must contain the data and name of the field"
-            ) from err
-
-        if opts:
-            raise ValueError(
-                "'options' cannot contain anything but the data and name of "
-                "the field"
-            )
-
         vert_data = vert.data
-        data_data = data.data
-        if not (
-            isinstance(vert_data, pint.Quantity)
-            and isinstance(data_data, pint.Quantity)
-        ):
-            raise TypeError(
-                "'variables' and 'options' must contain data of type "
-                "'Quantity'"
-            )
+        if not isinstance(vert_data, pint.Quantity):
+            raise TypeError("'variables' must contain data of type 'Quantity'")
 
         dims = vert.dims
-        if data.dims != dims:
-            raise ValueError(
-                "'variables' and 'options' must have data with the same "
-                "dimensions"
-            )
         if set(dims) != {'_profiles', '_levels'}:
             raise ValueError(
                 "'variables' and 'options' must contain data with the "
                 "dimensions '_profiles' and '_levels'"
             )
 
-        return cls(vertical=vert_data, data=data_data, name=name, dims=dims)
+        return cls(vertical=vert_data, dims=dims)
 
     def sel(
         self,
@@ -222,8 +193,6 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
 
         vert = self.vertical
         vert_mag, vert_units = vert.magnitude, vert.units
-        data = self.data
-        dims = self.dims
 
         match vert_labels:
             case slice():
@@ -256,26 +225,6 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
                 return xr.core.indexing.IndexSelResult(
                     dim_indexers=dict(zip(self.dims, idx))
                 )
-
-                # NOTE: It seems that this approach is not working.
-                # new_mask = mask[idx]
-                # new_mask_ = xr.Variable(dims=dims, data=new_mask)
-                # new_vert = np.where(new_mask, vert_mag[idx], np.nan)
-                # new_vert_ = xr.Variable(
-                #     dims=dims, data=pint.Quantity(new_vert, vert_units)
-                # )
-                # new_data = np.where(new_mask, data.magnitude[idx], np.nan)
-                # new_data_ = xr.Variable(
-                #     dims=dims, data=pint.Quantity(new_data, data.units)
-                # )
-                # return xr.core.indexing.IndexSelResult(
-                #     dim_indexers=dict(zip(self.dims, idx)),
-                #     variables={
-                #         'mask': new_mask_,
-                #         axis.vertical: new_vert_,
-                #         self.name: new_data_
-                #     }
-                # )
             case _:
                 raise NotImplementedError()
 
