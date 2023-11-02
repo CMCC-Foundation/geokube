@@ -17,6 +17,7 @@ from . import axis, indexes
 from .coord_system import CoordinateSystem
 from .crs import Geodetic
 from .indexers import get_array_indexer, get_indexer
+from .points import to_points_dict
 from .quantity import get_magnitude
 
 
@@ -83,7 +84,7 @@ class Feature:
 
     # CF Methods 
     @property  # return dimensional axes
-    def dim_axes(self) -> tuple[axis.Axis]:
+    def dim_axes(self) -> tuple[axis.Axis, ...]:
         return self.coord_system.dim_axes
 
     @property
@@ -91,7 +92,7 @@ class Feature:
         return {ax: self._dset[ax].data for ax in self.coord_system.dim_axes}
 
     @property  # return auxiliary axes
-    def aux_axes(self) -> tuple[axis.Horizontal]:
+    def aux_axes(self) -> tuple[axis.Horizontal, ...]:
         return self.coord_system.aux_axes
 
     @property
@@ -398,7 +399,6 @@ class ProfilesFeature(Feature):
 
 
 class GridFeature(Feature):
-    # TODO: Clarify whether/why is this required.
     __slots__ = ('_DIMS_',)
 
     def __init__(
@@ -411,13 +411,140 @@ class GridFeature(Feature):
         data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
         attrs: Mapping | None = None
     ) -> None:
+        crs = coord_system.spatial.crs
+        self._DIMS_ = coord_system.dim_axes
+
+        match coords:
+            case Mapping():
+                res_coords = {}
+                for axis_, coord in coords.items():
+                    if isinstance(coord, xr.DataArray):
+                        res_coords[axis_] = coord
+                    else:
+                        dims: tuple[axis.Axis, ...]
+                        if axis_ in self._DIMS_:
+                            # Dimension coordinates.
+                            match coord.ndim:
+                                case 0:
+                                    dims = ()
+                                case 1:
+                                    dims = (axis_,)
+                                case _:
+                                    raise ValueError(
+                                        "'coords' have a dimension axis "
+                                        f"{axis_} that has multi-dimensional "
+                                        "values"
+                                    )
+                        else:
+                            # Auxiliary coordinates.
+                            dims = crs.dim_axes if coord.ndim else ()
+                        coord_ = xr.DataArray(data=coord, dims=dims)
+                        #
+                        # dequantify is needed because pandas index do not keep quantity 
+                        # in the coordinates
+                        # -> dequantify put units as attributes in the dataset
+                        # we need to add also cf-attributes
+                        # 
+                        res_coords[axis_] = coord_.pint.dequantify()
+            case xr.core.coordinates.DatasetCoordinates():
+                res_coords = coords
+            case _:
+                raise TypeError(
+                    "'coords' can be a mapping or coordinates object"
+                )
+
+        match data_vars:
+            case Mapping():
+                res_data_vars = {
+                    str(name): (
+                        var
+                        if isinstance(var, xr.DataArray) else
+                        xr.DataArray(data=var, dims=self._DIMS_)
+                    )
+                    for name, var in data_vars.items()
+                }
+            case None:
+                res_data_vars = None
+            case _:
+                raise TypeError("'data_vars' can be a mapping or 'None'")
+
         super().__init__(
-            data_vars=data_vars,
-            coords=coords,
+            data_vars=res_data_vars,
+            coords=res_coords,
             coord_system=coord_system,
             attrs=attrs
         )
-        if {axis.latitude, axis.longitude} == set(self.aux_axes):
+        if (
+            {axis.latitude, axis.longitude}
+            == set(self._coord_system.spatial.crs.aux_axes)
+        ):
             self._dset = self._dset.set_xindex(
                 self.aux_axes, indexes.TwoDimHorGridIndex
             )
+
+    def nearest_horizontal(
+        self,
+        latitude: npt.ArrayLike | pint.Quantity,
+        longitude: npt.ArrayLike | pint.Quantity
+    ) -> PointsFeature:
+        # Preparing data, labels, units, and dimensions.
+        # TODO: Reconsider this.
+        name = self._dset.attrs['_geokube.field_name']
+        coord_system = self.coord_system
+        dset = self._dset
+        lat = dset[axis.latitude]
+        lat_vals = lat.data
+        lon = dset[axis.longitude]
+        lon_vals = lon.data
+
+        # lat_labels = get_magnitude(latitude, lat_data.units)
+        # lon_labels = get_magnitude(longitude, lon_data.units)
+        lat_labels = np.asarray(latitude)
+        lon_labels = np.asarray(longitude)
+
+        if isinstance(coord_system.spatial.crs, Geodetic):
+            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
+            # dims = ('_latitude', '_longitude')
+            dims = (axis.latitude, axis.longitude)
+        else:
+            all_dims = {lat.dims, lon.dims}
+            if len(all_dims) != 1:
+                raise ValueError(
+                    "'dset' must contain latitude and longitude with the same"
+                    "dimensions for rotated geodetic and projection grids"
+                )
+            dims = all_dims.pop()
+
+        # Calculating indexers and subsetting.
+        idx = get_array_indexer(
+            [lat_vals, lon_vals],
+            [lat_labels, lon_labels],
+            method='nearest',
+            tolerance=np.inf,
+            return_all=False
+        )
+        pts_dim = ('_points',)
+        pts_idx = [(pts_dim, dim_idx) for dim_idx in idx]
+        result_idx = dict(zip(dims, pts_idx))
+        dset = dset.isel(indexers=result_idx)
+        dset = dset.drop_vars(
+            names=[self.coord_system.spatial.crs.to_cf()['grid_mapping_name']]
+        )
+
+        # Creating the resulting points field.
+        new_coords = to_points_dict(name=name, dset=dset)
+        del new_coords['points']
+        new_data = new_coords.pop(name)
+        # NOTE: This is important to quantify data since it seems that
+        # `xarray.Dataset.pint.quantify()` does not work well with non-string
+        # dimensions.
+        new_coords = {
+            axis_: pint.Quantity(coord, dset[axis_].attrs['units'])
+            for axis_, coord in new_coords.items()
+        }
+
+        return PointsFeature(
+            coords=new_coords,
+            coord_system=coord_system,
+            data_vars={name: new_data}
+        )

@@ -41,7 +41,7 @@ _ARRAY_TYPES = (np.ndarray, da.Array)
 _FIELD_NAME_ATTR_ = '_geokube.field_name'
 
 
-class Field():
+class Field:
     __slots__ = ()
     _DOMAIN_CLS_: type[Domain]
 
@@ -325,8 +325,6 @@ class ProfilesField(Field, ProfilesFeature):
     __slots__ = ()
     _DOMAIN_CLS_ = Profiles
 
-    __slots__ = ()
-
     def __init__(
         self,
         name: str,
@@ -418,9 +416,9 @@ class ProfilesField(Field, ProfilesFeature):
 
 
 class GridField(Field, GridFeature):
-    # NOTE: The default order of axes is assumed.
-
+    __slots__ = ()
     _DOMAIN_CLS_ = Grid
+    # NOTE: The default order of axes is assumed.
 
     def __init__(
         self,
@@ -467,7 +465,7 @@ class GridField(Field, GridFeature):
 
         data_vars = {}
 
-        field_attrs = properties if not None else {} # TODO: attrs can contain both properties and CF attrs
+        field_attrs = properties if properties is not None else {} # TODO: attrs can contain both properties and CF attrs
         data_vars[name] = xr.DataArray(data=data_, dims=domain._dset.dims, attrs=field_attrs)
         data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name'] 
         data_vars[name].encoding = encoding if encoding is not None else {}
@@ -486,9 +484,9 @@ class GridField(Field, GridFeature):
 # UNTIL HERE
 
         super().__init__(
-            data_vars = data_vars,
-            coords = coords, 
-            attrs = ds_attrs,
+            data_vars=data_vars,
+            coords=coords, 
+            attrs=ds_attrs,
             coord_system=domain.coord_system
         )
 
@@ -499,55 +497,14 @@ class GridField(Field, GridFeature):
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity
     ) -> PointsField:  # Self:
-        # NOTE: This code works with all tested grids and returns the nearest
-        # points.
-        # Preparing data, labels, units, and dimensions.
-        coord_system = self.domain.coord_system
-
-        lat = self.coords[axis.latitude]
-        lon = self.coords[axis.latitude]
-
-        lat_vals = lat.magnitude
-        lon_vals = lon.magnitude
-
-        lat_labels = get_magnitude(latitude, lat.units)
-        lon_labels = get_magnitude(longitude, lon.units)
-
-        if isinstance(coord_system.spatial.crs, Geodetic):
-            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
-            dims = ('_latitude', '_longitude')
-        else:
-            all_dims = {lat.dims, lon.dims} # TODO: Review!!
-            if len(all_dims) != 1:
-                raise ValueError(
-                    "'dset' must contain latitude and longitude with the same"
-                    "dimensions for rotated geodetic and projection grids"
-                )
-            dims = all_dims.pop()
-
-        # Calculating indexers and subsetting.
-        idx = get_array_indexer(
-            [lat_vals, lon_vals],
-            [lat_labels, lon_labels],
-            method='nearest',
-            tolerance=np.inf,
-            return_all=False
-        )
-        pts_dim = ('_points',)
-        pts_idx = [(pts_dim, dim_idx) for dim_idx in idx]
-        result_idx = dict(zip(dims, pts_idx))
-        dset = dset.isel(indexers=result_idx)
-
-        name = self.name
-        # Creating the resulting points field.
-        new_coords = to_points_dict(name=name, dset=dset)
-        del new_coords['points']
-        new_data = new_coords.pop(name)
+        feature = super().nearest_horizontal(latitude, longitude)
 
         return PointsField(
-            name=name,
-            domain=Points(coords=new_coords, coord_system=coord_system),
-            data=new_data
+            name=self.name,
+            domain=Points(
+                coords=feature.coords, coord_system=feature.coord_system
+            ),
+            data=feature._dset[self.name].data
         )
 
     def regrid(

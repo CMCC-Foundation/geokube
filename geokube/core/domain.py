@@ -168,49 +168,25 @@ class Grid(Domain, GridFeature):
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
         coord_system: CoordinateSystem
     ) -> None:
-        if not isinstance(coords, Mapping):
-            raise TypeError("'coords' must be a mapping")
-
-        crs = coord_system.spatial.crs
-        self._DIMS_ = crs.dim_axes
-
         units = coord_system.units
-        result_coords: dict[axis.Axis, xr.DataArray] = {}
+        interm_coords = dict(coords)
 
-        hor_aux_shapes = set()
-
-        for axis_ in crs.dim_axes: # TODO: REVIEW! - we need to keep the order as in the CRS
-            vals_ = create_quantity(coords[axis_], units.get(axis_), axis_.dtype)
-            if axis_ in coord_system.dim_axes:
-                # Dimension coordinates.
-                if not vals_.ndim:
-                    dim_axes = ()
-                elif vals_.ndim == 1:
-                    dim_axes = (axis_,)
-                else:
-                    raise ValueError(
-                        f"'coords' have a dimension axis {axis_} that has "
-                        "multi-dimensional values"
-                    )
-            else:
-                # Auxiliary coordinates.
-                dim_axes = crs.dim_axes if vals_.ndim else ()
-                if axis_ in crs.aux_axes:
-                    hor_aux_shapes.add(vals_.shape)
-            
-            #
-            # dequantify is needed because pandas index do not keep quantity 
-            # in the coordinates
-            # -> dequantify put units as attributes in the dataset
-            # we need to add also cf-attributes
-            # 
-            result_coords[axis_] = xr.DataArray(vals_, 
-                                                dims=dim_axes,
-                                                attrs=axis_.encoding).pint.dequantify()
-        if len(hor_aux_shapes) > 1:
-            raise ValueError(
-                "'coords' have auxiliary horizontal coordinates with different"
-                "shapes"
+        # TODO: REVIEW! - we need to keep the order as in the CRS
+        result_coords = {
+            axis_: create_quantity(
+                values=interm_coords.pop(axis_),
+                default_units=units.get(axis_),
+                default_dtype=axis_.encoding['dtype']
             )
+            for axis_ in coord_system.dim_axes
+        }
+        result_coords |= {
+            axis_: create_quantity(
+                values=coord,
+                default_units=units.get(axis_),
+                default_dtype=axis_.encoding['dtype']
+            )
+            for axis_, coord in interm_coords.items()
+        }
 
         super().__init__(result_coords, coord_system)
