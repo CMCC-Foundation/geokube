@@ -1192,6 +1192,8 @@ class Field(Variable, DomainMixin):
         figsize=None,
         robust=None,
         aspect=None,
+        save_path=None,
+        save_kwargs=None,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1199,6 +1201,10 @@ class Field(Variable, DomainMixin):
         vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
         lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
         lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        # NOTE: The argument `save_kwargs` passes the keyword arguments to the
+        # `savefig` method, see:
+        # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html
 
         # Resolving time series and layers because they do not require most of
         # processing other plot types do:
@@ -1243,6 +1249,8 @@ class Field(Variable, DomainMixin):
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Time Series")
+                if save_path:
+                    plot[0].figure.savefig(save_path, **(save_kwargs or {}))
                 return plot
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
@@ -1263,6 +1271,8 @@ class Field(Variable, DomainMixin):
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Layers")
+                if save_path:
+                    plot[0].figure.savefig(save_path, **(save_kwargs or {}))
                 return plot
 
         # Resolving Cartopy features and gridlines:
@@ -1441,6 +1451,15 @@ class Field(Variable, DomainMixin):
                         ax.set_ylabel(lat_name)
                         ax.set_xticks(x_ticks)
                         ax.set_yticks(y_ticks)
+
+        if save_path:
+            if hasattr(plot, 'fig'):
+                fig = plot.fig
+            elif hasattr(plot, 'figure'):
+                fig = plot.figure
+            else:
+                raise NotImplementedError()
+            fig.savefig(save_path, **(save_kwargs or {}))
 
         return plot
 
