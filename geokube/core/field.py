@@ -1194,6 +1194,7 @@ class Field(Variable, DomainMixin):
         aspect=None,
         save_path=None,
         save_kwargs=None,
+        clean_image=False,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1249,6 +1250,9 @@ class Field(Variable, DomainMixin):
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Time Series")
+                if clean_image:
+                    plot.axes.set_axis_off()
+                    plot.axes.set_title('')
                 if save_path:
                     plot[0].figure.savefig(save_path, **(save_kwargs or {}))
                 return plot
@@ -1271,6 +1275,9 @@ class Field(Variable, DomainMixin):
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Layers")
+                if clean_image:
+                    plot.axes.set_axis_off()
+                    plot.axes.set_title('')
                 if save_path:
                     plot[0].figure.savefig(save_path, **(save_kwargs or {}))
                 return plot
@@ -1452,6 +1459,14 @@ class Field(Variable, DomainMixin):
                         ax.set_xticks(x_ticks)
                         ax.set_yticks(y_ticks)
 
+        if clean_image:
+            if isinstance(plot.axes, np.ndarray):
+                for axis in plot.axes.flat:
+                    axis.set_axis_off()
+                    axis.set_title('')
+            else:
+                plot.axes.set_axis_off()
+                plot.axes.set_title('')
         if save_path:
             if hasattr(plot, 'fig'):
                 fig = plot.fig
