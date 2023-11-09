@@ -1478,6 +1478,14 @@ class Field(Variable, DomainMixin):
 
         return plot
 
+    def to_image(self, filepath, width, height, format='png', transparent=True, bgcolor='FFFFFF'):
+        self.plot(figsize=(width, height), # This is not correct - width and height are number of pixels.
+                  add_colorbar=False, 
+                  save_path=filepath,
+                  save_kwargs={ 'transparent': transparent},
+                  clean_image=True
+        )
+    
     def to_geojson(self, target=None):
         self.load()
         if self.domain.type is DomainType.POINTS:

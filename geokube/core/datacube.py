@@ -449,6 +449,13 @@ class DataCube(DomainMixin):
 
         return result
 
+    def to_image(self, filepath, width, height, format='png', transparent=True, bgcolor='FFFFFF'):
+        # TODO: support multiple fields
+        if len(self.fields) > 1:
+            raise ValueError("to_image support only 1 field")
+        else:
+            next(iter(self.fields.values())).to_image(filepath, width, height, format, transparent, bgcolor)
+
     @classmethod
     @geokube_logging
     def from_xarray(
