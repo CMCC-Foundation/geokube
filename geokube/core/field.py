@@ -25,6 +25,7 @@ from warnings import warn
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
 import dask.array as da
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -1254,7 +1255,9 @@ class Field(Variable, DomainMixin):
                     plot.axes.set_axis_off()
                     plot.axes.set_title('')
                 if save_path:
-                    plot[0].figure.savefig(save_path, **(save_kwargs or {}))
+                    fig = plot[0].figure
+                    fig.tight_layout()
+                    fig.savefig(save_path, **(save_kwargs or {}))
                 return plot
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
@@ -1279,7 +1282,9 @@ class Field(Variable, DomainMixin):
                     plot.axes.set_axis_off()
                     plot.axes.set_title('')
                 if save_path:
-                    plot[0].figure.savefig(save_path, **(save_kwargs or {}))
+                    fig = plot[0].figure
+                    fig.tight_layout()
+                    fig.savefig(save_path, **(save_kwargs or {}))
                 return plot
 
         # Resolving Cartopy features and gridlines:
@@ -1474,18 +1479,36 @@ class Field(Variable, DomainMixin):
                 fig = plot.figure
             else:
                 raise NotImplementedError()
+            fig.tight_layout()
+            # fig.tight_layout(pad=0, h_pad=0, w_pad=0)
             fig.savefig(save_path, **(save_kwargs or {}))
 
         return plot
 
-    def to_image(self, filepath, width, height, format='png', transparent=True, bgcolor='FFFFFF'):
-        self.plot(figsize=(width, height), # This is not correct - width and height are number of pixels.
-                  add_colorbar=False, 
-                  save_path=filepath,
-                  save_kwargs={ 'transparent': transparent},
-                  clean_image=True
+    def to_image(
+        self,
+        filepath,
+        width,
+        height,
+        format='png',
+        transparent=True,
+        bgcolor='FFFFFF'
+    ):
+        # NOTE: This method assumes default DPI value.
+        dpi = plt.rcParams['figure.dpi']
+        w, h = width / dpi, height / dpi
+        self.plot(
+            figsize=(w, h),
+            add_colorbar=False,
+            save_path=filepath,
+            save_kwargs={
+                'transparent': transparent,
+                'pad_inches': 0,
+                # 'bbox_inches': [[0, 0], [w, h]]
+            },
+            clean_image=True
         )
-    
+
     def to_geojson(self, target=None):
         self.load()
         if self.domain.type is DomainType.POINTS:
