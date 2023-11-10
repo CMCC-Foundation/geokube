@@ -1495,9 +1495,12 @@ class Field(Variable, DomainMixin):
         bgcolor='FFFFFF'
     ):
         # NOTE: This method assumes default DPI value.
+        f = self
+        if self.domain.crs != GeogCS(6371229):
+            f = self.to_regular()
         dpi = plt.rcParams['figure.dpi']
         w, h = width / dpi, height / dpi
-        self.plot(
+        f.plot(
             figsize=(w, h),
             add_colorbar=False,
             save_path=filepath,
