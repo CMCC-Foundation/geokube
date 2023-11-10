@@ -1490,6 +1490,7 @@ class Field(Variable, DomainMixin):
         filepath,
         width,
         height,
+        dpi=100,
         format='png',
         transparent=True,
         bgcolor='FFFFFF'
@@ -1498,7 +1499,7 @@ class Field(Variable, DomainMixin):
         f = self
         if self.domain.crs != GeogCS(6371229):
             f = self.to_regular()
-        dpi = plt.rcParams['figure.dpi']
+#        dpi = plt.rcParams['figure.dpi']
         w, h = width / dpi, height / dpi
         f.plot(
             figsize=(w, h),
@@ -1507,6 +1508,7 @@ class Field(Variable, DomainMixin):
             save_kwargs={
                 'transparent': transparent,
                 'pad_inches': 0,
+                'dpi': dpi,
                 # 'bbox_inches': [[0, 0], [w, h]]
             },
             clean_image=True
