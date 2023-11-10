@@ -280,8 +280,10 @@ class OneDimPandasIndex(xr.core.indexes.Index):
 
 @dataclass(frozen=True, slots=True)
 class TwoDimHorGridIndex(xr.core.indexes.Index):
-    latitude: pint.Quantity
-    longitude: pint.Quantity
+    # latitude: pint.Quantity
+    # longitude: pint.Quantity
+    latitude: np.ndarray
+    longitude: np.ndarray
     dims: tuple[Hashable]
 
     @classmethod
@@ -303,11 +305,11 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
             ) from err
 
         lat_data, lon_data = lat.data, lon.data
-        if not (
-            isinstance(lat_data, pint.Quantity)
-            and isinstance(lon_data, pint.Quantity)
-        ):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        # if not (
+        #     isinstance(lat_data, pint.Quantity)
+        #     and isinstance(lon_data, pint.Quantity)
+        # ):
+        #     raise TypeError("'variables' must contain data of type 'Quantity'")
 
         all_dims = {lat.dims, lon.dims}
         if len(all_dims) != 1:
@@ -336,13 +338,15 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
             ) from err
 
         lat_, lon_ = self.latitude, self.longitude
-        lat_label = get_magnitude(lat, lat_.units)
-        lon_label = get_magnitude(lon, lon_.units)
+        # lat_label = get_magnitude(lat, lat_.units)
+        # lon_label = get_magnitude(lon, lon_.units)
+        lat_label, lon_label = np.asarray(lat), np.asarray(lon)
 
         match lat, lon:
             case (slice(), slice()):
                 idx = get_slice_indexer(
-                    [lat_.magnitude, lon_.magnitude],
+                    # [lat_.magnitude, lon_.magnitude],
+                    [lat_, lon_],
                     [lat_label, lon_label],
                     combine_result=True,
                     return_type='int'
