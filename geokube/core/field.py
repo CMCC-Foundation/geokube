@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
+from pyproj import Transformer
 import xarray as xr
 
 from . import axis, indexes
@@ -20,6 +21,8 @@ from .quantity import get_magnitude
 import pyarrow as pa
 from .coord_system import CoordinateSystem
 
+from .crs import Geodetic
+from .domain import Domain, Grid
 from .feature import PointsFeature, ProfilesFeature, GridFeature
 
 
@@ -572,4 +575,98 @@ class GridField(Field, GridFeature):
             ancillary=ancillary,
             properties=self.properties,
             encoding=self.encoding
+        )
+    
+    def interpolate(
+        self, target: Domain | Field, method: str = 'nearest', **kwargs
+    ) -> Field:
+        dset = self._dset.pint.dequantify()
+        coords = dict(dset.coords)
+        coord_system = self._coord_system
+        spatial = coord_system.spatial
+        crs = spatial.crs
+        attrs = dset.attrs
+        name = attrs[_FIELD_NAME_ATTR_]
+        del coords[dset[name].attrs['grid_mapping']]
+
+        match target:
+            case Domain():
+                target_domain = target
+            case Field():
+                target_domain = target.domain
+            case _:
+                raise TypeError("'target' must be a domain or field")
+        target_dims = (axis.latitude, axis.longitude)
+        target_coords = target_domain.coords
+        target_coords = {axis: target_coords[axis] for axis in target_dims}
+
+        if isinstance(crs, Geodetic):
+            target_coords = coords | target_coords
+            kwargs.setdefault('fill_value', 'extrapolate')
+            result_dset = dset.interp(
+                coords=target_coords, method=method, kwargs=kwargs
+            )
+        else:
+            target_lat = target_coords[axis.latitude]
+            target_lon = target_coords[axis.longitude]
+            if target_lat.ndim == target_lon.ndim == 1:
+                target_lon, target_lat = np.meshgrid(target_lon, target_lat)
+            transformer = Transformer.from_crs(
+                crs_from=target_domain.coord_system.spatial.crs._crs,
+                crs_to=crs._crs,
+                always_xy=True
+            )
+            target_x, target_y = transformer.transform(target_lon, target_lat)
+            # NOTE: This is required to get the same axes as given in `coords`.
+            axis_x, axis_y = coords.keys() & crs.dim_axes
+            target_coords = xr.Dataset(
+                data_vars={
+                    axis_x: xr.DataArray(data=target_x, dims=target_dims),
+                    axis_y: xr.DataArray(data=target_y, dims=target_dims)
+                },
+                coords=target_coords
+            )
+            dset = dset.drop(labels=(axis.latitude, axis.longitude))
+            kwargs.setdefault('fill_value', None)
+            result_dset = dset.interp(
+                coords=target_coords, method=method, kwargs=kwargs
+            )
+            result_dset = result_dset.drop(labels=(axis_x, axis_y))
+
+        result_dset = result_dset.pint.quantify()
+        result_dset.attrs[_FIELD_NAME_ATTR_] = attrs[_FIELD_NAME_ATTR_]
+        result_coord_system = CoordinateSystem(
+            horizontal=target_domain.coord_system.spatial.crs,
+            elevation=spatial.elevation,
+            time=coord_system.time,
+            user_axes=coord_system.user_axes
+        )
+        result_field = self._from_xrdset(result_dset, result_coord_system)
+        return result_field
+
+    def as_geodetic(self):
+        dset = self._dset
+        coord_system = self._coord_system
+        crs = coord_system.spatial.crs
+        y_axis, x_axis = crs.dim_axes
+        y_vals, x_vals = dset[y_axis].to_numpy(), dset[x_axis].to_numpy()
+
+        # Infering latitude and longitude steps from the x and y coordinates.
+        lat_step = y_vals.ptp() / (y_vals.size - 1)
+        lon_step = x_vals.ptp() / (x_vals.size - 1)
+
+        # Building regular latitude-longitude coordinates.
+        lat_vals = dset[axis.latitude].to_numpy()
+        lon_vals = dset[axis.longitude].to_numpy()
+        south, north = lat_vals.min(), lat_vals.max()
+        west, east = lon_vals.min(), lon_vals.max()
+        lat = np.arange(south, north + lat_step / 2, lat_step)
+        lon = np.arange(west, east + lon_step / 2, lon_step)
+
+        return self.interpolate(
+            target=Grid(
+                coords={axis.latitude: lat, axis.longitude: lon},
+                coord_system=CoordinateSystem(horizontal=Geodetic())
+            ),
+            method="nearest"
         )
