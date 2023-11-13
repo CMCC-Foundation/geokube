@@ -82,6 +82,10 @@ class Feature:
     def coord_system(self):
         return self._coord_system
 
+    @property
+    def crs(self) -> dict[axis.Axis, pint.Quantity]:
+        return self.coord_system.spatial.crs
+
     # CF Methods 
     @property  # return dimensional axes
     def dim_axes(self) -> tuple[axis.Axis, ...]:

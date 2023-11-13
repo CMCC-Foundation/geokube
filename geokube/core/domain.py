@@ -7,11 +7,13 @@ import pandas as pd
 import pint
 import pint_xarray
 import xarray as xr
+from pyproj import Transformer
 
 from . import axis
 from .coord_system import CoordinateSystem
 from .feature import GridFeature, PointsFeature, ProfilesFeature
 from .quantity import create_quantity
+from .crs import Geodetic
 
 
 # TODO: Consider renaming this class to `DomainMixin`.
@@ -190,3 +192,57 @@ class Grid(Domain, GridFeature):
         }
 
         super().__init__(result_coords, coord_system)
+
+    def infer_resolution(self, axis):
+        return self.coords[axis].ptp() / (self.coords[axis].size - 1)
+    
+    def as_geodetic(self, as_points=False):
+        coord_system = CoordinateSystem(
+            horizontal=Geodetic(),
+            elevation = self.coord_system.elevation,
+            time = self.coord_system.time,
+            user_axes = self.coord_system.user_axes
+        )
+
+        # Infering latitude and longitude steps from the x and y coordinates.
+        # this works only for Geodetic and Rotated Pole
+        # It should be generalized also for projections
+        # TODO: once we get the resolution for the horizontal we should transform
+        # in a value in lat/lon 
+        lat_step = self.domain.infer_resolution(self.crs.dim_Y_axis)
+        lon_step = self.domain.infer_resolution(self.crs.dim_X_axis)
+
+        # Building regular latitude-longitude coordinates.
+        lat_vals = self.coords[axis.latitude]
+        lon_vals = self.coords[axis.longitude]
+        south, north = lat_vals.min().magnitude, lat_vals.max().magnitude
+        west, east = lon_vals.min().magnitude, lon_vals.max().magnitude
+#        lat = np.arange(south, north + lat_step / 2, lat_step)
+#        lon = np.arange(west, east + lon_step / 2, lon_step)
+        lat = np.arange(south, north, lat_step)
+        lon = np.arange(west, east, lon_step)
+
+        return type(self)(
+            coords={
+                coord_system.crs.dim_Y_axis: lat,
+                coord_system.crs.dim_X_axis: lon
+            },
+            coord_system=coord_system        
+        )
+
+    def spatial_transform_to(self, crs):
+        # TODO: we assume that they have the same datum. We need to change
+        # the code when datum are different!!
+        # 
+        lat = self.coords[axis.latitude].magnitude
+        lon = self.coords[axis.longitude].magnitude
+        if lat.ndim == lon.ndim == 1:
+            lon, lat = np.meshgrid(lon, lat)
+
+        transformer = Transformer.from_crs(
+            crs_from=self.crs._crs,
+            crs_to=crs._crs,
+            always_xy=True
+        )
+        # x, y = transformer.transform(lon, lat)
+        return transformer.transform(lon, lat)

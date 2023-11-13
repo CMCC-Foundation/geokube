@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
-from pyproj import Transformer
 import xarray as xr
 
 from . import axis, indexes
@@ -577,7 +576,7 @@ class GridField(Field, GridFeature):
             encoding=self.encoding
         )
     
-    def interpolate(
+    def interpolate_(
         self, target: Domain | Field, method: str = 'nearest', **kwargs
     ) -> Field:
         dset = self._dset.pint.dequantify()
@@ -600,7 +599,7 @@ class GridField(Field, GridFeature):
         target_coords = target_domain.coords
         target_coords = {axis: target_coords[axis] for axis in target_dims}
 
-        if isinstance(crs, Geodetic):
+        if isinstance(self.crs, Geodetic):
             target_coords = coords | target_coords
             kwargs.setdefault('fill_value', 'extrapolate')
             result_dset = dset.interp(
@@ -644,29 +643,81 @@ class GridField(Field, GridFeature):
         result_field = self._from_xrdset(result_dset, result_coord_system)
         return result_field
 
+    def interpolate(
+        self, target: Domain | Field, method: str = 'nearest', **kwargs
+    ) -> Field:
+        # spatial interpolation
+        # dset = self._dset.pint.dequantify() - it is needed since units are not kept!
+
+        match target:
+            case Domain():
+                target = target
+            case Field():
+                target = target.domain
+            case _:
+                raise TypeError("'target' must be a domain or field")
+
+        if self.crs != target.crs:
+            # we need to transform the target domain to the same crs of the domain to 
+            # be interpolated and we perform the interpolation on the horizontal axes
+            #
+            target_x, target_y = target.spatial_transform_to(self.crs)
+            kwargs.setdefault('fill_value', None)
+            target_dims = list(target.crs.dim_axes)
+            target_ = xr.Dataset(
+                data_vars={
+                    self.crs.dim_X_axis: xr.DataArray(data=target_x, dims=target_dims),
+                    self.crs.dim_Y_axis: xr.DataArray(data=target_y, dims=target_dims)
+                },
+                coords={axis: target.coords[axis] for axis in target_dims}
+            )
+            ds = self._dset.interp(
+                coords=target_, method=method, kwargs=kwargs
+            )
+        else:
+            dims = target.crs.dim_axes
+            kwargs.setdefault('fill_value', 'extrapolate')
+            ds = self._dset.interp(
+                coords=target._dset[dims], method=method, kwargs=kwargs
+            )
+
+        # ds contains the data interpolated on the new domain
+        ancillary = {}
+        for v in ds.data_vars:
+            if v != self.name:
+                ancillary[v] = ds[v].pint.quantify()
+
+        cs = CoordinateSystem(
+            horizontal=target.crs,
+            elevation=self.coord_system.spatial.elevation,
+            time=self.coord_system.time,
+            user_axes=self.coord_system.user_axes
+        )
+    
+        coords = {}
+        for ax in cs.axes:
+            if isinstance(ax, axis.Horizontal):
+                coords[ax] = target.coords[ax]
+            else:
+                coords[ax] = self.coords[ax]
+
+        return GridField(
+            name=self.name,
+            data=ds[self.name].pint.quantify(),
+            domain=Grid(coords=coords, coord_system=cs),
+            ancillary=ancillary,
+            properties=self.properties,
+            encoding=self.encoding
+        )
+
+    def is_geodetic(self):
+        return isinstance(self.crs, Geodetic) 
+
     def as_geodetic(self):
-        dset = self._dset
-        coord_system = self._coord_system
-        crs = coord_system.spatial.crs
-        y_axis, x_axis = crs.dim_axes
-        y_vals, x_vals = dset[y_axis].to_numpy(), dset[x_axis].to_numpy()
-
-        # Infering latitude and longitude steps from the x and y coordinates.
-        lat_step = y_vals.ptp() / (y_vals.size - 1)
-        lon_step = x_vals.ptp() / (x_vals.size - 1)
-
-        # Building regular latitude-longitude coordinates.
-        lat_vals = dset[axis.latitude].to_numpy()
-        lon_vals = dset[axis.longitude].to_numpy()
-        south, north = lat_vals.min(), lat_vals.max()
-        west, east = lon_vals.min(), lon_vals.max()
-        lat = np.arange(south, north + lat_step / 2, lat_step)
-        lon = np.arange(west, east + lon_step / 2, lon_step)
-
+        if (self.is_geodetic()):
+            return self
+        
         return self.interpolate(
-            target=Grid(
-                coords={axis.latitude: lat, axis.longitude: lon},
-                coord_system=CoordinateSystem(horizontal=Geodetic())
-            ),
+            target=self.domain.as_geodetic(), # this has a semantic -> domain geodetic grid can be different from the original
             method="nearest"
         )
