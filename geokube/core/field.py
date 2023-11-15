@@ -55,23 +55,21 @@ class Field:
     # in order to have precedence Field should be inherited first
     # 
     @classmethod
-    def _from_xrdset(cls, 
-                     ds: xr.Dataset, 
-                     coord_system: CoordinateSystem) -> Self:
+    def _from_xrdset(
+        cls, dset: xr.Dataset, coord_system: CoordinateSystem
+    ) -> Self:
         coords = {}        
         for ax in coord_system.axes:
-            coords[ax] = ds.coords[ax]
-        domain = cls._DOMAIN_CLS_(
-                    coords=coords, 
-                    coord_system=coord_system)
-        name = ds.attrs[_FIELD_NAME_ATTR_]
-        data = ds[name].data
-        properties = ds[name].attrs
-        encoding = ds[name].encoding
-        if 'ancillary_variables' in ds[name].attrs:
+            coords[ax] = dset.coords[ax]
+        domain = cls._DOMAIN_CLS_(coords=coords, coord_system=coord_system)
+        name = dset.attrs[_FIELD_NAME_ATTR_]
+        data = dset[name].data
+        properties = dset[name].attrs
+        encoding = dset[name].encoding
+        if 'ancillary_variables' in dset[name].attrs:
             ancillary = {}
-            for c in ds[name].attrs['ancillary_variables'].split():
-                    ancillary[c] = ds[c].data
+            for c in dset[name].attrs['ancillary_variables'].split():
+                ancillary[c] = dset[c].data
         else:
             ancillary = None
         
@@ -648,37 +646,43 @@ class GridField(Field, GridFeature):
     ) -> Field:
         # spatial interpolation
         # dset = self._dset.pint.dequantify() - it is needed since units are not kept!
+        dset = self._dset.pint.dequantify()
 
         match target:
             case Domain():
-                target = target
+                pass
             case Field():
                 target = target.domain
             case _:
                 raise TypeError("'target' must be a domain or field")
 
-        if self.crs != target.crs:
+        if self.crs._crs != target.crs._crs:
             # we need to transform the target domain to the same crs of the domain to 
             # be interpolated and we perform the interpolation on the horizontal axes
             #
             target_x, target_y = target.spatial_transform_to(self.crs)
             kwargs.setdefault('fill_value', None)
-            target_dims = list(target.crs.dim_axes)
+            target_dims = target.crs.dim_axes
+            dims = (axis.latitude, axis.longitude)
             target_ = xr.Dataset(
                 data_vars={
-                    self.crs.dim_X_axis: xr.DataArray(data=target_x, dims=target_dims),
-                    self.crs.dim_Y_axis: xr.DataArray(data=target_y, dims=target_dims)
+                    self.crs.dim_X_axis: xr.DataArray(data=target_x, dims=dims),
+                    self.crs.dim_Y_axis: xr.DataArray(data=target_y, dims=dims)
                 },
-                coords={axis: target.coords[axis] for axis in target_dims}
+                coords={axis: target.coords[axis] for axis in dims}
             )
-            ds = self._dset.interp(
-                coords=target_, method=method, kwargs=kwargs
-            )
+            dset = dset.drop(labels=(axis.latitude, axis.longitude))
+            ds = dset.interp(coords=target_, method=method, kwargs=kwargs)
+            ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
-            dims = target.crs.dim_axes
+            target_coords = target.coords
+            target_coords = {
+                axis: target_coords[axis] for axis in target.crs.axes
+            }
+            target_coords = self.coords | target_coords
             kwargs.setdefault('fill_value', 'extrapolate')
-            ds = self._dset.interp(
-                coords=target._dset[dims], method=method, kwargs=kwargs
+            ds = dset.interp(
+                coords=target_coords, method=method, kwargs=kwargs
             )
 
         # ds contains the data interpolated on the new domain
@@ -693,7 +697,7 @@ class GridField(Field, GridFeature):
             time=self.coord_system.time,
             user_axes=self.coord_system.user_axes
         )
-    
+
         coords = {}
         for ax in cs.axes:
             if isinstance(ax, axis.Horizontal):
@@ -714,7 +718,7 @@ class GridField(Field, GridFeature):
         return isinstance(self.crs, Geodetic) 
 
     def as_geodetic(self):
-        if (self.is_geodetic()):
+        if self.is_geodetic():
             return self
         
         return self.interpolate(
