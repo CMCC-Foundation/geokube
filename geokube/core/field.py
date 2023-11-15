@@ -1541,7 +1541,12 @@ class Field(Variable, DomainMixin):
         ):
             # HACK: The case `self.domain.type is None` is included to be able
             # to handle undefined domain types temporarily.
-            result = {"data": []}
+            if self.time.size == 1:
+                result = {}
+            else:
+                raise NotImplementedError(
+                    f"multiple times are not supported for geojson"
+                )
             field = (
                 self
                 if isinstance(self.domain.crs, GeogCS)
@@ -1603,7 +1608,7 @@ class Field(Variable, DomainMixin):
                             "properties": {self.name: float(value)},
                         }
                         time_data["features"].append(feature)
-                result["data"].append(time_data)
+                result = time_data
         else:
             raise NotImplementedError(
                 f"'self.domain.type' is {self.domain.type}, which is currently"
