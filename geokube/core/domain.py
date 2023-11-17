@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Self
+from typing import Any, Self
 
 import numpy as np
 import numpy.typing as npt

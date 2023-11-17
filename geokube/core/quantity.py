@@ -1,6 +1,7 @@
 import dask.array as da
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pint
 
 
@@ -25,6 +26,10 @@ def create_quantity(
             return pint.Quantity(values, default_units)
         case da.Array():
             return pint.Quantity(values.compute(), default_units)
+        case pd.IntervalIndex():
+            return pint.Quantity(
+                np.asarray(values, dtype=object), default_units
+            )
         case _:
             return pint.Quantity(
                 np.asarray(values, dtype=default_dtype), default_units
