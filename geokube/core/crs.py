@@ -97,6 +97,13 @@ class Geodetic(CRS):
     _AUX_AXES_TYPES = ()
     _PYPROJ_TYPE = pyproj_crs.GeographicCRS
 
+    @property
+    def dim_X_axis(self):
+        return axis.longitude
+
+    @property
+    def dim_Y_axis(self):
+        return axis.latitude
 
 class RotatedGeodetic(CRS):
     _DIM_AXES_TYPES = (axis.GridLatitude, axis.GridLongitude)
@@ -147,6 +154,13 @@ class RotatedGeodetic(CRS):
             )
         super().__init__(dim_axes=dim_axes, aux_axes=aux_axes, crs=crs)
 
+    @property
+    def dim_X_axis(self) -> axis.Axis:
+        return axis.grid_longitude
+
+    @property
+    def dim_Y_axis(self) -> axis.Axis:
+        return axis.grid_latitude
 
 class Projection(CRS):
     _DIM_AXES_TYPES = (axis.Y, axis.X)
@@ -155,3 +169,11 @@ class Projection(CRS):
 
     # def __init__(self, conversion):
     #     pass
+
+    @property
+    def dim_X_axis(self) -> axis.Axis:
+        return axis.x
+
+    @property
+    def dim_Y_axis(self) -> axis.Axis:
+        return axis.y

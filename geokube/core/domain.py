@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from typing import Self
+from typing import Any, Self
 
 import numpy as np
 import numpy.typing as npt
@@ -7,11 +7,14 @@ import pandas as pd
 import pint
 import pint_xarray
 import xarray as xr
+from pyproj import Transformer
 
 from . import axis
 from .coord_system import CoordinateSystem
 from .feature import GridFeature, PointsFeature, ProfilesFeature
-from .quantity import create_quantity
+from .quantity import get_magnitude, create_quantity
+from .crs import Geodetic
+from .units import units
 
 
 # TODO: Consider renaming this class to `DomainMixin`.
@@ -78,6 +81,7 @@ class Points(Domain, PointsFeature):
 
 
 class Profiles(Domain, ProfilesFeature):
+    __slots__ = ()
 
     def __init__(
         self,
@@ -100,7 +104,8 @@ class Profiles(Domain, ProfilesFeature):
             n_lev_tot = max(n_lev)
             n_prof_tot = len(vert)
             vert_vals = np.empty(
-                shape=(n_prof_tot, n_lev_tot), dtype=axis.vertical.dtype
+                shape=(n_prof_tot, n_lev_tot),
+                dtype=axis.vertical.encoding['dtype']
             )
             for i, (stop_idx, vals) in enumerate(zip(n_lev, vert)):
                 if stop_idx == n_lev_tot:
@@ -111,7 +116,7 @@ class Profiles(Domain, ProfilesFeature):
             vert_ = pint.Quantity(vert_vals, units[axis.vertical])
         else:
             vert_ = create_quantity(
-                vert, units.get(axis.vertical), axis.vertical.dtype
+                vert, units.get(axis.vertical), axis.vertical.encoding['dtype']
             )
             vert_shape = vert_.shape
             if len(vert_shape) != 2:
@@ -127,14 +132,16 @@ class Profiles(Domain, ProfilesFeature):
 
         # All coordinates except the vertical.
         for axis_, vals in interm_coords.items():
-            vals_ = create_quantity(vals, units.get(axis_), axis_.dtype)
-            if vals_.ndim != 1:
+            qty = create_quantity(
+                vals, units.get(axis_), axis_.encoding['dtype']
+            )
+            if qty.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
                     "one-dimensional values"
                 )
-            result_coords[axis_] = xr.DataArray(vals_, dims=prof)
-            n_prof.add(vals_.size)
+            result_coords[axis_] = xr.DataArray(qty, dims=prof)
+            n_prof.add(qty.size)
         if len(n_prof) != 1:
             raise ValueError(
                 "'coords' with the exception of vertical must have values of "
@@ -146,11 +153,9 @@ class Profiles(Domain, ProfilesFeature):
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
             )
-        self._n_profiles = n_prof_tot
-        self._n_levels = n_lev_tot
 
-        super.__init__(coords = result_coords,
-                       coord_system=coord_system)
+        super().__init__(coords=result_coords, coord_system=coord_system)
+
 
 class Grid(Domain, GridFeature):
     # TODO: Consider auxiliary coordinates other than the
@@ -166,49 +171,82 @@ class Grid(Domain, GridFeature):
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
         coord_system: CoordinateSystem
     ) -> None:
-        if not isinstance(coords, Mapping):
-            raise TypeError("'coords' must be a mapping")
-
-        crs = coord_system.spatial.crs
-        self._DIMS_ = crs.dim_axes
-
         units = coord_system.units
-        result_coords: dict[axis.Axis, xr.DataArray] = {}
+        interm_coords = dict(coords)
 
-        hor_aux_shapes = set()
-
-        for axis_ in crs.dim_axes: # TODO: REVIEW! - we need to keep the order as in the CRS
-            vals_ = create_quantity(coords[axis_], units.get(axis_), axis_.dtype)
-            if axis_ in coord_system.dim_axes:
-                # Dimension coordinates.
-                if not vals_.ndim:
-                    dim_axes = ()
-                elif vals_.ndim == 1:
-                    dim_axes = (axis_,)
-                else:
-                    raise ValueError(
-                        f"'coords' have a dimension axis {axis_} that has "
-                        "multi-dimensional values"
-                    )
-            else:
-                # Auxiliary coordinates.
-                dim_axes = crs.dim_axes if vals_.ndim else ()
-                if axis_ in crs.aux_axes:
-                    hor_aux_shapes.add(vals_.shape)
-            
-            #
-            # dequantify is needed because pandas index do not keep quantity 
-            # in the coordinates
-            # -> dequantify put units as attributes in the dataset
-            # we need to add also cf-attributes
-            # 
-            result_coords[axis_] = xr.DataArray(vals_, 
-                                                dims=dim_axes,
-                                                attrs=axis_.encoding).pint.dequantify()
-        if len(hor_aux_shapes) > 1:
-            raise ValueError(
-                "'coords' have auxiliary horizontal coordinates with different"
-                "shapes"
+        # TODO: REVIEW! - we need to keep the order as in the CRS
+        result_coords = {
+            axis_: create_quantity(
+                values=interm_coords.pop(axis_),
+                default_units=units.get(axis_),
+                default_dtype=axis_.encoding['dtype']
             )
+            for axis_ in coord_system.dim_axes
+        }
+        result_coords |= {
+            axis_: create_quantity(
+                values=coord,
+                default_units=units.get(axis_),
+                default_dtype=axis_.encoding['dtype']
+            )
+            for axis_, coord in interm_coords.items()
+        }
 
         super().__init__(result_coords, coord_system)
+
+    def infer_resolution(self, axis):
+        return self.coords[axis].ptp() / (self.coords[axis].size - 1)
+
+    def as_geodetic(self, as_points=False):
+        coord_system = CoordinateSystem(
+            horizontal=Geodetic(),
+            elevation = self.coord_system.elevation,
+            time = self.coord_system.time,
+            user_axes = self.coord_system.user_axes
+        )
+
+        # Infering latitude and longitude steps from the x and y coordinates.
+        # this works only for Geodetic and Rotated Pole
+        # It should be generalized also for projections
+        # TODO: once we get the resolution for the horizontal we should transform
+        # in a value in lat/lon 
+        lat_step = self.infer_resolution(self.crs.dim_Y_axis)
+        lon_step = self.infer_resolution(self.crs.dim_X_axis)
+
+        # Building regular latitude-longitude coordinates.
+        lat_vals = self.coords[axis.latitude]
+        lon_vals = self.coords[axis.longitude]
+        south, north = lat_vals.min().magnitude, lat_vals.max().magnitude
+        west, east = lon_vals.min().magnitude, lon_vals.max().magnitude
+#        lat = np.arange(south, north + lat_step / 2, lat_step)
+#        lon = np.arange(west, east + lon_step / 2, lon_step)
+        lat = np.arange(south, north, lat_step)
+        lon = np.arange(west, east, lon_step)
+        
+        coords = self.coords  # Or `self.coords.copy()`.
+        for axis_ in self.crs.axes:
+            del coords[axis_]
+        hor_coords = {
+            coord_system.crs.dim_Y_axis: lat,
+            coord_system.crs.dim_X_axis: lon
+        }
+        coords |= hor_coords
+
+        return type(self)(coords=coords, coord_system=coord_system)
+
+    def spatial_transform_to(self, crs):
+        # TODO: we assume that they have the same datum. We need to change
+        # the code when datum are different!!
+        # 
+        lat = get_magnitude(self.coords[axis.latitude], units['degrees_N'])
+        lon = get_magnitude(self.coords[axis.longitude], units['degrees_E'])
+        if lat.ndim == lon.ndim == 1:
+            lon, lat = np.meshgrid(lon, lat)
+
+        transformer = Transformer.from_crs(
+            crs_from=self.crs._crs,
+            crs_to=crs._crs,
+            always_xy=True
+        )
+        # x, y = transformer.transform(lon, lat)
+        return transformer.transform(lon, lat)

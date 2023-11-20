@@ -30,8 +30,11 @@ def to_points_dict(
     dims = dset.dims
     dims_ = set(dims)
     coords_copy = dict(dset.coords)
+    # dim_axis_map = {
+    #     dim: axis_ for axis_ in coords_copy if (dim := f'_{axis_}') in dims_
+    # }
     dim_axis_map = {
-        dim: axis_ for axis_ in coords_copy if (dim := f'_{axis_}') in dims_
+        dim: axis_ for axis_ in coords_copy if (dim := f'{axis_}') in dims_
     }
 
     n_vals = n_reps = darr.size
