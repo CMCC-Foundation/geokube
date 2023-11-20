@@ -82,6 +82,10 @@ class Feature:
     def coord_system(self):
         return self._coord_system
 
+    @property
+    def crs(self) -> dict[axis.Axis, pint.Quantity]:
+        return self.coord_system.spatial.crs
+
     # CF Methods 
     @property  # return dimensional axes
     def dim_axes(self) -> tuple[axis.Axis, ...]:
@@ -414,11 +418,30 @@ class GridFeature(Feature):
         crs = coord_system.spatial.crs
         self._DIMS_ = coord_system.dim_axes
 
+        # TODO: Refactor this.
         match coords:
             case Mapping():
                 res_coords = {}
                 for axis_, coord in coords.items():
                     if isinstance(coord, xr.DataArray):
+                        coord_data = coord.data
+                        if isinstance(coord_data, pint.Quantity):
+                            coord_vals = coord_data.magnitude
+                            coord_units = str(coord_data.units)
+                        else:
+                            coord_vals = coord_data
+                            coord_units = 'dimensionless'
+                        if (
+                            coord.dtype is np.dtype(object)
+                            and isinstance(coord_vals[0], pd.Interval)
+                        ):
+                            coord = xr.DataArray(
+                                data=pd.IntervalIndex(
+                                    coord_vals, closed='both'
+                                ),
+                                dims=coord.dims,
+                                attrs={'units': coord_units}
+                            )
                         res_coords[axis_] = coord
                     else:
                         dims: tuple[axis.Axis, ...]
@@ -438,14 +461,30 @@ class GridFeature(Feature):
                         else:
                             # Auxiliary coordinates.
                             dims = crs.dim_axes if coord.ndim else ()
-                        coord_ = xr.DataArray(data=coord, dims=dims)
+                        coord_vals = coord.magnitude
+                        if (
+                            coord_vals.dtype is np.dtype(object)
+                            and isinstance(coord_vals[0], pd.Interval)
+                        ):
+                            coord_data = pd.IntervalIndex(
+                                coord_vals, closed='both'
+                            )
+                        else:
+                            coord_data = coord_vals
+                        coord_ = xr.DataArray(
+                            data=coord_data,
+                            dims=dims,
+                            attrs={'units': str(coord.units)}
+                        )
                         #
                         # dequantify is needed because pandas index do not keep quantity 
                         # in the coordinates
                         # -> dequantify put units as attributes in the dataset
                         # we need to add also cf-attributes
                         # 
-                        res_coords[axis_] = coord_.pint.dequantify()
+                        # res_coords[axis_] = coord_.pint.dequantify()
+                        res_coords[axis_] = coord_
+
             case xr.core.coordinates.DatasetCoordinates():
                 res_coords = coords
             case _:

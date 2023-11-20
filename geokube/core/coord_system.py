@@ -110,10 +110,18 @@ class CoordinateSystem:
 
         self.__dim_axes = axes + self.__spatial.dim_axes
         self.__all_axes = axes + self.__spatial.axes
-
+    
     @property
     def spatial(self) -> SpatialCoordinateSystem:
         return self.__spatial
+
+    @property
+    def crs(self) -> SpatialCoordinateSystem:
+        return self.spatial.crs
+
+    @property
+    def elevation(self) -> axis.Elevation | None:
+        return self.spatial.elevation
 
     @property
     def time(self) -> axis.Time | None:
