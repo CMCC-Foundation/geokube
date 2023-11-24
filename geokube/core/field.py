@@ -120,11 +120,11 @@ class Field:
     def ancillary(self, name: str | None = None) -> dict | pint.Quantity:
         if name is not None:
             return self[name].data
-        ancillary = {}
-        for c in self.data_vars:
+        ancillary_ = {}
+        for c in self._dset.data_vars:
             if c != self.name:
-                ancillary[c] = self._dset[c].data
-        return self.ancillary
+                ancillary_[c] = self._dset[c].data
+        return ancillary_
 
     @property # return field name
     def name(self) -> str:
@@ -673,6 +673,7 @@ class GridField(Field, GridFeature):
             )
             dset = dset.drop(labels=(axis.latitude, axis.longitude))
             ds = dset.interp(coords=target_, method=method, kwargs=kwargs)
+            # TODO: workaround - remove when adding attributes to field for ancillary data.
             ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
             target_coords = target.coords
@@ -731,7 +732,7 @@ class GridField(Field, GridFeature):
     ) -> Self:
         data = self.data
         dset = self._dset
-        time_idx = dset.indexes[axis.time]
+        time_idx = dset.xindexes[axis.time].index
         n_time = time_idx.size
 
         match time_idx:
@@ -816,7 +817,7 @@ class GridField(Field, GridFeature):
             name=self.name,
             domain=type(domain)(new_coords, domain.coord_system),
             data=pint.Quantity(new_data, data.units),
-            # ancillary=self.ancillary,
+            ancillary=self.ancillary,
             properties=self.properties,
             encoding=self.encoding
         )
@@ -829,7 +830,7 @@ class GridField(Field, GridFeature):
         idx = {axis.time: freq}
         diff = pd.to_timedelta(freq).to_timedelta64()
 
-        match time_idx := dset.indexes[axis.time]:
+        match time_idx := dset.xindexes[axis.time].index:
             case pd.DatetimeIndex():
                 res = dset.resample(indexer=idx, label='left', **kwargs)
                 result_dset = getattr(res, operator)()
@@ -838,10 +839,10 @@ class GridField(Field, GridFeature):
                 # grouper = res.groupers[0]
                 # closed = grouper.grouper.closed or 'both'
                 # if (label := grouper.index_grouper.label) == 'left':
-                #     left = result_dset.indexes[axis.time].to_numpy()
+                #     left = result_dset.xindexes[axis.time].index.to_numpy()
                 #     right = left + diff
                 # else:
-                #     right = result_dset.indexes[axis.time].to_numpy()
+                #     right = result_dset.xindexes[axis.time].index.to_numpy()
                 #     left = right - diff
                 result_dset[axis.time] = xr.Variable(
                     dims=time.dims,
