@@ -82,6 +82,22 @@ class Field:
             encoding=encoding
         )
 
+    @classmethod
+    def as_xarray_dataset(
+        cls,
+        data_vars: Mapping[str, npt.ArrayLike | pint.Quantity | xr.DataArray],
+        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
+        coord_system: CoordinateSystem
+    ) -> xr.Dataset:
+        da = coord_system.crs.as_xarray()
+        r_coords = coords
+        r_coords[da.name] = da
+        ds = xr.Dataset(
+            coords=r_coords
+        )
+        ds.attrs['grid_mapping'] = da.name
+        return ds
+
     # def _prepare_dset(self,
     #                   name,
     #                   data, 
@@ -483,12 +499,27 @@ class GridField(Field, GridFeature):
 
 # UNTIL HERE
 
-        super().__init__(
+        ds = xr.Dataset(
             data_vars=data_vars,
-            coords=coords, 
-            attrs=ds_attrs,
-            coord_system=domain.coord_system
+            coords=coords,
+            attrs=ds_attrs
         )
+
+        super().__init__(
+            ds=ds
+        )
+
+
+    @classmethod
+    def _from_xarray_dataset(
+        cls,
+        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> Self:
+        gridf = object.__new__(cls)
+        GridFeature.__init__(gridf, ds, cf_mappings)
+        return gridf
+
 
     # Spatial operations ------------------------------------------------------
 

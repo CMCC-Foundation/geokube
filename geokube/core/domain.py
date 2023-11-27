@@ -18,6 +18,7 @@ from .units import units
 
 
 # TODO: Consider renaming this class to `DomainMixin`.
+# NOTE: maybe we don't need this class
 class Domain:
     __slots__ = ()
 
@@ -27,8 +28,22 @@ class Domain:
     ) -> Self:
         return cls(coords=dset.coords, coord_system=coord_system)
 
+    @classmethod
+    def as_xarray_dataset(
+        cls,
+        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
+        coord_system: CoordinateSystem
+    ) -> xr.Dataset:
+        da = coord_system.crs.as_xarray()
+        r_coords = coords
+        r_coords[da.name] = da
+        ds = xr.Dataset(
+            coords=r_coords
+        )
+        ds.attrs['grid_mapping'] = da.name
+        return ds
 
-class Points(Domain, PointsFeature):
+class Points(PointsFeature):
     __slots__ = ()
 
     def __init__(
@@ -77,7 +92,9 @@ class Points(Domain, PointsFeature):
             case _:
                 raise TypeError("'coords' must be a sequence or mapping")
 
-        super().__init__(coords=result_coords, coord_system=coord_system)
+        ds = self.as_xarray_dataset(result_coords, coord_system)
+
+        super().__init__(ds=ds)
 
 
 class Profiles(Domain, ProfilesFeature):

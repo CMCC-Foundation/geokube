@@ -2,7 +2,7 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from itertools import chain
 from numbers import Number
-from typing import Self
+from typing import Self, Any
 from warnings import warn
 
 import numpy as np
@@ -15,7 +15,7 @@ import xarray as xr
 
 from . import axis, indexes
 from .coord_system import CoordinateSystem
-from .crs import Geodetic
+from .crs import CRS, Geodetic, RotatedGeodetic
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
@@ -35,48 +35,11 @@ from .quantity import get_magnitude
 # enhanced with the coordinate system class.
 # 
 
-
-class Feature:
-    __slots__ = ('_dset', '_coord_system')
-
-    def __init__(
-        self,
-        coords: (
-            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
-            | xr.core.coordinates.DatasetCoordinates
-        ),
-        coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
-        attrs: Mapping | None = None
-    ) -> None:
-        if not isinstance(coord_system, CoordinateSystem):
-            raise TypeError(
-                "'coord_system' must be an instance of 'CoordinateSystem'"
-            )
-        self._coord_system = coord_system
-        self._dset = xr.Dataset(
-            data_vars=data_vars, coords=coords, attrs=attrs
-        )
-
-    @classmethod
-    def _from_xrdset(
-        cls, dset: xr.Dataset, coord_system: CoordinateSystem
-    ) -> Self:
-        return cls(
-            data_vars=dset.data_vars,
-            coords=dset.coords,
-            attrs=dset.attrs,
-            coord_system=coord_system
-        )
-
-    #TODO: Implement __getitem__ ??
+class FeatureMixin:
 
     @property
     def coords(self) -> dict[axis.Axis, pint.Quantity]:
-        return {
-            axis_: self._dset[axis_].pint.quantify().data
-            for axis_ in self.coord_system.axes
-        }
+        return self._coords
 
     @property
     def coord_system(self):
@@ -93,7 +56,7 @@ class Feature:
 
     @property
     def dim_coords(self) -> dict[axis.Axis, pint.Quantity]:
-        return {ax: self._dset[ax].data for ax in self.coord_system.dim_axes}
+        return self._dim_coords
 
     @property  # return auxiliary axes
     def aux_axes(self) -> tuple[axis.Horizontal, ...]:
@@ -101,7 +64,21 @@ class Feature:
 
     @property
     def aux_coords(self) -> dict[axis.Axis, pint.Quantity]:
-        return {ax: self._dset[ax].data for ax in self.coord_system.aux_axes}
+        return self._aux_coords
+
+    def sel(self, 
+            indexers: Mapping[axis.Axis, Any],
+            **xarray_kwargs: Mapping[Any, Any],
+    ) -> Self:
+#        return type(self)(self._dset.sel(indexers, **xarray_kwargs))
+        return self._from_xarray_dataset(self._dset.sel(indexers, **xarray_kwargs))
+    
+    def isel(self, 
+            indexers: Mapping[axis.Axis, Any],
+            **xarray_kwargs: Mapping[Any, Any],
+    ) -> Self:
+#        return type(self)(self._dset.isel(indexers, **xarray_kwargs))
+        return self._from_xarray_dataset(self._dset.sel(indexers, **xarray_kwargs))
 
     # spatial operations
     def bounding_box(
@@ -113,18 +90,16 @@ class Feature:
         bottom: Number | None = None,
         top: Number | None = None
     ) -> Self:
+        # TODO: manage when north, south, west and east are None
+        # we need to consider min/max for lat/lon
         h_idx = {
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        dset = self._dset.sel(h_idx)
-        obj = type(self)._from_xrdset(dset, self.coord_system)
+        feature = self.sel(h_idx)
         if not (bottom is None and top is None):
-            v_idx = {axis.vertical: slice(bottom, top)}
-            dset = obj._dset.sel(v_idx)
-            obj = type(self)._from_xrdset(dset, self.coord_system)
-        return obj
-        # return type(self)._from_xrdset(dset, self.coord_system)
+            feature = feature.sel({axis.vertical: slice(bottom, top)})
+        return feature
 
     def nearest_horizontal(
         self,
@@ -132,40 +107,122 @@ class Feature:
         longitude: npt.ArrayLike | pint.Quantity
     ) -> Self:
         idx = {axis.latitude: latitude, axis.longitude: longitude}
-        dset = self._dset.sel(idx, method='nearest', tolerance=np.inf)
-        return type(self)._from_xrdset(dset, self.coord_system)
+        return self.sel(idx, method='nearest', tolerance=np.inf)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        idx = {axis.vertical: elevation}
-        dset = self._dset.sel(idx, method='nearest', tolerance=np.inf)
-        return self._from_xrdset(dset, self.coord_system)
+        return self.sel({axis.vertical: elevation}, method='nearest', tolerance=np.inf)
 
     def time_range(
         self,
         start: date | datetime | str | None = None,
         end: date | datetime | str | None = None
     ) -> Self:
-        idx = {axis.time: slice(start, end)}
-        dset = self._dset.sel(idx)
-        return self._from_xrdset(dset, self.coord_system)
+        return self.sel({axis.time: slice(start, end)})
 
     def nearest_time(
         self, time: date | datetime | str | npt.ArrayLike
     ) -> Self:
         idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
-        dset = self._dset.sel(idx, method='nearest', tolerance=None)
-        return self._from_xrdset(dset, self.coord_system)
+        return self.sel(idx, method='nearest', tolerance=None)
 
     def latest(self) -> Self:
         if axis.time not in self._dset.coords:
             raise NotImplementedError()
         latest = self._dset[axis.time].max().astype(str).item().magnitude
         idx = {axis.time: slice(latest, latest)}
-        dset = self._dset.sel(idx)
-        return self._from_xrdset(dset, self.coord_system)
+        return self.sel(idx)
 
+class Feature(FeatureMixin):
+    __slots__ = ('_dset', '_coord_system', '_coords', '_aux_coords', '_dim_coords')
+
+    def __init__(
+        self,
+        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> None:
+        # TODO: check if xarray dataset is CF compliant (otherwise raise an error)       
+        # Horizontal coordinate system:
+        # TODO: manage cf_mappings
+
+        self._dset = ds
+        ds_coords = dict(ds.coords)
+        if gmn := ds.cf.grid_mapping_names:
+            crs_var_name = next(iter(gmn.values()))[0]
+            hor_crs = CRS.from_cf(ds[crs_var_name].attrs)
+            ds_coords.pop(crs_var_name)
+        else:
+            # TODO: implement a function to guess the CRS
+            hor_crs = Geodetic()
+
+        # Coordinates.
+        coords = {}
+        for cf_coord, cf_coord_names in ds.cf.coordinates.items():
+            assert len(cf_coord_names) == 1
+            cf_coord_name = cf_coord_names[0]
+            coord = ds_coords.pop(cf_coord_name)
+            axis_ = axis._from_string(cf_coord)
+            coords[axis_] = pint.Quantity(
+                coord.to_numpy(), coord.attrs.get('units')
+            )
+            
+        for cf_axis, cf_axis_names in ds.cf.axes.items():
+            assert len(cf_axis_names) == 1
+            cf_axis_name = cf_axis_names[0]
+            if cf_axis_name in ds_coords:
+                coord = ds_coords.pop(cf_axis_name)
+                axis_ = axis._from_string(cf_axis.lower())
+                if isinstance(hor_crs, RotatedGeodetic):
+                    if axis_ is axis.x:
+                        axis_ = axis.grid_longitude
+                    elif axis_ is axis.y:
+                        axis_ = axis.grid_latitude
+                coords[axis_] = pint.Quantity(
+                    coord.to_numpy(), coord.attrs.get('units')
+                )
+
+        # Coordinate system.
+        time = {
+            axis_
+            for axis_ in coords
+            if isinstance(axis_, axis.Time) and coords[axis_].ndim
+        }
+        assert len(time) <= 1
+        elev = {
+            axis_
+            for axis_ in coords
+            if isinstance(axis_, axis.Elevation) and coords[axis_].ndim
+        }
+        assert len(elev) <= 1
+        # TODO: Add user axes.
+        coord_system = CoordinateSystem(
+            horizontal=hor_crs,
+            elevation=elev.pop() if elev else None,
+            time=time.pop() if time else None
+        )
+
+        self._coord_system = coord_system
+        
+        self._coords = {
+            axis_: ds[axis_].pint.quantify().data
+            for axis_ in coord_system.axes
+        }
+
+        self._dim_coords = {ax: ds[ax].data for ax in coord_system.dim_axes}
+
+        self._aux_coords =  {ax: ds[ax].data for ax in coord_system.aux_axes}
+
+    @classmethod
+    def _from_xarray_dataset(
+        cls,
+        ds: xr.Dataset,
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> Self:
+    
+        return cls(ds, cf_mappings)
+
+    #TODO: Implement __getitem__ ??
 
 class PointsFeature(Feature):
     __slots__ = ('_n_points',)
@@ -173,64 +230,19 @@ class PointsFeature(Feature):
 
     def __init__(
         self,
-        coords: (
-            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
-            | xr.core.coordinates.DatasetCoordinates
-        ),
-        coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
-        attrs: Mapping | None = None
+        ds: xr.Dataset, # This dataset should check for _DIMS_ that is points
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
     ) -> None:
-        match coords:
-            case Mapping():
-                res_coords = {
-                    axis_: (
-                        coord
-                        if isinstance(coord, xr.DataArray) else
-                        xr.DataArray(data=coord, dims=self._DIMS_)
-                    )
-                    for axis_, coord in coords.items()
-                }
-            case xr.core.coordinates.DatasetCoordinates():
-                res_coords = coords
-            case _:
-                raise TypeError(
-                    "'coords' can be a mapping or coordinates object"
-                )
-
-        match data_vars:
-            case Mapping():
-                res_data_vars = {
-                    str(name): (
-                        var
-                        if isinstance(var, xr.DataArray) else
-                        xr.DataArray(data=var, dims=self._DIMS_)
-                    )
-                    for name, var in data_vars.items()
-                }
-                res_vals = chain(res_coords.values(), res_data_vars.values())
-            case None:
-                res_data_vars = None
-                res_vals = res_coords.values()
-            case _:
-                raise TypeError("'data_vars' can be a mapping or 'None'")
+        
+        # TODO: check if ds is a Points Features -> _points dim should exist
 
         super().__init__(
-            coords=res_coords,
-            coord_system=coord_system,
-            data_vars=res_data_vars,
-            attrs=attrs
+            ds=ds,
+            cf_mappings=cf_mappings
         )
 
-        n_pts = {val.size for val in res_vals}
-        if len(n_pts) != 1:
-            raise ValueError(
-                "'coords' and 'data_vars' must have values of equal sizes"
-            )
-        self._n_points = n_pts.pop()
-
-        hor_axes = set(coord_system.spatial.crs.axes)
-        for axis_ in coord_system.axes:
+        hor_axes = set(self.crs.axes)
+        for axis_ in self.coord_system.axes:
             if axis_ not in hor_axes:
                 self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
         self._dset = self._dset.set_xindex(
@@ -239,55 +251,29 @@ class PointsFeature(Feature):
 
     @property
     def number_of_points(self) -> int:
-        return self._n_points
-
+        return self._dset['_points'].size
 
 class ProfilesFeature(Feature):
-    _DIMS_ = ('_profiles', '_levels')
     __slots__ = ('_n_profiles', '_n_levels')
+    _DIMS_ = ('_profiles', '_levels')
 
     def __init__(
         self,
-        coords: (
-            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
-            | xr.core.coordinates.DatasetCoordinates
-        ),
-        coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
-        attrs: Mapping | None = None
+        ds: xr.Dataset,
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
     ) -> None:
-        match coords:
-            case Mapping():
-                res_coords = {}
-                for axis_, coord in coords.items():
-                    if isinstance(coord, xr.DataArray):
-                        res_coords[axis_] = coord
-                    else:
-                        dims = (
-                            self._DIMS_
-                            if axis_ is axis.vertical else
-                            ('_profiles',)
-                        )
-                        res_coords[axis_] = xr.DataArray(data=coord, dims=dims)
-            case xr.core.coordinates.DatasetCoordinates():
-                res_coords = coords
-            case _:
-                raise TypeError(
-                    "'coords' can be a mapping or coordinates object"
-                )
-        self._n_profiles, self._n_levels = res_coords[axis.vertical].shape
+
+        # TODO: check if it is a profile features (_profiles and _levels dims should exist)
 
         super().__init__(
-            data_vars=data_vars,
-            coords=res_coords,
-            coord_system=coord_system,
-            attrs=attrs
+            ds=ds,
+            cf_mappings=cf_mappings
         )
 
-        spat_axes = set(coord_system.spatial.axes)
-        for axis_ in coord_system.axes:
-            if axis_ not in spat_axes:
+        for axis_ in self.coord_system.axes:
+            if axis_ not in set(self.coord_system.spatial.axes):
                 self._dset = self._dset.set_xindex(axis_, indexes.OneDimIndex)
+
         self._dset = self._dset.set_xindex(
             [axis.latitude, axis.longitude], indexes.TwoDimHorPointsIndex
         )
@@ -297,11 +283,11 @@ class ProfilesFeature(Feature):
 
     @property
     def number_of_profiles(self) -> int:
-        return self._n_profiles
+        return self._dset['_n_profiles'].size
 
     @property
     def number_of_levels(self) -> int:
-        return self._n_levels
+        return self._dset['_n_levels'].size
 
     def bounding_box(
         self,
@@ -316,8 +302,7 @@ class ProfilesFeature(Feature):
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        new_data = self._dset.sel(h_idx)
-        new_obj = self._from_xrdset(new_data, self._coord_system)
+        ds = self.sel(h_idx)
 
         if not (bottom is None and top is None):
             # TODO: Try to move this functionality to
@@ -328,7 +313,7 @@ class ProfilesFeature(Feature):
             )
             v_slice = slice(bottom, top)
             v_idx = {axis.vertical: v_slice}
-            new_data = new_obj._dset.sel(v_idx)
+            new_data = ds.sel(v_idx)._dset
             vert = new_data[axis.vertical]
             vert_dims = vert.dims
             vert_data = vert.data
@@ -344,8 +329,8 @@ class ProfilesFeature(Feature):
                 masked_data = np.where(mask, data.magnitude, np.nan)
                 data_ = pint.Quantity(masked_data, data.units)
                 new_data[name] = xr.Variable(dims=vert_dims, data=data_)
-            new_obj = self._from_xrdset(new_data, self._coord_system)
-        return new_obj
+            ds = type(self)(new_data)
+        return ds
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
@@ -398,11 +383,85 @@ class ProfilesFeature(Feature):
         new_dset = xr.Dataset(
             data_vars=new_data_vars, coords=new_coords, attrs=dset.attrs
         )
-        new_obj = self._from_xrdset(new_dset, self._coord_system)
+        new_obj = type(self)(new_dset)
         return new_obj
 
+    def as_points(self) -> PointsFeature:
+        pass
 
 class GridFeature(Feature):
+    __slots__ = ('_DIMS_',)
+
+    def __init__(
+        self,
+        ds: xr.Dataset,
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> None:
+                
+        super().__init__(
+            ds=ds,
+            cf_mappings=cf_mappings
+        )        
+        
+        # TODO: Check if it is a Grid Feature ???
+
+        # self._dims = 
+        self._DIMS_ = self.coord_system.dim_axes # this depends on the Coordinate System
+
+        if (
+            {axis.latitude, axis.longitude}
+            == set(self.aux_axes)
+        ):
+            self._dset = self._dset.set_xindex(
+                self.aux_axes, indexes.TwoDimHorGridIndex
+            )
+
+    def nearest_horizontal(
+        self,
+        latitude: npt.ArrayLike | pint.Quantity,
+        longitude: npt.ArrayLike | pint.Quantity,
+        as_points: bool = True
+    ) -> Self | PointsFeature:
+        # Preparing data, labels, units, and dimensions.
+        # TODO: Reconsider this.
+        lat = self.coords[axis.latitude]
+        lon = self.coords[axis.longitude]
+
+        # lat_labels = get_magnitude(latitude, lat_data.units)
+        # lon_labels = get_magnitude(longitude, lon_data.units)
+        nearest_lat = np.asarray(latitude)
+        nearest_lon = np.asarray(longitude)
+
+        if isinstance(self.crs, Geodetic):
+            lat, lon = np.meshgrid(self._dset[axis.latitude], 
+                                             self._dset[axis.longitude],
+                                             indexing='ij')
+        
+        dims = (self.crs.dim_Y_axis, self.crs.dim_X_axis)
+
+        # Calculating indexers and subsetting.
+        idx = get_array_indexer(
+            [lat, lon],
+            [nearest_lat, nearest_lon],
+            method='nearest',
+            tolerance=np.inf,
+            return_all=False
+        )
+
+        indexers = ... # based on idx
+
+#        feature = type(self)(self._dset.isel(indexers=indexers))
+        feature = self.isel(indexers=indexers)
+
+        if as_points:
+            return feature.as_points()
+        else:
+            return feature
+
+    def as_points(self) -> PointsFeature:
+        pass
+
+class GridFeature_(Feature):
     __slots__ = ('_DIMS_',)
 
     def __init__(
@@ -555,6 +614,7 @@ class GridFeature(Feature):
             dims = all_dims.pop()
 
         # Calculating indexers and subsetting.
+        # ---> ???
         idx = get_array_indexer(
             [lat_vals, lon_vals],
             [lat_labels, lon_labels],
@@ -562,6 +622,7 @@ class GridFeature(Feature):
             tolerance=np.inf,
             return_all=False
         )
+
         pts_dim = ('_points',)
         pts_idx = [(pts_dim, dim_idx) for dim_idx in idx]
         result_idx = dict(zip(dims, pts_idx))

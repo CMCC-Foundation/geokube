@@ -3,7 +3,8 @@ from __future__ import annotations
 from pyproj import crs as pyproj_crs
 
 from . import axis
-
+import xarray as xr
+import numpy as np
 
 class CRS:
     _DIM_AXES_TYPES: tuple[type[axis.Horizontal], ...] = ()
@@ -90,6 +91,13 @@ class CRS:
 
     def to_cf(self) -> dict:
         return self._crs.to_cf()
+    
+    def as_xarray(self) -> xr.DataArray:
+        grid_mapping_attrs = self.to_cf()
+        grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
+        return xr.DataArray(data=np.byte(1),
+                            name=grid_mapping_name,
+                            attrs = grid_mapping_attrs)
 
 
 class Geodetic(CRS):
