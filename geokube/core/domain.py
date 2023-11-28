@@ -92,7 +92,7 @@ class Points(PointsFeature):
             case _:
                 raise TypeError("'coords' must be a sequence or mapping")
 
-        ds = self.as_xarray_dataset(result_coords, coord_system)
+        ds = Domain.as_xarray_dataset(result_coords, coord_system)
 
         super().__init__(ds=ds)
 
