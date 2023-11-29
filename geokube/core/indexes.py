@@ -36,12 +36,17 @@ class OneDimIndex(xr.core.indexes.Index):
             raise TypeError("'variables' key must be an instance of 'Axis'")
 
         data, dims = var.data, var.dims
-        if not isinstance(data, pint.Quantity):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        data_qty = (
+            data
+            if isinstance(data, pint.Quantity) else
+            pint.Quantity(data, var.attrs['units'])
+        )
+        # if not isinstance(data, pint.Quantity):
+        #     raise TypeError("'variables' must contain data of type 'Quantity'")
         if len(dims) != 1:
             raise ValueError("'variables' value must be be one-dimensional")
 
-        return cls(data=data, dims=dims, coord_axis=coord_axis)
+        return cls(data=data_qty, dims=dims, coord_axis=coord_axis)
 
     def sel(
         self,
@@ -94,12 +99,25 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
                 "'variables' must contain both latitude and longitude"
             ) from err
 
-        lat_data, lon_data = lat.data, lon.data
-        if not (
-            isinstance(lat_data, pint.Quantity)
-            and isinstance(lon_data, pint.Quantity)
-        ):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        lat_data = lat.data
+        lat_qty = (
+            lat_data
+            if isinstance(lat_data, pint.Quantity) else
+            pint.Quantity(lat_data, lat.attrs['units'])
+        )
+        lon_data = lon.data
+        lon_qty = (
+            lon_data
+            if isinstance(lon_data, pint.Quantity) else
+            pint.Quantity(lon_data, lon.attrs['units'])
+        )
+
+        # lat_data, lon_data = lat.data, lon.data
+        # if not (
+        #     isinstance(lat_data, pint.Quantity)
+        #     and isinstance(lon_data, pint.Quantity)
+        # ):
+        #     raise TypeError("'variables' must contain data of type 'Quantity'")
 
         dims = lat.dims
         if lon.dims != dims:
@@ -107,7 +125,7 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
         if len(dims) != 1:
             raise ValueError("'variables' must contain one-dimensional data")
 
-        return cls(latitude=lat_data, longitude=lon_data, dims=dims)
+        return cls(latitude=lat_qty, longitude=lon_qty, dims=dims)
 
     def sel(
         self,
