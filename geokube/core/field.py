@@ -50,6 +50,21 @@ class Field:
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
 
+    # NOTE: `Domain` and `Field` have exactly the same method.
+    @classmethod
+    def _from_xarray_dataset(
+        cls,
+        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> Self:
+        obj = object.__new__(cls)
+        # TODO: Make sure that `cls.__mro__[2]` returns the correct `Feature`
+        # class from the inheritance hierarchy.
+        feature_cls = cls.__mro__[2]
+        # pylint: disable=unnecessary-dunder-call
+        feature_cls.__init__(obj, ds, cf_mappings)
+        return obj
+
     # 
     # - this is the same method name in Feature class ->
     # in order to have precedence Field should be inherited first
@@ -315,9 +330,10 @@ class PointsField(Field, PointsFeature):
             )
 
         data_vars = {}
-        attrs = properties if not None else {}
+        attrs = properties if properties is not None else {}
+        attrs['units'] = data_.units
         data_vars[name] = xr.DataArray(
-            data=data_, dims=self._DIMS_, attrs=attrs
+            data=data_.magnitude, dims=self._DIMS_, attrs=attrs
         )
         data_vars[name].encoding = encoding if encoding is not None else {}
 
@@ -327,14 +343,14 @@ class PointsField(Field, PointsFeature):
                     data=anc_data, dims=self._DIMS_
                 )
 
-        ds_attrs = {_FIELD_NAME_ATTR_: name}
+        # ds_attrs = {_FIELD_NAME_ATTR_: name}
 
-        super().__init__(
-            data_vars=data_vars,
-            coords=domain.coords,
-            attrs=ds_attrs,
-            coord_system=domain.coord_system
-        )
+        dset = domain._dset
+        dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
+        dset = dset.assign(data_vars)
+        dset.attrs[_FIELD_NAME_ATTR_] = name
+
+        super().__init__(dset)
 
 
 class ProfilesField(Field, ProfilesFeature):
@@ -508,18 +524,6 @@ class GridField(Field, GridFeature):
         super().__init__(
             ds=ds
         )
-
-
-    @classmethod
-    def _from_xarray_dataset(
-        cls,
-        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
-    ) -> Self:
-        gridf = object.__new__(cls)
-        GridFeature.__init__(gridf, ds, cf_mappings)
-        return gridf
-
 
     # Spatial operations ------------------------------------------------------
 

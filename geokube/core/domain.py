@@ -22,28 +22,41 @@ from .units import units
 class Domain:
     __slots__ = ()
 
+    # NOTE: `Domain` and `Field` have exactly the same method.
+    @classmethod
+    def _from_xarray_dataset(
+        cls,
+        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> Self:
+        obj = object.__new__(cls)
+        # TODO: Make sure that `cls.__mro__[2]` returns the correct `Feature`
+        # class from the inheritance hierarchy.
+        feature_cls = cls.__mro__[2]
+        # pylint: disable=unnecessary-dunder-call
+        feature_cls.__init__(obj, ds, cf_mappings)
+        return obj
+
     @classmethod
     def _from_xrdset(
         cls, dset: xr.Dataset, coord_system: CoordinateSystem
     ) -> Self:
         return cls(coords=dset.coords, coord_system=coord_system)
 
-    @classmethod
+    @staticmethod
     def as_xarray_dataset(
-        cls,
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
         coord_system: CoordinateSystem
     ) -> xr.Dataset:
         da = coord_system.crs.as_xarray()
-        r_coords = coords
+        r_coords = dict(coords)
         r_coords[da.name] = da
-        ds = xr.Dataset(
-            coords=r_coords
-        )
+        ds = xr.Dataset(coords=r_coords)
         ds.attrs['grid_mapping'] = da.name
         return ds
 
-class Points(PointsFeature):
+
+class Points(Domain, PointsFeature):
     __slots__ = ()
 
     def __init__(
@@ -60,10 +73,15 @@ class Points(PointsFeature):
             case Mapping():
                 result_coords = {}
                 for axis_, coord in coords.items():
-                    result_coords[axis_] = qty = create_quantity(
-                        coord, units.get(axis_), axis_.encoding['dtype']
+                    attrs = axis_.encoding.copy()
+                    coord_units = units.get(axis_)
+                    coord_dtype = attrs.pop('dtype', None)
+                    coord_ = create_quantity(coord, coord_units, coord_dtype)
+                    attrs['units'] = coord_units
+                    result_coords[axis_] = xr.DataArray(
+                        data=coord_.magnitude, dims=self._DIMS_, attrs=attrs
                     )
-                    if qty.ndim != 1:
+                    if coord_.ndim != 1:
                         raise ValueError(
                             f"'coords' have axis {axis_} that does not have "
                             "one-dimensional values"
@@ -82,13 +100,16 @@ class Points(PointsFeature):
                         "dimensions"
                     )
                 data = pd.DataFrame(data=coords, columns=coord_system.axes)
-                result_coords = {
-                    axis_: pint.Quantity(
-                        vals.to_numpy(dtype=axis_.encoding['dtype']),
-                        units.get(axis_)
+                result_coords = {}
+                for axis_, vals in data.items():
+                    attrs = axis_.encoding.copy()
+                    coord_units = units.get(axis_)
+                    coord_dtype = attrs.pop('dtype', None)
+                    coord_ = vals.to_numpy(dtype=coord_dtype)
+                    attrs['units'] = coord_units
+                    result_coords[axis_] = xr.DataArray(
+                        data=coord_, dims=self._DIMS_, attrs=attrs
                     )
-                    for axis_, vals in data.items()
-                }
             case _:
                 raise TypeError("'coords' must be a sequence or mapping")
 

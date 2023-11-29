@@ -36,7 +36,6 @@ from .quantity import get_magnitude
 # 
 
 class FeatureMixin:
-
     @property
     def coords(self) -> dict[axis.Axis, pint.Quantity]:
         return self._coords
@@ -66,29 +65,31 @@ class FeatureMixin:
     def aux_coords(self) -> dict[axis.Axis, pint.Quantity]:
         return self._aux_coords
 
-    def sel(self, 
-            indexers: Mapping[axis.Axis, Any],
-            **xarray_kwargs: Mapping[Any, Any],
+    def sel(
+        self, indexers: Mapping[axis.Axis, Any], **xarray_kwargs: Mapping
     ) -> Self:
 #        return type(self)(self._dset.sel(indexers, **xarray_kwargs))
-        return self._from_xarray_dataset(self._dset.sel(indexers, **xarray_kwargs))
+        return self._from_xarray_dataset(
+            self._dset.sel(indexers, **xarray_kwargs)
+        )
     
-    def isel(self, 
-            indexers: Mapping[axis.Axis, Any],
-            **xarray_kwargs: Mapping[Any, Any],
+    def isel(
+        self, indexers: Mapping[axis.Axis, Any], **xarray_kwargs: Mapping
     ) -> Self:
 #        return type(self)(self._dset.isel(indexers, **xarray_kwargs))
-        return self._from_xarray_dataset(self._dset.sel(indexers, **xarray_kwargs))
+        return self._from_xarray_dataset(
+            self._dset.isel(indexers, **xarray_kwargs)
+        )
 
     # spatial operations
     def bounding_box(
         self,
-        south: Number | None = None,
-        north: Number | None = None,
-        west: Number | None = None,
-        east: Number | None = None,
-        bottom: Number | None = None,
-        top: Number | None = None
+        south: Number | pint.Quantity | None = None,
+        north: Number | pint.Quantity | None = None,
+        west: Number | pint.Quantity | None = None,
+        east: Number | pint.Quantity | None = None,
+        bottom: Number | pint.Quantity | None = None,
+        top: Number | pint.Quantity | None = None
     ) -> Self:
         # TODO: manage when north, south, west and east are None
         # we need to consider min/max for lat/lon
@@ -112,14 +113,16 @@ class FeatureMixin:
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
-        return self.sel({axis.vertical: elevation}, method='nearest', tolerance=np.inf)
+        idx = {axis.vertical: elevation}
+        return self.sel(idx, method='nearest', tolerance=np.inf)
 
     def time_range(
         self,
         start: date | datetime | str | None = None,
         end: date | datetime | str | None = None
     ) -> Self:
-        return self.sel({axis.time: slice(start, end)})
+        idx = {axis.time: slice(start, end)}
+        return self.sel(idx)
 
     def nearest_time(
         self, time: date | datetime | str | npt.ArrayLike
@@ -130,12 +133,15 @@ class FeatureMixin:
     def latest(self) -> Self:
         if axis.time not in self._dset.coords:
             raise NotImplementedError()
-        latest = self._dset[axis.time].max().astype(str).item().magnitude
+        latest = self._dset[axis.time].max().astype(str).item()
         idx = {axis.time: slice(latest, latest)}
         return self.sel(idx)
 
+
 class Feature(FeatureMixin):
-    __slots__ = ('_dset', '_coord_system', '_coords', '_aux_coords', '_dim_coords')
+    __slots__ = (
+        '_dset', '_coord_system', '_coords', '_aux_coords', '_dim_coords'
+    )
 
     def __init__(
         self,
@@ -166,7 +172,7 @@ class Feature(FeatureMixin):
             coords[axis_] = pint.Quantity(
                 coord.to_numpy(), coord.attrs.get('units')
             )
-            
+
         for cf_axis, cf_axis_names in ds.cf.axes.items():
             assert len(cf_axis_names) == 1
             cf_axis_name = cf_axis_names[0]
@@ -203,7 +209,7 @@ class Feature(FeatureMixin):
         )
 
         self._coord_system = coord_system
-        
+
         self._coords = {
             axis_: ds[axis_].pint.quantify().data
             for axis_ in coord_system.axes
@@ -211,7 +217,7 @@ class Feature(FeatureMixin):
 
         self._dim_coords = {ax: ds[ax].data for ax in coord_system.dim_axes}
 
-        self._aux_coords =  {ax: ds[ax].data for ax in coord_system.aux_axes}
+        self._aux_coords = {ax: ds[ax].data for ax in coord_system.aux_axes}
 
     @classmethod
     def _from_xarray_dataset(
@@ -219,10 +225,10 @@ class Feature(FeatureMixin):
         ds: xr.Dataset,
         cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
     ) -> Self:
-    
         return cls(ds, cf_mappings)
 
     #TODO: Implement __getitem__ ??
+
 
 class PointsFeature(Feature):
     __slots__ = ('_n_points',)
@@ -233,13 +239,10 @@ class PointsFeature(Feature):
         ds: xr.Dataset, # This dataset should check for _DIMS_ that is points
         cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
     ) -> None:
-        
+
         # TODO: check if ds is a Points Features -> _points dim should exist
 
-        super().__init__(
-            ds=ds,
-            cf_mappings=cf_mappings
-        )
+        super().__init__(ds=ds, cf_mappings=cf_mappings)
 
         hor_axes = set(self.crs.axes)
         for axis_ in self.coord_system.axes:
@@ -252,6 +255,7 @@ class PointsFeature(Feature):
     @property
     def number_of_points(self) -> int:
         return self._dset['_points'].size
+
 
 class ProfilesFeature(Feature):
     __slots__ = ('_n_profiles', '_n_levels')
@@ -389,6 +393,7 @@ class ProfilesFeature(Feature):
     def as_points(self) -> PointsFeature:
         pass
 
+
 class GridFeature(Feature):
     __slots__ = ('_DIMS_',)
 
@@ -460,6 +465,7 @@ class GridFeature(Feature):
 
     def as_points(self) -> PointsFeature:
         pass
+
 
 class GridFeature_(Feature):
     __slots__ = ('_DIMS_',)
