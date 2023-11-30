@@ -402,21 +402,24 @@ class GridFeature(Feature):
         ds: xr.Dataset,
         cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
     ) -> None:
-                
-        super().__init__(
-            ds=ds,
-            cf_mappings=cf_mappings
-        )        
-        
+        super().__init__(ds=ds, cf_mappings=cf_mappings)        
+
         # TODO: Check if it is a Grid Feature ???
 
         # self._dims = 
         self._DIMS_ = self.coord_system.dim_axes # this depends on the Coordinate System
 
-        if (
-            {axis.latitude, axis.longitude}
-            == set(self.aux_axes)
-        ):
+        # for axis_ in self._DIMS_:
+        #     if axis_ not in self._dset.xindexes:
+        #         self._dset = self._dset.set_xindex(axis_)
+        self._dset = self._dset.drop_indexes(
+            coord_names=list(self._dset.xindexes.keys())
+        )
+        for axis_ in self._DIMS_:
+            self._dset = self._dset.set_xindex(
+                axis_, indexes.OneDimPandasIndex
+            )
+        if {axis.latitude, axis.longitude} == set(self.aux_axes):
             self._dset = self._dset.set_xindex(
                 self.aux_axes, indexes.TwoDimHorGridIndex
             )
@@ -427,44 +430,107 @@ class GridFeature(Feature):
         longitude: npt.ArrayLike | pint.Quantity,
         as_points: bool = True
     ) -> Self | PointsFeature:
-        # Preparing data, labels, units, and dimensions.
-        # TODO: Reconsider this.
-        lat = self.coords[axis.latitude]
-        lon = self.coords[axis.longitude]
-
-        # lat_labels = get_magnitude(latitude, lat_data.units)
-        # lon_labels = get_magnitude(longitude, lon_data.units)
-        nearest_lat = np.asarray(latitude)
-        nearest_lon = np.asarray(longitude)
-
+        lat, lon = self._dset[axis.latitude], self._dset[axis.longitude]
+        lat_vals, lon_vals = lat.to_numpy(), lon.to_numpy()
         if isinstance(self.crs, Geodetic):
-            lat, lon = np.meshgrid(self._dset[axis.latitude], 
-                                             self._dset[axis.longitude],
-                                             indexing='ij')
-        
+            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
         dims = (self.crs.dim_Y_axis, self.crs.dim_X_axis)
 
-        # Calculating indexers and subsetting.
+        lat_labels = get_magnitude(latitude, lat.attrs['units'])
+        lon_labels = get_magnitude(longitude, lon.attrs['units'])
+
         idx = get_array_indexer(
-            [lat, lon],
-            [nearest_lat, nearest_lon],
+            [lat_vals, lon_vals],
+            [lat_labels, lon_labels],
             method='nearest',
             tolerance=np.inf,
             return_all=False
         )
+        result_idx = dict(zip(dims, idx))
 
-        indexers = ... # based on idx
+        # Example:
+        # lat_vals = np.array([[30., 31.], [35., 36.], [40., 41.]])
+        # lon_vals = np.array([[10., 11.], [15., 16.], [20., 21.]])
+        # lat_labels = [29, 42]
+        # lon_labels = [5, 18]
+        # idx:
+        # (array([0, 2]), array([0, 0]))
+        # result_idx:
+        # {axis.grid_latitude: array([0, 2]),
+        #  axis.grid_longitude: array([0, 0])}
 
-#        feature = type(self)(self._dset.isel(indexers=indexers))
-        feature = self.isel(indexers=indexers)
-
+        dset = self._dset.isel(indexers=result_idx)
+        result = self._from_xarray_dataset(dset)
         if as_points:
-            return feature.as_points()
-        else:
-            return feature
+            return result.as_points()
+        return result
+
+    def _to_points_dict(self) -> dict[axis.Axis, pint.Quantity]:
+        dset = self._dset.drop_vars(names=[self._dset.attrs['grid_mapping']])
+        coords_copy = dict(dset.coords)
+
+        n_vals = 1
+        for dim_axis in dset.dims:
+            n_vals *= coords_copy[dim_axis].size
+        n_reps = n_vals
+        idx, data = {}, {}
+
+        # Dimension coordinates.
+        for dim_axis in dset.dims:
+            coord = coords_copy.pop(dim_axis)
+            n_coord_vals = coord.size
+            n_tiles = n_vals // n_reps
+            n_reps //= n_coord_vals
+            coord_idx = np.arange(n_coord_vals)
+            coord_idx = np.tile(np.repeat(coord_idx, n_reps), n_tiles)
+            idx[dim_axis] = coord_idx
+            data[dim_axis] = pint.Quantity(
+                coord.data[coord_idx], coord.attrs['units']
+            )
+
+        # Auxiliary coordinates.
+        for aux_axis, coord in coords_copy.items():
+            coord_idx = tuple(idx[dim] for dim in coord.dims)
+            data[aux_axis] = pint.Quantity(
+                coord.data[coord_idx], coord.attrs['units']
+            )
+
+        name = dset.attrs.get('_geokube.field_name')
+
+        if name is None:
+            return data
+
+        # Data.
+        darr = dset[name]
+        vals = darr.to_numpy().reshape(n_vals)
+        data[name] = pint.Quantity(vals, darr.attrs.get('units'))
+
+        return data
 
     def as_points(self) -> PointsFeature:
-        pass
+        # Creating the resulting points field.
+        new_coords = {
+            axis_: xr.DataArray(
+                data=coord.magnitude,
+                dims=('_points'),
+                attrs=self._dset[axis_].attrs
+            )
+            for axis_, coord in self._to_points_dict().items()
+        }
+
+        # Creating the resulting data.
+        if (name := self._dset.attrs.get('_geokube.field_name')) is not None:
+            new_data = {name: new_coords.pop(name)}
+        else:
+            new_data = None
+
+        # Creating the resulting dataset and corresponding result.
+        new_dset = xr.Dataset(
+            data_vars=new_data, coords=new_coords, attrs=self._dset.attrs
+        )
+        result = self._from_xarray_dataset(new_dset)
+
+        return result
 
 
 class GridFeature_(Feature):

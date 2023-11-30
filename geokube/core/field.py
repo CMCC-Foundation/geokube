@@ -8,6 +8,7 @@ import dask.array as da
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from pyproj import Transformer
 import pint
 import xarray as xr
 
@@ -462,7 +463,6 @@ class GridField(Field, GridFeature):
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-
 #        aux_axes = domain.coord_system.aux_axes
 #        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
 #        
@@ -481,66 +481,80 @@ class GridField(Field, GridFeature):
                 data_ = None
             case _:
                 data_ = pint.Quantity(np.asarray(data))
-        
+
         #NOTE: THIS CODE CAN BE PUT IN ONE METHOD COMMON FOR ALL FIELDS! (MAYBE!)
-        coords = {}
-        for ax, coord in domain.coords.items():
-            coords[ax] = xr.DataArray(coord, 
-                                      dims=domain._dset[ax].dims, 
-                                      attrs=domain._dset[ax].attrs)
-        
+
+        # coords = {}
+        # for ax, coord in domain.coords.items():
+        #     coords[ax] = xr.DataArray(coord, 
+        #                               dims=domain._dset[ax].dims, 
+        #                               attrs=domain._dset[ax].attrs)
+
         grid_mapping_attrs = domain.coord_system.spatial.crs.to_cf()
         grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
-        coords[grid_mapping_name] = xr.DataArray(data=np.byte(1),
-                                                 name=grid_mapping_name,
-                                                 attrs = grid_mapping_attrs)
+        # coords[grid_mapping_name] = xr.DataArray(data=np.byte(1),
+        #                                          name=grid_mapping_name,
+        #                                          attrs = grid_mapping_attrs)
 
         data_vars = {}
 
         field_attrs = properties if properties is not None else {} # TODO: attrs can contain both properties and CF attrs
-        data_vars[name] = xr.DataArray(data=data_, dims=domain._dset.dims, attrs=field_attrs)
-        data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name'] 
+        field_attrs |= {
+            'units': data_.units, 'grid_mapping': grid_mapping_name
+        }
+        data_vars[name] = xr.DataArray(
+            data=None if data_ is None else data_.magnitude,
+            dims=domain._dset.dims,
+            attrs=field_attrs
+        )
         data_vars[name].encoding = encoding if encoding is not None else {}
-        
+
         if ancillary is not None:
             ancillary_names = []
             for anc_name, anc_data in ancillary.items():
                 data_vars[anc_name] = xr.DataArray(data=anc_data, dims=domain._dset.dims)
-                data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name']
+                data_vars[name].attrs['grid_mapping'] = grid_mapping_name
                 ancillary_names.append(anc_name)
 
             data_vars[name].attrs['ancillary_variables'] = " ".join(ancillary_names)
-        
-        ds_attrs = {_FIELD_NAME_ATTR_: name}
+
+        # ds_attrs = {_FIELD_NAME_ATTR_: name}
 
 # UNTIL HERE
 
-        ds = xr.Dataset(
-            data_vars=data_vars,
-            coords=coords,
-            attrs=ds_attrs
-        )
+        # ds = xr.Dataset(
+        #     data_vars=data_vars,
+        #     coords=coords,
+        #     attrs=ds_attrs
+        # )
 
-        super().__init__(
-            ds=ds
-        )
+        # super().__init__(
+        #     ds=ds
+        # )
+
+        dset = domain._dset
+        dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
+        dset = dset.assign(data_vars)
+        dset.attrs[_FIELD_NAME_ATTR_] = name
+
+        super().__init__(dset)
 
     # Spatial operations ------------------------------------------------------
 
-    def nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> PointsField:  # Self:
-        feature = super().nearest_horizontal(latitude, longitude)
+    # def nearest_horizontal(
+    #     self,
+    #     latitude: npt.ArrayLike | pint.Quantity,
+    #     longitude: npt.ArrayLike | pint.Quantity
+    # ) -> PointsField:  # Self:
+    #     feature = super().nearest_horizontal(latitude, longitude)
 
-        return PointsField(
-            name=self.name,
-            domain=Points(
-                coords=feature.coords, coord_system=feature.coord_system
-            ),
-            data=feature._dset[self.name].data
-        )
+    #     return PointsField(
+    #         name=self.name,
+    #         domain=Points(
+    #             coords=feature.coords, coord_system=feature.coord_system
+    #         ),
+    #         data=feature._dset[self.name].data
+    #     )
 
     def regrid(
         self, 
@@ -608,7 +622,7 @@ class GridField(Field, GridFeature):
             properties=self.properties,
             encoding=self.encoding
         )
-    
+
     def interpolate_(
         self, target: Domain | Field, method: str = 'nearest', **kwargs
     ) -> Field:
@@ -681,7 +695,8 @@ class GridField(Field, GridFeature):
     ) -> Field:
         # spatial interpolation
         # dset = self._dset.pint.dequantify() - it is needed since units are not kept!
-        dset = self._dset.pint.dequantify()
+        # dset = self._dset.pint.dequantify()
+        dset = self._dset
 
         match target:
             case Domain():
@@ -710,11 +725,15 @@ class GridField(Field, GridFeature):
             ds = dset.interp(coords=target_, method=method, kwargs=kwargs)
             ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
-            target_coords = target.coords
+            coords = dict(dset.coords)
+            del coords[dset.attrs['grid_mapping']]
+            coords = {axis: coord.to_numpy() for axis, coord in coords.items()}
             target_coords = {
-                axis: target_coords[axis] for axis in target.crs.axes
+                axis: coord.to_numpy()
+                for axis, coord in target._dset.coords.items()
+                if axis in target.crs.axes
             }
-            target_coords = self.coords | target_coords
+            target_coords = coords | target_coords
             kwargs.setdefault('fill_value', 'extrapolate')
             ds = dset.interp(
                 coords=target_coords, method=method, kwargs=kwargs

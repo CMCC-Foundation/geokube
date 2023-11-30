@@ -77,7 +77,7 @@ class Points(Domain, PointsFeature):
                     coord_units = units.get(axis_)
                     coord_dtype = attrs.pop('dtype', None)
                     coord_ = create_quantity(coord, coord_units, coord_dtype)
-                    attrs['units'] = coord_units
+                    attrs['units'] = coord_.units
                     result_coords[axis_] = xr.DataArray(
                         data=coord_.magnitude, dims=self._DIMS_, attrs=attrs
                     )
@@ -209,28 +209,61 @@ class Grid(Domain, GridFeature):
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
         coord_system: CoordinateSystem
     ) -> None:
-        units = coord_system.units
-        interm_coords = dict(coords)
+        if not isinstance(coords, Mapping):
+            raise TypeError("'coords' must be a mapping")
 
-        # TODO: REVIEW! - we need to keep the order as in the CRS
-        result_coords = {
-            axis_: create_quantity(
-                values=interm_coords.pop(axis_),
-                default_units=units.get(axis_),
-                default_dtype=axis_.encoding['dtype']
-            )
-            for axis_ in coord_system.dim_axes
-        }
-        result_coords |= {
-            axis_: create_quantity(
-                values=coord,
-                default_units=units.get(axis_),
-                default_dtype=axis_.encoding['dtype']
-            )
-            for axis_, coord in interm_coords.items()
-        }
+        result_coords = {}
+        dims: tuple[axis.Axis, ...]
+        dim_axes = set(coord_system.dim_axes)
+        for axis_, coord in coords.items():
+            attrs = axis_.encoding.copy()
+            if isinstance(coord, pd.IntervalIndex):
+                if coord.closed != 'both':
+                    raise NotImplementedError(
+                        "'coords' contain an open interval index, which is "
+                        "currently not supported"
+                    )
+                attrs['units'] = 'dimensionless'
+                del attrs['dtype']
+                coord_vals = coord.to_numpy()
+                dims = (axis_,)
+            else:
+                coord_units = coord_system.units.get(axis_)
+                coord_dtype = attrs.pop('dtype', None)
+                coord_qty = create_quantity(coord, coord_units, coord_dtype)
+                attrs['units'] = coord_qty.units
+                coord_vals = coord_qty.magnitude
+                if (
+                    coord_vals.dtype is np.dtype(object)
+                    and isinstance(coord_vals[0], pd.Interval)
+                ):
+                    coord_vals = pd.IntervalIndex(coord_vals, closed='both')
 
-        super().__init__(result_coords, coord_system)
+                if axis_ in dim_axes:
+                    # Dimension coordinates.
+                    match coord_vals.ndim:
+                        case 0:
+                            # Constant.
+                            dims = ()
+                        case 1:
+                            # Oridinary dimension coordinate.
+                            dims = (axis_,)
+                        case _:
+                            # Anything else (not allowed).
+                            raise ValueError(
+                                f"'coords' have a dimension axis {axis_} that "
+                                "has multi-dimensional values"
+                            )
+                else:
+                    # Auxiliary coordinates.
+                    dims = coord_system.crs.dim_axes if coord_vals.ndim else ()
+
+            result_coords[axis_] = xr.DataArray(
+                data=coord_vals, dims=dims, attrs=attrs
+            )
+
+        dset = Domain.as_xarray_dataset(result_coords, coord_system)
+        super().__init__(dset)
 
     def infer_resolution(self, axis):
         return self.coords[axis].ptp() / (self.coords[axis].size - 1)
