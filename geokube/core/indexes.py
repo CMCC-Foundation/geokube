@@ -364,7 +364,6 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
 
         match lat, lon:
             case (slice(), slice()):
-                print(lat, lon)
                 idx = get_slice_indexer(
                     [lat_.magnitude, lon_.magnitude],
                     # [lat_, lon_],
