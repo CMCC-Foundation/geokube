@@ -3,6 +3,7 @@ from typing import Any, Hashable, Mapping, Self
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pint
 import xarray as xr
 
@@ -265,21 +266,26 @@ class OneDimPandasIndex(xr.core.indexes.Index):
         if len(variables) != 1:
             raise ValueError("'variables' can contain exactly one item")
         coord_axis, var = next(iter(variables.items()))
-        qty = create_quantity(
-            var.data, var.attrs.get('units'), var.data.dtype
-        )
+        data = var.data
+        if (
+            data.dtype is np.dtype(object) and isinstance(data[0], pd.Interval)
+        ):
+            vals, units = pd.IntervalIndex(data, closed='both'), pint.Unit('')
+        else:
+            qty = create_quantity(data, var.attrs.get('units'), data.dtype)
+            vals, units = qty.magnitude, qty.units
         idx = xr.core.indexes.PandasIndex.from_variables(
             variables={
                 coord_axis: xr.Variable(
                     dims=var.dims,
-                    data=qty.magnitude,
+                    data=vals,
                     attrs=var.attrs,
                     encoding=var.encoding
                 )
             },
             options={}
         )
-        return cls(idx, qty.units)
+        return cls(idx, units)
 
     def sel(
         self,
