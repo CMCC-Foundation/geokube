@@ -8,7 +8,7 @@ import xarray as xr
 
 from . import axis
 from .indexers import get_indexer, get_slice_indexer
-from .quantity import get_magnitude
+from .quantity import create_quantity, get_magnitude
 
 
 # TODO: Consider making this module and `TwoDimIndex` internal.
@@ -265,7 +265,9 @@ class OneDimPandasIndex(xr.core.indexes.Index):
         if len(variables) != 1:
             raise ValueError("'variables' can contain exactly one item")
         coord_axis, var = next(iter(variables.items()))
-        qty = var.data
+        qty = create_quantity(
+            var.data, var.attrs.get('units'), var.data.dtype
+        )
         idx = xr.core.indexes.PandasIndex.from_variables(
             variables={
                 coord_axis: xr.Variable(
@@ -298,10 +300,10 @@ class OneDimPandasIndex(xr.core.indexes.Index):
 
 @dataclass(frozen=True, slots=True)
 class TwoDimHorGridIndex(xr.core.indexes.Index):
-    # latitude: pint.Quantity
-    # longitude: pint.Quantity
-    latitude: np.ndarray
-    longitude: np.ndarray
+    latitude: pint.Quantity
+    longitude: pint.Quantity
+    # latitude: np.ndarray
+    # longitude: np.ndarray
     dims: tuple[Hashable]
 
     @classmethod
@@ -322,12 +324,12 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
                 "'variables' must contain both latitude and longitude"
             ) from err
 
-        lat_data, lon_data = lat.data, lon.data
-        # if not (
-        #     isinstance(lat_data, pint.Quantity)
-        #     and isinstance(lon_data, pint.Quantity)
-        # ):
-        #     raise TypeError("'variables' must contain data of type 'Quantity'")
+        lat_qty = create_quantity(
+            lat.data, lat.attrs.get('units'), lat.data.dtype
+        )
+        lon_qty = create_quantity(
+            lon.data, lon.attrs.get('units'), lon.data.dtype
+        )
 
         all_dims = {lat.dims, lon.dims}
         if len(all_dims) != 1:
@@ -336,7 +338,7 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
         if len(dims) != 2:
             raise ValueError("'variables' must contain two-dimensional data")
 
-        return cls(latitude=lat_data, longitude=lon_data, dims=dims)
+        return cls(latitude=lat_qty, longitude=lon_qty, dims=dims)
 
     def sel(
         self,
@@ -356,15 +358,16 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
             ) from err
 
         lat_, lon_ = self.latitude, self.longitude
-        # lat_label = get_magnitude(lat, lat_.units)
-        # lon_label = get_magnitude(lon, lon_.units)
-        lat_label, lon_label = np.asarray(lat), np.asarray(lon)
+        lat_label = get_magnitude(lat, lat_.units)
+        lon_label = get_magnitude(lon, lon_.units)
+        # lat_label, lon_label = np.asarray(lat), np.asarray(lon)
 
         match lat, lon:
             case (slice(), slice()):
+                print(lat, lon)
                 idx = get_slice_indexer(
-                    # [lat_.magnitude, lon_.magnitude],
-                    [lat_, lon_],
+                    [lat_.magnitude, lon_.magnitude],
+                    # [lat_, lon_],
                     [lat_label, lon_label],
                     combine_result=True,
                     return_type='int'
