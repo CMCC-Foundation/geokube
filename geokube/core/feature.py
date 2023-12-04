@@ -287,11 +287,11 @@ class ProfilesFeature(Feature):
 
     @property
     def number_of_profiles(self) -> int:
-        return self._dset['_n_profiles'].size
+        return self._dset['_profiles'].size
 
     @property
     def number_of_levels(self) -> int:
-        return self._dset['_n_levels'].size
+        return self._dset['_levels'].size
 
     def bounding_box(
         self,
@@ -306,7 +306,7 @@ class ProfilesFeature(Feature):
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
         }
-        ds = self.sel(h_idx)
+        feature = self.sel(h_idx)
 
         if not (bottom is None and top is None):
             # TODO: Try to move this functionality to
@@ -315,26 +315,27 @@ class ProfilesFeature(Feature):
                 "'bounding_box' loads in memory and makes a copy of the data "
                 "and vertical coordinate when 'bottom' or 'top' is not 'None'"
             )
+            # TODO: Make `vert_axis` the actual vertical axis from the
+            # coordinates.
             v_slice = slice(bottom, top)
             v_idx = {axis.vertical: v_slice}
-            new_data = ds.sel(v_idx)._dset
+            new_data = feature.sel(v_idx)._dset
+            new_data = new_data.drop_indexes(
+                coord_names=list(new_data.xindexes.keys())
+            )
             vert = new_data[axis.vertical]
-            vert_dims = vert.dims
-            vert_data = vert.data
-            vert_mag, vert_units = vert_data.magnitude, vert_data.units
+            vert_mag, vert_units = vert.to_numpy(), vert.attrs['units']
             mask = get_indexer(
                 [vert_mag], [get_magnitude(v_slice, vert_units)]
             )[0]
             masked_vert = np.where(mask, vert_mag, np.nan)
-            vert_ = pint.Quantity(masked_vert, vert_units)
-            new_data[axis.vertical] = xr.Variable(dims=vert_dims, data=vert_)
-            for name, darr in new_data.data_vars.items():
-                data = darr.data
-                masked_data = np.where(mask, data.magnitude, np.nan)
-                data_ = pint.Quantity(masked_data, data.units)
-                new_data[name] = xr.Variable(dims=vert_dims, data=data_)
-            ds = type(self)(new_data)
-        return ds
+            new_data[axis.vertical].to_numpy()[:] = masked_vert
+            for darr in new_data.data_vars.values():
+                mag = darr.to_numpy()
+                masked_data = np.where(mask, mag, np.nan)
+                darr.to_numpy()[:] = masked_data
+            feature = self._from_xarray_dataset(new_data)
+        return feature
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
@@ -345,10 +346,16 @@ class ProfilesFeature(Feature):
         new_coords = {
             axis_: coord.variable for axis_, coord in dset.coords.items()
         }
-        vert_axis = (new_coords.keys() & {axis.vertical}).pop()
+        # NOTE: The purpose of this code is to get the actual vertical axis
+        # passed by `coords`. It can differ from the default `axis.vertical` in
+        # `encoding`. The set intersection cannot be used.
+        vert_axis: axis.vertical
+        for axis_ in new_coords:
+            if axis_ == axis.vertical:
+                vert_axis = axis_
+                break
         vert = dset[vert_axis]
-        vert_qty = vert.data
-        vert_mag, vert_units = vert_qty.magnitude, vert_qty.units
+        vert_mag, vert_units = vert.to_numpy(), vert.attrs['units']
         n_profiles = vert_mag.shape[0]
         shape = (n_profiles, len(elevation))
         new_vert_mag = np.empty(shape=shape, dtype=vert_mag.dtype)
@@ -365,20 +372,19 @@ class ProfilesFeature(Feature):
             level_indices.append(level_idx)
             new_vert_mag[profile_idx, :] = vert_mag[profile_idx, level_idx]
         new_coords[vert_axis] = xr.Variable(
-            dims=vert.dims, data=pint.Quantity(new_vert_mag, vert_units)
+            dims=vert.dims, data=new_vert_mag, attrs=vert.attrs
         )
 
         new_data_vars = {}
         for name, darr in dset.data_vars.items():
-            data_qty = darr.data
-            data_mag = data_qty.magnitude
+            data_mag = darr.to_numpy()
             new_data_mag = np.empty(shape=shape, dtype=data_mag.dtype)
             # TODO: Try to implement this in a more efficient way.
             for profile_idx in range(n_profiles):
                 level_idx = level_indices[profile_idx]
-                new_data_mag[profile_idx, :] = vert_mag[profile_idx, level_idx]
+                new_data_mag[profile_idx, :] = data_mag[profile_idx, level_idx]
             new_data_vars[name] = xr.DataArray(
-                data=pint.Quantity(new_data_mag, data_qty.units),
+                data=new_data_mag,
                 dims=self._DIMS_,
                 coords=new_coords,
                 attrs=darr.attrs
@@ -387,11 +393,11 @@ class ProfilesFeature(Feature):
         new_dset = xr.Dataset(
             data_vars=new_data_vars, coords=new_coords, attrs=dset.attrs
         )
-        new_obj = type(self)(new_dset)
-        return new_obj
+        feature = self._from_xarray_dataset(new_dset)
+        return feature
 
     def as_points(self) -> PointsFeature:
-        pass
+        return PointsFeature._from_xarray_dataset(_as_points_dataset(self))
 
 
 class GridFeature(Feature):
@@ -465,72 +471,82 @@ class GridFeature(Feature):
             return result.as_points()
         return result
 
-    def _to_points_dict(self) -> dict[axis.Axis, pint.Quantity]:
-        dset = self._dset.drop_vars(names=[self._dset.attrs['grid_mapping']])
-        coords_copy = dict(dset.coords)
+    def as_points(self) -> PointsFeature:
+        return PointsFeature._from_xarray_dataset(_as_points_dataset(self))
 
-        n_vals = 1
-        for dim_axis in dset.dims:
-            n_vals *= coords_copy[dim_axis].size
-        n_reps = n_vals
-        idx, data = {}, {}
 
-        # Dimension coordinates.
-        for dim_axis in dset.dims:
-            coord = coords_copy.pop(dim_axis)
-            n_coord_vals = coord.size
-            n_tiles = n_vals // n_reps
-            n_reps //= n_coord_vals
-            coord_idx = np.arange(n_coord_vals)
-            coord_idx = np.tile(np.repeat(coord_idx, n_reps), n_tiles)
-            idx[dim_axis] = coord_idx
-            data[dim_axis] = pint.Quantity(
-                coord.data[coord_idx], coord.attrs['units']
-            )
+def _to_points_dict(feature: Feature) -> dict[axis.Axis, pint.Quantity]:
+    dset = feature._dset.drop_vars(names=[feature._dset.attrs['grid_mapping']])
+    coords_copy = dict(dset.coords)
+    internal_dims = set()
 
-        # Auxiliary coordinates.
-        for aux_axis, coord in coords_copy.items():
-            coord_idx = tuple(idx[dim] for dim in coord.dims)
-            data[aux_axis] = pint.Quantity(
-                coord.data[coord_idx], coord.attrs['units']
-            )
+    n_vals = 1
+    for dim_axis in dset.dims:
+        if dim_axis not in coords_copy:
+            coords_copy[dim_axis] = dset[dim_axis]
+            internal_dims.add(dim_axis)
+        n_vals *= coords_copy[dim_axis].size
+    n_reps = n_vals
+    idx, data = {}, {}
 
-        name = dset.attrs.get('_geokube.field_name')
+    # Dimension coordinates.
+    for dim_axis in dset.dims:
+        coord = coords_copy.pop(dim_axis)
+        n_coord_vals = coord.size
+        n_tiles = n_vals // n_reps
+        n_reps //= n_coord_vals
+        coord_idx = np.arange(n_coord_vals)
+        coord_idx = np.tile(np.repeat(coord_idx, n_reps), n_tiles)
+        idx[dim_axis] = coord_idx
+        data[dim_axis] = pint.Quantity(
+            coord.data[coord_idx], coord.attrs.get('units')
+        )
+    if internal_dims:
+        for dim_axis in internal_dims:
+            del data[dim_axis]
 
-        if name is None:
-            return data
+    # Auxiliary coordinates.
+    for aux_axis, coord in coords_copy.items():
+        coord_idx = tuple(idx[dim] for dim in coord.dims)
+        data[aux_axis] = pint.Quantity(
+            coord.data[coord_idx], coord.attrs['units']
+        )
 
-        # Data.
-        darr = dset[name]
-        vals = darr.to_numpy().reshape(n_vals)
-        data[name] = pint.Quantity(vals, darr.attrs.get('units'))
+    name = dset.attrs.get('_geokube.field_name')
 
+    if name is None:
         return data
 
-    def as_points(self) -> PointsFeature:
-        # Creating the resulting points field.
-        new_coords = {
-            axis_: xr.DataArray(
-                data=coord.magnitude,
-                dims=('_points'),
-                attrs=self._dset[axis_].attrs
-            )
-            for axis_, coord in self._to_points_dict().items()
-        }
+    # Data.
+    darr = dset[name]
+    vals = darr.to_numpy().reshape(n_vals)
+    data[name] = pint.Quantity(vals, darr.attrs.get('units'))
 
-        # Creating the resulting data.
-        if (name := self._dset.attrs.get('_geokube.field_name')) is not None:
-            new_data = {name: new_coords.pop(name)}
-        else:
-            new_data = None
+    return data
 
-        # Creating the resulting dataset and corresponding result.
-        new_dset = xr.Dataset(
-            data_vars=new_data, coords=new_coords, attrs=self._dset.attrs
+
+def _as_points_dataset(feature: Feature) -> xr.Dataset:
+    # Creating the resulting points field.
+    new_coords = {
+        axis_: xr.DataArray(
+            data=coord.magnitude,
+            dims=('_points',),
+            attrs=feature._dset[axis_].attrs
         )
-        result = self._from_xarray_dataset(new_dset)
+        for axis_, coord in _to_points_dict(feature).items()
+    }
 
-        return result
+    # Creating the resulting data.
+    if (name := feature._dset.attrs.get('_geokube.field_name')) is not None:
+        new_data = {name: new_coords.pop(name)}
+    else:
+        new_data = None
+
+    # Creating the resulting dataset and corresponding result.
+    new_dset = xr.Dataset(
+        data_vars=new_data, coords=new_coords, attrs=feature._dset.attrs
+    )
+    return new_dset
 
 
 class GridFeature_(Feature):

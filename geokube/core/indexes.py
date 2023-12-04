@@ -181,9 +181,9 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
                 "'variables' must contain the vertical coordinate"
             ) from err
 
-        vert_data = vert.data
-        if not isinstance(vert_data, pint.Quantity):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        vert_data = create_quantity(
+            vert.data, vert.attrs.get('units'), vert.data.dtype
+        )
 
         dims = vert.dims
         if set(dims) != {'_profiles', '_levels'}:

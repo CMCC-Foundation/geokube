@@ -11,7 +11,9 @@ from pyproj import Transformer
 
 from . import axis
 from .coord_system import CoordinateSystem
-from .feature import GridFeature, PointsFeature, ProfilesFeature
+from .feature import (
+    GridFeature, PointsFeature, ProfilesFeature, _as_points_dataset
+)
 from .quantity import get_magnitude, create_quantity
 from .crs import Geodetic
 from .units import units
@@ -129,12 +131,15 @@ class Profiles(Domain, ProfilesFeature):
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
 
-        units = coord_system.units
         interm_coords = dict(coords)
         result_coords: dict[axis.Axis, xr.DataArray] = {}
         prof = (self._DIMS_[0],)
         n_prof = set()
-        vert = interm_coords.pop(axis.vertical)
+        # FIXME: The purpose of this code is to get the actual axis passed by
+        # `coords`, but it is not working as intended.
+        vert_axis = ({axis.vertical} & interm_coords.keys()).pop()
+        vert = interm_coords.pop(vert_axis)
+        vert_attrs = vert_axis.encoding.copy()
 
         # Vertical.
         if isinstance(vert, Sequence):
@@ -142,8 +147,7 @@ class Profiles(Domain, ProfilesFeature):
             n_lev_tot = max(n_lev)
             n_prof_tot = len(vert)
             vert_vals = np.empty(
-                shape=(n_prof_tot, n_lev_tot),
-                dtype=axis.vertical.encoding['dtype']
+                shape=(n_prof_tot, n_lev_tot), dtype=vert_attrs.pop('dtype')
             )
             for i, (stop_idx, vals) in enumerate(zip(n_lev, vert)):
                 if stop_idx == n_lev_tot:
@@ -151,12 +155,14 @@ class Profiles(Domain, ProfilesFeature):
                 else:
                     vert_vals[i, :stop_idx] = vals
                     vert_vals[i, stop_idx:] = np.nan
-            vert_ = pint.Quantity(vert_vals, units[axis.vertical])
+            vert_qty = pint.Quantity(vert_vals, coord_system.units[vert_axis])
         else:
-            vert_ = create_quantity(
-                vert, units.get(axis.vertical), axis.vertical.encoding['dtype']
+            vert_qty = create_quantity(
+                vert,
+                coord_system.units.get(vert_axis),
+                vert_attrs.pop('dtype')
             )
-            vert_shape = vert_.shape
+            vert_shape = vert_qty.shape
             if len(vert_shape) != 2:
                 raise ValueError(
                     "'coords' must have vertical as a two-dimensional data "
@@ -164,21 +170,26 @@ class Profiles(Domain, ProfilesFeature):
                 )
             n_prof_tot, n_lev_tot = vert_shape
 
-        result_coords[axis.vertical] = xr.DataArray(
-            vert_, dims=self._DIMS_
+        vert_attrs['units'] = vert_qty.units
+        result_coords[vert_axis] = xr.DataArray(
+            data=vert_qty.magnitude, dims=self._DIMS_, attrs=vert_attrs
         )
 
         # All coordinates except the vertical.
         for axis_, vals in interm_coords.items():
+            attrs = axis_.encoding.copy()
             qty = create_quantity(
-                vals, units.get(axis_), axis_.encoding['dtype']
+                vals, coord_system.units.get(axis_), attrs.pop('dtype')
             )
+            attrs['units'] = qty.units
             if qty.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
                     "one-dimensional values"
                 )
-            result_coords[axis_] = xr.DataArray(qty, dims=prof)
+            result_coords[axis_] = xr.DataArray(
+                data=qty.magnitude, dims=prof, attrs=attrs
+            )
             n_prof.add(qty.size)
         if len(n_prof) != 1:
             raise ValueError(
@@ -186,13 +197,18 @@ class Profiles(Domain, ProfilesFeature):
                 "equal sizes"
             )
         if n_prof_tot != n_prof.pop():
-            raise ValueError("'coords' have items of with inappropriate sizes")
+            raise ValueError("'coords' have items of inappropriate sizes")
         if not set(coord_system.axes) <= result_coords.keys():
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
             )
 
-        super().__init__(coords=result_coords, coord_system=coord_system)
+        ds = Domain.as_xarray_dataset(result_coords, coord_system)
+
+        super().__init__(ds=ds)
+
+    def as_points(self) -> Points:
+        return Points._from_xarray_dataset(_as_points_dataset(self))
 
 
 class Grid(Domain, GridFeature):
@@ -321,3 +337,6 @@ class Grid(Domain, GridFeature):
         )
         # x, y = transformer.transform(lon, lat)
         return transformer.transform(lon, lat)
+
+    def as_points(self) -> Points:
+        return Points._from_xarray_dataset(_as_points_dataset(self))

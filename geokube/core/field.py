@@ -23,7 +23,9 @@ from .coord_system import CoordinateSystem
 
 from .crs import Geodetic
 from .domain import Domain, Grid
-from .feature import PointsFeature, ProfilesFeature, GridFeature
+from .feature import (
+    PointsFeature, ProfilesFeature, GridFeature, _as_points_dataset
+)
 
 
 def to_pyarrow_tensor(data):
@@ -428,24 +430,30 @@ class ProfilesField(Field, ProfilesFeature):
                     "'data' must be two-dimensional and have the same shape "
                     "as the coordinates"
                 )
-        
+
         data_vars = {}
-        attrs = properties if not None else {}
-        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
+        attrs = properties if properties is not None else {}
+        attrs['units'] = data_.units
+        data_vars[name] = xr.DataArray(
+            data=data_.magnitude, dims=self._DIMS_, attrs=attrs
+        )
         data_vars[name].encoding = encoding if encoding is not None else {}
-        
+
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
                 data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
-        
-        ds_attrs = {_FIELD_NAME_ATTR_: name}
 
-        super().__init__(
-            data_vars=data_vars,
-            coords=domain.coords,
-            attrs=ds_attrs,
-            coord_system=domain.coord_system
-        )
+        # ds_attrs = {_FIELD_NAME_ATTR_: name}
+
+        dset = domain._dset
+        dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
+        dset = dset.assign(data_vars)
+        dset.attrs[_FIELD_NAME_ATTR_] = name
+
+        super().__init__(dset)
+
+    def as_points(self) -> PointsField:
+        return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
 
 class GridField(Field, GridFeature):
@@ -779,3 +787,6 @@ class GridField(Field, GridFeature):
             target=self.domain.as_geodetic(), # this has a semantic -> domain geodetic grid can be different from the original
             method="nearest"
         )
+
+    def as_points(self) -> PointsField:
+        return PointsField._from_xarray_dataset(_as_points_dataset(self))
