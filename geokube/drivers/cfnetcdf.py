@@ -36,7 +36,14 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
         axes = {}
         for standard_name, name in dset_cf.standard_names.items():
             assert len(name) == 1
-            axes[name[0]] = axis._from_string(standard_name)
+            if (axis_ := axis._from_string(standard_name)) is not None:
+                axes[name[0]] = axis_
+        for dim in dset.dims:
+            if (
+                dim not in axes
+                and (axis_ := axis._from_string(dim)) is not None
+            ):
+                axes[dim] = axis_
 
         # Coordinates. --------------------------------------------------------
         coords = {}
@@ -47,7 +54,7 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
             coord.attrs.setdefault('units', 'dimensionless')
             axis_ = axis._from_string(cf_coord)
             coords[axis_] = xr.Variable(
-                dims=tuple(axes.get(dim, dim) for dim in coord.dims),
+                dims=tuple(axes[dim] for dim in coord.dims),
                 data=coord.to_numpy(),
                 attrs=coord.attrs,
                 encoding=coord.encoding
@@ -65,7 +72,7 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
                     elif axis_ is axis.y:
                         axis_ = axis.grid_latitude
                 coords[axis_] = xr.Variable(
-                    dims=tuple(axes.get(dim, dim) for dim in coord.dims),
+                    dims=tuple(axes[dim] for dim in coord.dims),
                     data=coord.to_numpy(),
                     attrs=coord.attrs,
                     encoding=coord.encoding
@@ -114,7 +121,7 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
         # Data. ---------------------------------------------------------------
         var = dset[var_name]
         data = xr.Variable(
-            dims=tuple(axes.get(dim, dim) for dim in var.dims),
+            dims=tuple(axes[dim] for dim in var.dims),
             data=var.to_numpy(),
             attrs=var.attrs,
             encoding=var.encoding
