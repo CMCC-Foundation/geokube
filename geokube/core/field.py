@@ -570,6 +570,7 @@ class GridField(Field, GridFeature):
         method: str = 'bilinear'
     ) -> Self:
         import xesmf as xe
+
         if not isinstance(target, Domain):
             if isinstance(target, GridField):
                 target = target.domain
@@ -585,46 +586,55 @@ class GridField(Field, GridFeature):
         # get spatial lat/lon coordinates
         # we should get all horizontal coordinates -> e.g. Projection, RotatedPole ...
         # 
-        lat = target.coords[axis.latitude]
-        lon = target.coords[axis.longitude]
         
-        ds_out = xr.Dataset(
-            {
-                "lat": (["lat"], lat),
-                "lon": (["lon"], lon)
-            }
-        )
+        # NOTE: Maybe it is better to use `target._dset.coords` instead of
+        # `target.coords` because the former keeps the attributes.
+        # lat = target.coords[axis.latitude]
+        # lon = target.coords[axis.longitude]
+        target_coords = dict(target._dset.coords)
+        lat = target_coords[axis.latitude].to_numpy()
+        lon = target_coords[axis.longitude].to_numpy()
+
+        ds_out = xr.Dataset({"lat": (["lat"], lat), "lon": (["lon"], lon)})
 
         # NOTE: before regridding we need to dequantify  
-        ds = self._dset.pint.dequantify()
+        # ds = self._dset.pint.dequantify()
         #
         # if we have ancillary data how they should be regridded?
         # for the moment we assume the same method for the field
         # TODO: maybe user should specify method for ancillary too!
         #
-        regridder = xe.Regridder(ds, ds_out, method, unmapped_to_nan=True)
-        dset_reg = regridder(ds, keep_attrs=True)
-        
-        ancillary = {}
-        for v in dset_reg.data_vars:
-            if v != self.name:
-                ancillary[v] = dset_reg[v].pint.quantify()
+        # NOTE: The new underlying dataset does not need dequantification
+        # because coordinates and data variables are already dequantified,
+        # while the units are in the attributes.
+        regridder = xe.Regridder(
+            self._dset, ds_out, method, unmapped_to_nan=True
+        )
+        dset_reg = regridder(self._dset, keep_attrs=True)
 
-        new_cs = CoordinateSystem(horizontal=target.coord_system.spatial.crs,
-                            elevation=self.coord_system.spatial.elevation,
-                            time=self.coord_system.time,
-                            user_axes=self.coord_system.user_axes)
-    
+        ancillary = {
+            name: darr
+            for name, darr in dset_reg.data_vars.items()
+            if name != self.name
+        }
+
+        new_cs = CoordinateSystem(
+            horizontal=target.coord_system.spatial.crs,
+            elevation=self.coord_system.spatial.elevation,
+            time=self.coord_system.time,
+            user_axes=self.coord_system.user_axes
+        )
+
         coords = {}
         for ax in new_cs.axes:
             if isinstance(ax, axis.Horizontal):
-                coords[ax] = target.coords[ax]
+                coords[ax] = target_coords[ax]
             else:
-                coords[ax] = self.coords[ax]
+                coords[ax] = self._dset.coords[ax]
 
         return GridField(
             name=self.name,
-            data=dset_reg[self.name].pint.quantify(),
+            data=dset_reg[self.name],  # .pint.quantify(),
             domain=Grid(coords=coords, coord_system=new_cs),
             ancillary=ancillary,
             properties=self.properties,
