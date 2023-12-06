@@ -799,16 +799,15 @@ class GridField(Field, GridFeature):
             method="nearest"
         )
 
-
     def as_points(self) -> PointsField:
         return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
     def resample(
         self, freq: str, operator: Callable | str = 'nanmean', **kwargs
     ) -> Self:
-        data = self.data
         dset = self._dset
-        time_idx = dset.xindexes[axis.time].index
+        data = dset[self.name].data
+        time_idx = dset.xindexes[axis.time].index.index
         n_time = time_idx.size
 
         match time_idx:
@@ -868,8 +867,7 @@ class GridField(Field, GridFeature):
             [slice(bins[0])]
             + [slice(bins[i], bins[i + 1]) for i in range(bins.size - 1)]
         )
-        data_ = data.magnitude
-        arr_lib = da if isinstance(data_, da.Array) else np
+        arr_lib = da if isinstance(data, da.Array) else np
         func = operator if callable(operator) else getattr(arr_lib, operator)
         # FIXME: If `data.dtype` is integral, we want a floating-point result
         # for some operators like `mean` or `median` and integral for others
@@ -883,7 +881,7 @@ class GridField(Field, GridFeature):
             s_ = idx_before + (s,) + idx_after
             # TODO: Test optimization with something like:
             # `func(data[s_], axis=time_axis_idx, out=new_data[i_])`.
-            new_data[i_] = func(data_[s_], axis=time_axis_idx)
+            new_data[i_] = func(data[s_], axis=time_axis_idx)
 
         domain = self.domain
         new_coords = domain.coords.copy()
@@ -892,7 +890,7 @@ class GridField(Field, GridFeature):
         return type(self)(
             name=self.name,
             domain=type(domain)(new_coords, domain.coord_system),
-            data=pint.Quantity(new_data, data.units),
+            data=pint.Quantity(new_data, dset[self.name].attrs.get('units')),
             ancillary=self.ancillary,
             properties=self.properties,
             encoding=self.encoding
@@ -906,7 +904,7 @@ class GridField(Field, GridFeature):
         idx = {axis.time: freq}
         diff = pd.to_timedelta(freq).to_timedelta64()
 
-        match time_idx := dset.xindexes[axis.time].index:
+        match time_idx := dset.xindexes[axis.time].index.index:
             case pd.DatetimeIndex():
                 res = dset.resample(indexer=idx, label='left', **kwargs)
                 result_dset = getattr(res, operator)()
