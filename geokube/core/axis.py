@@ -132,6 +132,7 @@ class Depth(Elevation):
 class Time(Axis):
     _DEFAULT_UNITS_ = units['']
     _DEFAULT_ENCODING_ = { 'standard_name': 'time',
+                           'axis': 'T',
                            'dtype': 'datetime64'}
 
 

@@ -11,21 +11,51 @@ from pyproj import Transformer
 
 from . import axis
 from .coord_system import CoordinateSystem
-from .feature import GridFeature, PointsFeature, ProfilesFeature
+from .feature import (
+    GridFeature, PointsFeature, ProfilesFeature, _as_points_dataset
+)
 from .quantity import get_magnitude, create_quantity
 from .crs import Geodetic
 from .units import units
 
 
 # TODO: Consider renaming this class to `DomainMixin`.
+# NOTE: maybe we don't need this class
 class Domain:
     __slots__ = ()
+
+    # NOTE: `Domain` and `Field` have exactly the same method.
+    @classmethod
+    def _from_xarray_dataset(
+        cls,
+        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> Self:
+        obj = object.__new__(cls)
+        # TODO: Make sure that `cls.__mro__[2]` returns the correct `Feature`
+        # class from the inheritance hierarchy.
+        feature_cls = cls.__mro__[2]
+        # pylint: disable=unnecessary-dunder-call
+        feature_cls.__init__(obj, ds, cf_mappings)
+        return obj
 
     @classmethod
     def _from_xrdset(
         cls, dset: xr.Dataset, coord_system: CoordinateSystem
     ) -> Self:
         return cls(coords=dset.coords, coord_system=coord_system)
+
+    @staticmethod
+    def as_xarray_dataset(
+        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
+        coord_system: CoordinateSystem
+    ) -> xr.Dataset:
+        da = coord_system.crs.as_xarray()
+        r_coords = dict(coords)
+        r_coords[da.name] = da
+        ds = xr.Dataset(coords=r_coords)
+        ds.attrs['grid_mapping'] = da.name
+        return ds
 
 
 class Points(Domain, PointsFeature):
@@ -45,10 +75,15 @@ class Points(Domain, PointsFeature):
             case Mapping():
                 result_coords = {}
                 for axis_, coord in coords.items():
-                    result_coords[axis_] = qty = create_quantity(
-                        coord, units.get(axis_), axis_.encoding['dtype']
+                    attrs = axis_.encoding.copy()
+                    coord_units = units.get(axis_)
+                    coord_dtype = attrs.pop('dtype', None)
+                    coord_ = create_quantity(coord, coord_units, coord_dtype)
+                    attrs['units'] = coord_.units
+                    result_coords[axis_] = xr.DataArray(
+                        data=coord_.magnitude, dims=self._DIMS_, attrs=attrs
                     )
-                    if qty.ndim != 1:
+                    if coord_.ndim != 1:
                         raise ValueError(
                             f"'coords' have axis {axis_} that does not have "
                             "one-dimensional values"
@@ -67,17 +102,22 @@ class Points(Domain, PointsFeature):
                         "dimensions"
                     )
                 data = pd.DataFrame(data=coords, columns=coord_system.axes)
-                result_coords = {
-                    axis_: pint.Quantity(
-                        vals.to_numpy(dtype=axis_.encoding['dtype']),
-                        units.get(axis_)
+                result_coords = {}
+                for axis_, vals in data.items():
+                    attrs = axis_.encoding.copy()
+                    coord_units = units.get(axis_)
+                    coord_dtype = attrs.pop('dtype', None)
+                    coord_ = vals.to_numpy(dtype=coord_dtype)
+                    attrs['units'] = coord_units
+                    result_coords[axis_] = xr.DataArray(
+                        data=coord_, dims=self._DIMS_, attrs=attrs
                     )
-                    for axis_, vals in data.items()
-                }
             case _:
                 raise TypeError("'coords' must be a sequence or mapping")
 
-        super().__init__(coords=result_coords, coord_system=coord_system)
+        ds = Domain.as_xarray_dataset(result_coords, coord_system)
+
+        super().__init__(ds=ds)
 
 
 class Profiles(Domain, ProfilesFeature):
@@ -91,12 +131,15 @@ class Profiles(Domain, ProfilesFeature):
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
 
-        units = coord_system.units
         interm_coords = dict(coords)
         result_coords: dict[axis.Axis, xr.DataArray] = {}
         prof = (self._DIMS_[0],)
         n_prof = set()
-        vert = interm_coords.pop(axis.vertical)
+        # FIXME: The purpose of this code is to get the actual axis passed by
+        # `coords`, but it is not working as intended.
+        vert_axis = ({axis.vertical} & interm_coords.keys()).pop()
+        vert = interm_coords.pop(vert_axis)
+        vert_attrs = vert_axis.encoding.copy()
 
         # Vertical.
         if isinstance(vert, Sequence):
@@ -104,8 +147,7 @@ class Profiles(Domain, ProfilesFeature):
             n_lev_tot = max(n_lev)
             n_prof_tot = len(vert)
             vert_vals = np.empty(
-                shape=(n_prof_tot, n_lev_tot),
-                dtype=axis.vertical.encoding['dtype']
+                shape=(n_prof_tot, n_lev_tot), dtype=vert_attrs.pop('dtype')
             )
             for i, (stop_idx, vals) in enumerate(zip(n_lev, vert)):
                 if stop_idx == n_lev_tot:
@@ -113,12 +155,14 @@ class Profiles(Domain, ProfilesFeature):
                 else:
                     vert_vals[i, :stop_idx] = vals
                     vert_vals[i, stop_idx:] = np.nan
-            vert_ = pint.Quantity(vert_vals, units[axis.vertical])
+            vert_qty = pint.Quantity(vert_vals, coord_system.units[vert_axis])
         else:
-            vert_ = create_quantity(
-                vert, units.get(axis.vertical), axis.vertical.encoding['dtype']
+            vert_qty = create_quantity(
+                vert,
+                coord_system.units.get(vert_axis),
+                vert_attrs.pop('dtype')
             )
-            vert_shape = vert_.shape
+            vert_shape = vert_qty.shape
             if len(vert_shape) != 2:
                 raise ValueError(
                     "'coords' must have vertical as a two-dimensional data "
@@ -126,21 +170,26 @@ class Profiles(Domain, ProfilesFeature):
                 )
             n_prof_tot, n_lev_tot = vert_shape
 
-        result_coords[axis.vertical] = xr.DataArray(
-            vert_, dims=self._DIMS_
+        vert_attrs['units'] = vert_qty.units
+        result_coords[vert_axis] = xr.DataArray(
+            data=vert_qty.magnitude, dims=self._DIMS_, attrs=vert_attrs
         )
 
         # All coordinates except the vertical.
         for axis_, vals in interm_coords.items():
+            attrs = axis_.encoding.copy()
             qty = create_quantity(
-                vals, units.get(axis_), axis_.encoding['dtype']
+                vals, coord_system.units.get(axis_), attrs.pop('dtype')
             )
+            attrs['units'] = qty.units
             if qty.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
                     "one-dimensional values"
                 )
-            result_coords[axis_] = xr.DataArray(qty, dims=prof)
+            result_coords[axis_] = xr.DataArray(
+                data=qty.magnitude, dims=prof, attrs=attrs
+            )
             n_prof.add(qty.size)
         if len(n_prof) != 1:
             raise ValueError(
@@ -148,13 +197,18 @@ class Profiles(Domain, ProfilesFeature):
                 "equal sizes"
             )
         if n_prof_tot != n_prof.pop():
-            raise ValueError("'coords' have items of with inappropriate sizes")
+            raise ValueError("'coords' have items of inappropriate sizes")
         if not set(coord_system.axes) <= result_coords.keys():
             raise ValueError(
                 "'coords' must have all axes from the coordinate system"
             )
 
-        super().__init__(coords=result_coords, coord_system=coord_system)
+        ds = Domain.as_xarray_dataset(result_coords, coord_system)
+
+        super().__init__(ds=ds)
+
+    def as_points(self) -> Points:
+        return Points._from_xarray_dataset(_as_points_dataset(self))
 
 
 class Grid(Domain, GridFeature):
@@ -171,28 +225,61 @@ class Grid(Domain, GridFeature):
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
         coord_system: CoordinateSystem
     ) -> None:
-        units = coord_system.units
-        interm_coords = dict(coords)
+        if not isinstance(coords, Mapping):
+            raise TypeError("'coords' must be a mapping")
 
-        # TODO: REVIEW! - we need to keep the order as in the CRS
-        result_coords = {
-            axis_: create_quantity(
-                values=interm_coords.pop(axis_),
-                default_units=units.get(axis_),
-                default_dtype=axis_.encoding['dtype']
-            )
-            for axis_ in coord_system.dim_axes
-        }
-        result_coords |= {
-            axis_: create_quantity(
-                values=coord,
-                default_units=units.get(axis_),
-                default_dtype=axis_.encoding['dtype']
-            )
-            for axis_, coord in interm_coords.items()
-        }
+        result_coords = {}
+        dims: tuple[axis.Axis, ...]
+        dim_axes = set(coord_system.dim_axes)
+        for axis_, coord in coords.items():
+            attrs = axis_.encoding.copy()
+            if isinstance(coord, pd.IntervalIndex):
+                if coord.closed != 'both':
+                    raise NotImplementedError(
+                        "'coords' contain an open interval index, which is "
+                        "currently not supported"
+                    )
+                attrs['units'] = 'dimensionless'
+                del attrs['dtype']
+                coord_vals = coord.to_numpy()
+                dims = (axis_,)
+            else:
+                coord_units = coord_system.units.get(axis_)
+                coord_dtype = attrs.pop('dtype', None)
+                coord_qty = create_quantity(coord, coord_units, coord_dtype)
+                attrs['units'] = coord_qty.units
+                coord_vals = coord_qty.magnitude
+                if (
+                    coord_vals.dtype is np.dtype(object)
+                    and isinstance(coord_vals[0], pd.Interval)
+                ):
+                    coord_vals = pd.IntervalIndex(coord_vals, closed='both')
 
-        super().__init__(result_coords, coord_system)
+                if axis_ in dim_axes:
+                    # Dimension coordinates.
+                    match coord_vals.ndim:
+                        case 0:
+                            # Constant.
+                            dims = ()
+                        case 1:
+                            # Oridinary dimension coordinate.
+                            dims = (axis_,)
+                        case _:
+                            # Anything else (not allowed).
+                            raise ValueError(
+                                f"'coords' have a dimension axis {axis_} that "
+                                "has multi-dimensional values"
+                            )
+                else:
+                    # Auxiliary coordinates.
+                    dims = coord_system.crs.dim_axes if coord_vals.ndim else ()
+
+            result_coords[axis_] = xr.DataArray(
+                data=coord_vals, dims=dims, attrs=attrs
+            )
+
+        dset = Domain.as_xarray_dataset(result_coords, coord_system)
+        super().__init__(dset)
 
     def infer_resolution(self, axis):
         return self.coords[axis].ptp() / (self.coords[axis].size - 1)
@@ -250,3 +337,6 @@ class Grid(Domain, GridFeature):
         )
         # x, y = transformer.transform(lon, lat)
         return transformer.transform(lon, lat)
+
+    def as_points(self) -> Points:
+        return Points._from_xarray_dataset(_as_points_dataset(self))

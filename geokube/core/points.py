@@ -1,3 +1,5 @@
+# TODO: Consider if this file is redundant.
+
 from enum import Enum, unique
 
 import numpy as np

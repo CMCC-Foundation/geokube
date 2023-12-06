@@ -3,6 +3,8 @@ from __future__ import annotations
 from pyproj import crs as pyproj_crs
 
 from . import axis
+import xarray as xr
+import numpy as np
 
 
 class CRS:
@@ -78,7 +80,20 @@ class CRS:
 
     @classmethod
     def from_cf(cls, *args, **kwargs) -> CRS:
-        match crs := pyproj_crs.CRS.from_cf(*args, **kwargs):
+        crs = pyproj_crs.CRS.from_cf(*args, **kwargs)
+
+        # HACK: In some cases, the type of `crs` is `pyproj.crs.crs.CRS`, and
+        # not any of its subclasses. This is a workaroung to find "the correct"
+        # class and create `crs` as an instance of this class.
+        # NOTE: This check should be *only* against `CRS` and *not* its
+        # subclasses, so:
+        # pylint: disable=unidiomatic-typecheck
+        if type(crs) is pyproj_crs.crs.CRS:
+            crs_kwa = crs.to_json_dict()
+            crs_type = getattr(pyproj_crs.crs, crs_kwa['type'])
+            crs = crs_type.from_json_dict(crs_kwa)
+
+        match crs:
             case pyproj_crs.GeographicCRS():
                 return Geodetic(crs=crs)
             case pyproj_crs.DerivedGeographicCRS():
@@ -90,6 +105,13 @@ class CRS:
 
     def to_cf(self) -> dict:
         return self._crs.to_cf()
+
+    def as_xarray(self) -> xr.DataArray:
+        grid_mapping_attrs = self.to_cf()
+        grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
+        return xr.DataArray(data=np.byte(1),
+                            name=grid_mapping_name,
+                            attrs=grid_mapping_attrs)
 
 
 class Geodetic(CRS):
@@ -104,6 +126,7 @@ class Geodetic(CRS):
     @property
     def dim_Y_axis(self):
         return axis.latitude
+
 
 class RotatedGeodetic(CRS):
     _DIM_AXES_TYPES = (axis.GridLatitude, axis.GridLongitude)
@@ -161,6 +184,7 @@ class RotatedGeodetic(CRS):
     @property
     def dim_Y_axis(self) -> axis.Axis:
         return axis.grid_latitude
+
 
 class Projection(CRS):
     _DIM_AXES_TYPES = (axis.Y, axis.X)

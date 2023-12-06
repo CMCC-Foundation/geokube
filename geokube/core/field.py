@@ -8,6 +8,7 @@ import dask.array as da
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from pyproj import Transformer
 import pint
 import xarray as xr
 
@@ -22,7 +23,9 @@ from .coord_system import CoordinateSystem
 
 from .crs import Geodetic
 from .domain import Domain, Grid
-from .feature import PointsFeature, ProfilesFeature, GridFeature
+from .feature import (
+    PointsFeature, ProfilesFeature, GridFeature, _as_points_dataset
+)
 
 
 def to_pyarrow_tensor(data):
@@ -49,6 +52,21 @@ class Field:
 
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
+
+    # NOTE: `Domain` and `Field` have exactly the same method.
+    @classmethod
+    def _from_xarray_dataset(
+        cls,
+        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+    ) -> Self:
+        obj = object.__new__(cls)
+        # TODO: Make sure that `cls.__mro__[2]` returns the correct `Feature`
+        # class from the inheritance hierarchy.
+        feature_cls = cls.__mro__[2]
+        # pylint: disable=unnecessary-dunder-call
+        feature_cls.__init__(obj, ds, cf_mappings)
+        return obj
 
     # 
     # - this is the same method name in Feature class ->
@@ -81,6 +99,22 @@ class Field:
             properties=properties,
             encoding=encoding
         )
+
+    @classmethod
+    def as_xarray_dataset(
+        cls,
+        data_vars: Mapping[str, npt.ArrayLike | pint.Quantity | xr.DataArray],
+        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
+        coord_system: CoordinateSystem
+    ) -> xr.Dataset:
+        da = coord_system.crs.as_xarray()
+        r_coords = coords
+        r_coords[da.name] = da
+        ds = xr.Dataset(
+            coords=r_coords
+        )
+        ds.attrs['grid_mapping'] = da.name
+        return ds
 
     # def _prepare_dset(self,
     #                   name,
@@ -299,9 +333,10 @@ class PointsField(Field, PointsFeature):
             )
 
         data_vars = {}
-        attrs = properties if not None else {}
+        attrs = properties if properties is not None else {}
+        attrs['units'] = data_.units
         data_vars[name] = xr.DataArray(
-            data=data_, dims=self._DIMS_, attrs=attrs
+            data=data_.magnitude, dims=self._DIMS_, attrs=attrs
         )
         data_vars[name].encoding = encoding if encoding is not None else {}
 
@@ -311,14 +346,14 @@ class PointsField(Field, PointsFeature):
                     data=anc_data, dims=self._DIMS_
                 )
 
-        ds_attrs = {_FIELD_NAME_ATTR_: name}
+        # ds_attrs = {_FIELD_NAME_ATTR_: name}
 
-        super().__init__(
-            data_vars=data_vars,
-            coords=domain.coords,
-            attrs=ds_attrs,
-            coord_system=domain.coord_system
-        )
+        dset = domain._dset
+        dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
+        dset = dset.assign(data_vars)
+        dset.attrs[_FIELD_NAME_ATTR_] = name
+
+        super().__init__(dset)
 
 
 class ProfilesField(Field, ProfilesFeature):
@@ -395,24 +430,30 @@ class ProfilesField(Field, ProfilesFeature):
                     "'data' must be two-dimensional and have the same shape "
                     "as the coordinates"
                 )
-        
+
         data_vars = {}
-        attrs = properties if not None else {}
-        data_vars[name] = xr.DataArray(data=data_, dims=self._DIMS_, attrs=attrs)
+        attrs = properties if properties is not None else {}
+        attrs['units'] = data_.units
+        data_vars[name] = xr.DataArray(
+            data=data_.magnitude, dims=self._DIMS_, attrs=attrs
+        )
         data_vars[name].encoding = encoding if encoding is not None else {}
-        
+
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
                 data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
-        
-        ds_attrs = {_FIELD_NAME_ATTR_: name}
 
-        super().__init__(
-            data_vars=data_vars,
-            coords=domain.coords,
-            attrs=ds_attrs,
-            coord_system=domain.coord_system
-        )
+        # ds_attrs = {_FIELD_NAME_ATTR_: name}
+
+        dset = domain._dset
+        dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
+        dset = dset.assign(data_vars)
+        dset.attrs[_FIELD_NAME_ATTR_] = name
+
+        super().__init__(dset)
+
+    def as_points(self) -> PointsField:
+        return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
 
 class GridField(Field, GridFeature):
@@ -430,7 +471,6 @@ class GridField(Field, GridFeature):
         properties: Mapping | None = None,
         encoding: Mapping | None = None
     ) -> None:
-
 #        aux_axes = domain.coord_system.aux_axes
 #        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
 #        
@@ -449,63 +489,80 @@ class GridField(Field, GridFeature):
                 data_ = None
             case _:
                 data_ = pint.Quantity(np.asarray(data))
-        
+
         #NOTE: THIS CODE CAN BE PUT IN ONE METHOD COMMON FOR ALL FIELDS! (MAYBE!)
-        coords = {}
-        for ax, coord in domain.coords.items():
-            coords[ax] = xr.DataArray(coord, 
-                                      dims=domain._dset[ax].dims, 
-                                      attrs=domain._dset[ax].attrs)
-        
+
+        # coords = {}
+        # for ax, coord in domain.coords.items():
+        #     coords[ax] = xr.DataArray(coord, 
+        #                               dims=domain._dset[ax].dims, 
+        #                               attrs=domain._dset[ax].attrs)
+
         grid_mapping_attrs = domain.coord_system.spatial.crs.to_cf()
         grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
-        coords[grid_mapping_name] = xr.DataArray(data=np.byte(1),
-                                                 name=grid_mapping_name,
-                                                 attrs = grid_mapping_attrs)
+        # coords[grid_mapping_name] = xr.DataArray(data=np.byte(1),
+        #                                          name=grid_mapping_name,
+        #                                          attrs = grid_mapping_attrs)
 
         data_vars = {}
 
         field_attrs = properties if properties is not None else {} # TODO: attrs can contain both properties and CF attrs
-        data_vars[name] = xr.DataArray(data=data_, dims=domain._dset.dims, attrs=field_attrs)
-        data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name'] 
+        field_attrs |= {
+            'units': data_.units, 'grid_mapping': grid_mapping_name
+        }
+        data_vars[name] = xr.DataArray(
+            data=None if data_ is None else data_.magnitude,
+            dims=domain._dset.dims,
+            attrs=field_attrs
+        )
         data_vars[name].encoding = encoding if encoding is not None else {}
-        
+
         if ancillary is not None:
             ancillary_names = []
             for anc_name, anc_data in ancillary.items():
                 data_vars[anc_name] = xr.DataArray(data=anc_data, dims=domain._dset.dims)
-                data_vars[name].attrs['grid_mapping'] = grid_mapping_attrs['grid_mapping_name']
+                data_vars[name].attrs['grid_mapping'] = grid_mapping_name
                 ancillary_names.append(anc_name)
 
             data_vars[name].attrs['ancillary_variables'] = " ".join(ancillary_names)
-        
-        ds_attrs = {_FIELD_NAME_ATTR_: name}
+
+        # ds_attrs = {_FIELD_NAME_ATTR_: name}
 
 # UNTIL HERE
 
-        super().__init__(
-            data_vars=data_vars,
-            coords=coords, 
-            attrs=ds_attrs,
-            coord_system=domain.coord_system
-        )
+        # ds = xr.Dataset(
+        #     data_vars=data_vars,
+        #     coords=coords,
+        #     attrs=ds_attrs
+        # )
+
+        # super().__init__(
+        #     ds=ds
+        # )
+
+        dset = domain._dset
+        dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
+        dset = dset.assign(data_vars)
+        dset.attrs[_FIELD_NAME_ATTR_] = name
+
+        super().__init__(dset)
 
     # Spatial operations ------------------------------------------------------
 
-    def nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> PointsField:  # Self:
-        feature = super().nearest_horizontal(latitude, longitude)
+    # def nearest_horizontal(
+    #     self,
+    #     latitude: npt.ArrayLike | pint.Quantity,
+    #     longitude: npt.ArrayLike | pint.Quantity
+    # ) -> PointsField:  # Self:
+    #     feature = super().nearest_horizontal(latitude, longitude)
 
-        return PointsField(
-            name=self.name,
-            domain=Points(
-                coords=feature.coords, coord_system=feature.coord_system
-            ),
-            data=feature._dset[self.name].data
-        )
+    #     return PointsField(
+    #         name=self.name,
+    #         domain=Points(
+    #             coords=feature.coords, coord_system=feature.coord_system
+    #         ),
+    #         data=feature._dset[self.name].data
+    #     )
 
     def regrid(
         self, 
@@ -513,6 +570,7 @@ class GridField(Field, GridFeature):
         method: str = 'bilinear'
     ) -> Self:
         import xesmf as xe
+
         if not isinstance(target, Domain):
             if isinstance(target, GridField):
                 target = target.domain
@@ -528,52 +586,61 @@ class GridField(Field, GridFeature):
         # get spatial lat/lon coordinates
         # we should get all horizontal coordinates -> e.g. Projection, RotatedPole ...
         # 
-        lat = target.coords[axis.latitude]
-        lon = target.coords[axis.longitude]
         
-        ds_out = xr.Dataset(
-            {
-                "lat": (["lat"], lat),
-                "lon": (["lon"], lon)
-            }
-        )
+        # NOTE: Maybe it is better to use `target._dset.coords` instead of
+        # `target.coords` because the former keeps the attributes.
+        # lat = target.coords[axis.latitude]
+        # lon = target.coords[axis.longitude]
+        target_coords = dict(target._dset.coords)
+        lat = target_coords[axis.latitude].to_numpy()
+        lon = target_coords[axis.longitude].to_numpy()
+
+        ds_out = xr.Dataset({"lat": (["lat"], lat), "lon": (["lon"], lon)})
 
         # NOTE: before regridding we need to dequantify  
-        ds = self._dset.pint.dequantify()
+        # ds = self._dset.pint.dequantify()
         #
         # if we have ancillary data how they should be regridded?
         # for the moment we assume the same method for the field
         # TODO: maybe user should specify method for ancillary too!
         #
-        regridder = xe.Regridder(ds, ds_out, method, unmapped_to_nan=True)
-        dset_reg = regridder(ds, keep_attrs=True)
-        
-        ancillary = {}
-        for v in dset_reg.data_vars:
-            if v != self.name:
-                ancillary[v] = dset_reg[v].pint.quantify()
+        # NOTE: The new underlying dataset does not need dequantification
+        # because coordinates and data variables are already dequantified,
+        # while the units are in the attributes.
+        regridder = xe.Regridder(
+            self._dset, ds_out, method, unmapped_to_nan=True
+        )
+        dset_reg = regridder(self._dset, keep_attrs=True)
 
-        new_cs = CoordinateSystem(horizontal=target.coord_system.spatial.crs,
-                            elevation=self.coord_system.spatial.elevation,
-                            time=self.coord_system.time,
-                            user_axes=self.coord_system.user_axes)
-    
+        ancillary = {
+            name: darr
+            for name, darr in dset_reg.data_vars.items()
+            if name != self.name
+        }
+
+        new_cs = CoordinateSystem(
+            horizontal=target.coord_system.spatial.crs,
+            elevation=self.coord_system.spatial.elevation,
+            time=self.coord_system.time,
+            user_axes=self.coord_system.user_axes
+        )
+
         coords = {}
         for ax in new_cs.axes:
             if isinstance(ax, axis.Horizontal):
-                coords[ax] = target.coords[ax]
+                coords[ax] = target_coords[ax]
             else:
-                coords[ax] = self.coords[ax]
+                coords[ax] = self._dset.coords[ax]
 
         return GridField(
             name=self.name,
-            data=dset_reg[self.name].pint.quantify(),
+            data=dset_reg[self.name],  # .pint.quantify(),
             domain=Grid(coords=coords, coord_system=new_cs),
             ancillary=ancillary,
             properties=self.properties,
             encoding=self.encoding
         )
-    
+
     def interpolate_(
         self, target: Domain | Field, method: str = 'nearest', **kwargs
     ) -> Field:
@@ -646,7 +713,8 @@ class GridField(Field, GridFeature):
     ) -> Field:
         # spatial interpolation
         # dset = self._dset.pint.dequantify() - it is needed since units are not kept!
-        dset = self._dset.pint.dequantify()
+        # dset = self._dset.pint.dequantify()
+        dset = self._dset
 
         match target:
             case Domain():
@@ -676,11 +744,15 @@ class GridField(Field, GridFeature):
             # TODO: workaround - remove when adding attributes to field for ancillary data.
             ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
-            target_coords = target.coords
+            coords = dict(dset.coords)
+            del coords[dset.attrs['grid_mapping']]
+            coords = {axis: coord.to_numpy() for axis, coord in coords.items()}
             target_coords = {
-                axis: target_coords[axis] for axis in target.crs.axes
+                axis: coord.to_numpy()
+                for axis, coord in target._dset.coords.items()
+                if axis in target.crs.axes
             }
-            target_coords = self.coords | target_coords
+            target_coords = coords | target_coords
             kwargs.setdefault('fill_value', 'extrapolate')
             ds = dset.interp(
                 coords=target_coords, method=method, kwargs=kwargs
@@ -726,6 +798,10 @@ class GridField(Field, GridFeature):
             target=self.domain.as_geodetic(), # this has a semantic -> domain geodetic grid can be different from the original
             method="nearest"
         )
+
+
+    def as_points(self) -> PointsField:
+        return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
     def resample(
         self, freq: str, operator: Callable | str = 'nanmean', **kwargs

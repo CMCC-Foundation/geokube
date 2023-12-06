@@ -1,8 +1,8 @@
-import pint
+import pandas as pd
 import xarray as xr
-import cf_xarray as cfxr
+import cf_xarray as cfxr  # pylint: disable=unused-import  # noqa: F401
 
-from geokube import axis, CoordinateSystem, CRS, Geodetic, RotatedGeodetic
+from geokube import CoordinateSystem, CRS, Geodetic, RotatedGeodetic, axis
 from geokube.core import domain, field
 
 
@@ -24,7 +24,7 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
         dset_cf = dset.cf
         dset_coords = dict(dset.coords)
 
-        # Horizontal coordinate system:
+        # Horizontal coordinate system. ---------------------------------------
         if gmn := dset_cf.grid_mapping_names:
             crs_var_name = next(iter(gmn.values()))[0]
             hor_crs = CRS.from_cf(dset[crs_var_name].attrs)
@@ -32,32 +32,67 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
         else:
             hor_crs = Geodetic()
 
-        # Coordinates.
+        # Axis names. ---------------------------------------------------------
+        axes = {}
+        for standard_name, name in dset_cf.standard_names.items():
+            assert len(name) == 1
+            if (axis_ := axis._from_string(standard_name)) is not None:
+                axes[name[0]] = axis_
+        for dim in dset.dims:
+            if (
+                dim not in axes
+                and (axis_ := axis._from_string(dim)) is not None
+            ):
+                axes[dim] = axis_
+
+        # Coordinates. --------------------------------------------------------
         coords = {}
         for cf_coord, cf_coord_names in dset_cf.coordinates.items():
             assert len(cf_coord_names) == 1
             cf_coord_name = cf_coord_names[0]
             coord = dset_coords.pop(cf_coord_name)
+            coord.attrs.setdefault('units', 'dimensionless')
             axis_ = axis._from_string(cf_coord)
-            coords[axis_] = pint.Quantity(
-                coord.to_numpy(), coord.attrs.get('units')
+            coords[axis_] = xr.Variable(
+                dims=tuple(axes[dim] for dim in coord.dims),
+                data=coord.to_numpy(),
+                attrs=coord.attrs,
+                encoding=coord.encoding
             )
         for cf_axis, cf_axis_names in dset_cf.axes.items():
             assert len(cf_axis_names) == 1
             cf_axis_name = cf_axis_names[0]
             if cf_axis_name in dset_coords:
                 coord = dset_coords.pop(cf_axis_name)
+                coord.attrs.setdefault('units', 'dimensionless')
                 axis_ = axis._from_string(cf_axis.lower())
                 if isinstance(hor_crs, RotatedGeodetic):
                     if axis_ is axis.x:
                         axis_ = axis.grid_longitude
                     elif axis_ is axis.y:
                         axis_ = axis.grid_latitude
-                coords[axis_] = pint.Quantity(
-                    coord.to_numpy(), coord.attrs.get('units')
+                coords[axis_] = xr.Variable(
+                    dims=tuple(axes[dim] for dim in coord.dims),
+                    data=coord.to_numpy(),
+                    attrs=coord.attrs,
+                    encoding=coord.encoding
                 )
+        # Time bounds.
+        if t_bnds := (dset.cf.bounds.get('time') or dset.cf.bounds.get('T')):
+            assert len(t_bnds) == 1
+            time_vals = dset[t_bnds[0]].to_numpy()
+            time_bnds = pd.IntervalIndex.from_arrays(
+                left=time_vals[:, 0], right=time_vals[:, 1], closed='both'
+            )
+            time_coord = coords[axis.time]
+            coords[axis.time] = xr.Variable(
+                dims=time_coord.dims,
+                data=time_bnds,
+                attrs=time_coord.attrs,
+                encoding=time_coord.encoding
+            )
 
-        # Coordinate system.
+        # Coordinate system. --------------------------------------------------
         time = {
             axis_
             for axis_ in coords
@@ -78,15 +113,26 @@ def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
             time=time.pop() if time else None
         )
 
-        # Domain.
-        field_type = _FEATURE_MAP[dset.attrs.get('featureType')]
-        domain_type = field_type._DOMAIN_CLS_
-        domain_ = domain_type(coords=coords, coord_system=crs)
+        # Domain. -------------------------------------------------------------
+        result_dset = domain.Domain.as_xarray_dataset(coords, crs)
+        result_dset = result_dset.drop_indexes(result_dset.xindexes)
+        result_dset.encoding.update(dset.encoding)
 
-        # Data.
+        # Data. ---------------------------------------------------------------
         var = dset[var_name]
-        data = pint.Quantity(var.data, var.attrs.get('units'))
+        data = xr.Variable(
+            dims=tuple(axes[dim] for dim in var.dims),
+            data=var.to_numpy(),
+            attrs=var.attrs,
+            encoding=var.encoding
+        )
+        data.attrs['grid_mapping'] = result_dset.attrs['grid_mapping']
+        data.attrs.setdefault('units', 'dimensionless')
+        data_vars = {var_name: data}
+        result_dset = result_dset.assign(data_vars)
+        result_dset.attrs[field._FIELD_NAME_ATTR_] = var_name
 
-        # Field
-        field = field_type(name=var_name, domain=domain_, data=data)
-        return field
+        # Field. --------------------------------------------------------------
+        field_type = _FEATURE_MAP[dset.attrs.get('featureType')]
+        result = field_type._from_xarray_dataset(result_dset)
+        return result

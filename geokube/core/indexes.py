@@ -3,12 +3,13 @@ from typing import Any, Hashable, Mapping, Self
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 import pint
 import xarray as xr
 
 from . import axis
 from .indexers import get_indexer, get_slice_indexer
-from .quantity import get_magnitude
+from .quantity import create_quantity, get_magnitude
 
 
 # TODO: Consider making this module and `TwoDimIndex` internal.
@@ -36,12 +37,17 @@ class OneDimIndex(xr.core.indexes.Index):
             raise TypeError("'variables' key must be an instance of 'Axis'")
 
         data, dims = var.data, var.dims
-        if not isinstance(data, pint.Quantity):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        data_qty = (
+            data
+            if isinstance(data, pint.Quantity) else
+            pint.Quantity(data, var.attrs['units'])
+        )
+        # if not isinstance(data, pint.Quantity):
+        #     raise TypeError("'variables' must contain data of type 'Quantity'")
         if len(dims) != 1:
             raise ValueError("'variables' value must be be one-dimensional")
 
-        return cls(data=data, dims=dims, coord_axis=coord_axis)
+        return cls(data=data_qty, dims=dims, coord_axis=coord_axis)
 
     def sel(
         self,
@@ -94,12 +100,25 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
                 "'variables' must contain both latitude and longitude"
             ) from err
 
-        lat_data, lon_data = lat.data, lon.data
-        if not (
-            isinstance(lat_data, pint.Quantity)
-            and isinstance(lon_data, pint.Quantity)
-        ):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        lat_data = lat.data
+        lat_qty = (
+            lat_data
+            if isinstance(lat_data, pint.Quantity) else
+            pint.Quantity(lat_data, lat.attrs['units'])
+        )
+        lon_data = lon.data
+        lon_qty = (
+            lon_data
+            if isinstance(lon_data, pint.Quantity) else
+            pint.Quantity(lon_data, lon.attrs['units'])
+        )
+
+        # lat_data, lon_data = lat.data, lon.data
+        # if not (
+        #     isinstance(lat_data, pint.Quantity)
+        #     and isinstance(lon_data, pint.Quantity)
+        # ):
+        #     raise TypeError("'variables' must contain data of type 'Quantity'")
 
         dims = lat.dims
         if lon.dims != dims:
@@ -107,7 +126,7 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
         if len(dims) != 1:
             raise ValueError("'variables' must contain one-dimensional data")
 
-        return cls(latitude=lat_data, longitude=lon_data, dims=dims)
+        return cls(latitude=lat_qty, longitude=lon_qty, dims=dims)
 
     def sel(
         self,
@@ -162,9 +181,9 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
                 "'variables' must contain the vertical coordinate"
             ) from err
 
-        vert_data = vert.data
-        if not isinstance(vert_data, pint.Quantity):
-            raise TypeError("'variables' must contain data of type 'Quantity'")
+        vert_data = create_quantity(
+            vert.data, vert.attrs.get('units'), vert.data.dtype
+        )
 
         dims = vert.dims
         if set(dims) != {'_profiles', '_levels'}:
@@ -247,19 +266,26 @@ class OneDimPandasIndex(xr.core.indexes.Index):
         if len(variables) != 1:
             raise ValueError("'variables' can contain exactly one item")
         coord_axis, var = next(iter(variables.items()))
-        qty = var.data
+        data = var.data
+        if (
+            data.dtype is np.dtype(object) and isinstance(data[0], pd.Interval)
+        ):
+            vals, units = pd.IntervalIndex(data, closed='both'), pint.Unit('')
+        else:
+            qty = create_quantity(data, var.attrs.get('units'), data.dtype)
+            vals, units = qty.magnitude, qty.units
         idx = xr.core.indexes.PandasIndex.from_variables(
             variables={
                 coord_axis: xr.Variable(
                     dims=var.dims,
-                    data=qty.magnitude,
+                    data=vals,
                     attrs=var.attrs,
                     encoding=var.encoding
                 )
             },
             options={}
         )
-        return cls(idx, qty.units)
+        return cls(idx, units)
 
     def sel(
         self,
@@ -280,10 +306,10 @@ class OneDimPandasIndex(xr.core.indexes.Index):
 
 @dataclass(frozen=True, slots=True)
 class TwoDimHorGridIndex(xr.core.indexes.Index):
-    # latitude: pint.Quantity
-    # longitude: pint.Quantity
-    latitude: np.ndarray
-    longitude: np.ndarray
+    latitude: pint.Quantity
+    longitude: pint.Quantity
+    # latitude: np.ndarray
+    # longitude: np.ndarray
     dims: tuple[Hashable]
 
     @classmethod
@@ -304,12 +330,12 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
                 "'variables' must contain both latitude and longitude"
             ) from err
 
-        lat_data, lon_data = lat.data, lon.data
-        # if not (
-        #     isinstance(lat_data, pint.Quantity)
-        #     and isinstance(lon_data, pint.Quantity)
-        # ):
-        #     raise TypeError("'variables' must contain data of type 'Quantity'")
+        lat_qty = create_quantity(
+            lat.data, lat.attrs.get('units'), lat.data.dtype
+        )
+        lon_qty = create_quantity(
+            lon.data, lon.attrs.get('units'), lon.data.dtype
+        )
 
         all_dims = {lat.dims, lon.dims}
         if len(all_dims) != 1:
@@ -318,7 +344,7 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
         if len(dims) != 2:
             raise ValueError("'variables' must contain two-dimensional data")
 
-        return cls(latitude=lat_data, longitude=lon_data, dims=dims)
+        return cls(latitude=lat_qty, longitude=lon_qty, dims=dims)
 
     def sel(
         self,
@@ -338,15 +364,15 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
             ) from err
 
         lat_, lon_ = self.latitude, self.longitude
-        # lat_label = get_magnitude(lat, lat_.units)
-        # lon_label = get_magnitude(lon, lon_.units)
-        lat_label, lon_label = np.asarray(lat), np.asarray(lon)
+        lat_label = get_magnitude(lat, lat_.units)
+        lon_label = get_magnitude(lon, lon_.units)
+        # lat_label, lon_label = np.asarray(lat), np.asarray(lon)
 
         match lat, lon:
             case (slice(), slice()):
                 idx = get_slice_indexer(
-                    # [lat_.magnitude, lon_.magnitude],
-                    [lat_, lon_],
+                    [lat_.magnitude, lon_.magnitude],
+                    # [lat_, lon_],
                     [lat_label, lon_label],
                     combine_result=True,
                     return_type='int'
