@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections.abc import Mapping, Sequence
-from typing import Any, Self
+from typing import Any, Callable, Self
 
 import dask.array as da
 import numpy as np
@@ -154,11 +154,11 @@ class Field:
     def ancillary(self, name: str | None = None) -> dict | pint.Quantity:
         if name is not None:
             return self[name].data
-        ancillary = {}
-        for c in self.data_vars:
+        ancillary_ = {}
+        for c in self._dset.data_vars:
             if c != self.name:
-                ancillary[c] = self._dset[c].data
-        return self.ancillary
+                ancillary_[c] = self._dset[c].data
+        return ancillary_
 
     @property # return field name
     def name(self) -> str:
@@ -741,6 +741,7 @@ class GridField(Field, GridFeature):
             )
             dset = dset.drop(labels=(axis.latitude, axis.longitude))
             ds = dset.interp(coords=target_, method=method, kwargs=kwargs)
+            # TODO: workaround - remove when adding attributes to field for ancillary data.
             ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
             coords = dict(dset.coords)
@@ -798,5 +799,217 @@ class GridField(Field, GridFeature):
             method="nearest"
         )
 
+
     def as_points(self) -> PointsField:
         return PointsField._from_xarray_dataset(_as_points_dataset(self))
+
+    def resample(
+        self, freq: str, operator: Callable | str = 'nanmean', **kwargs
+    ) -> Self:
+        data = self.data
+        dset = self._dset
+        time_idx = dset.xindexes[axis.time].index
+        n_time = time_idx.size
+
+        match time_idx:
+            case pd.DatetimeIndex():
+                time = pd.Series(data=np.arange(n_time), index=time_idx)
+            case pd.IntervalIndex():
+                # TODO: Check if this code has issue with ERA5 (rotated pole),
+                #  when `freq`is e.g. `'5H'`.
+                if kwargs:
+                    raise ValueError(
+                        "'kwargs' are not allowed for interval indices"
+                    )
+                left_bnd, right_bnd = time_idx.left, time_idx.right
+                src_freqs = pd.unique(right_bnd - left_bnd)
+                if src_freqs.size == 1:
+                    src_freq = abs(src_freqs[0])
+                else:
+                    raise ValueError(
+                        "'time_idx' must have equal differences for resampling"
+                    )
+                src_diff = n_time * src_freq
+                dst_freq = pd.to_timedelta(freq).to_timedelta64()
+                ratio = float(dst_freq / src_freq)
+                if ratio.is_integer() and ratio >= 1 and dst_freq <= src_diff:
+                    time = pd.Series(data=np.arange(n_time), index=left_bnd)
+                else:
+                    raise ValueError(
+                        "'freq' does not correspond to the interval durations"
+                    )
+            case _:
+                raise NotImplementedError(
+                    f"'time_idx' has the type {type(time_idx).__name__}, "
+                    "which is not supported; it must be an instance of "
+                    "'DatetimeIndex' or 'IntervalIndex'"
+                )
+
+        left_time_res = time.resample(
+            rule=freq, label='left', origin='start', **kwargs
+        )
+        left_gr = left_time_res.grouper
+        # TODO: Try to avoid the second call to `time.resample` and find the
+        # right bound another way, e.g. with `time_res.freq.delta.to_numpy()`.
+        right_time_res = time.resample(
+            rule=freq, label='right', origin='start', **kwargs
+        )
+        right_gr = right_time_res.grouper
+        new_time = pd.IntervalIndex.from_arrays(
+            left=left_gr.binlabels, right=right_gr.binlabels, closed='both'
+        )
+        time_axis_idx = self.dim_axes.index(axis.time)
+        new_shape = list(data.shape)
+        new_shape[time_axis_idx] = new_time.size
+        # NOTE: For NumPy arrays, it is possible to use `numpy.split`, but it
+        # seems that Dask does not have such a function.
+        bins = left_gr.bins
+        slices = (
+            [slice(bins[0])]
+            + [slice(bins[i], bins[i + 1]) for i in range(bins.size - 1)]
+        )
+        data_ = data.magnitude
+        arr_lib = da if isinstance(data_, da.Array) else np
+        func = operator if callable(operator) else getattr(arr_lib, operator)
+        # FIXME: If `data.dtype` is integral, we want a floating-point result
+        # for some operators like `mean` or `median` and integral for others
+        # like `min` or `max`.
+        new_data = arr_lib.empty(shape=new_shape, dtype=data.dtype)
+        whole_axis = (slice(None),)
+        for i, s in enumerate(slices):
+            idx_before = whole_axis * time_axis_idx
+            idx_after = whole_axis * (len(new_shape) - time_axis_idx - 1)
+            i_ = idx_before + (i,) + idx_after
+            s_ = idx_before + (s,) + idx_after
+            # TODO: Test optimization with something like:
+            # `func(data[s_], axis=time_axis_idx, out=new_data[i_])`.
+            new_data[i_] = func(data_[s_], axis=time_axis_idx)
+
+        domain = self.domain
+        new_coords = domain.coords.copy()
+        new_coords[axis.time] = new_time
+
+        return type(self)(
+            name=self.name,
+            domain=type(domain)(new_coords, domain.coord_system),
+            data=pint.Quantity(new_data, data.units),
+            ancillary=self.ancillary,
+            properties=self.properties,
+            encoding=self.encoding
+        )
+
+    def resample_(
+        self, freq: str, operator: str = 'mean', **kwargs
+    ) -> Self:
+        dset = self._dset
+        time = dset[axis.time]
+        idx = {axis.time: freq}
+        diff = pd.to_timedelta(freq).to_timedelta64()
+
+        match time_idx := dset.xindexes[axis.time].index:
+            case pd.DatetimeIndex():
+                res = dset.resample(indexer=idx, label='left', **kwargs)
+                result_dset = getattr(res, operator)()
+                left = result_dset[axis.time].to_numpy()
+                right = left + diff
+                # grouper = res.groupers[0]
+                # closed = grouper.grouper.closed or 'both'
+                # if (label := grouper.index_grouper.label) == 'left':
+                #     left = result_dset.xindexes[axis.time].index.to_numpy()
+                #     right = left + diff
+                # else:
+                #     right = result_dset.xindexes[axis.time].index.to_numpy()
+                #     left = right - diff
+                result_dset[axis.time] = xr.Variable(
+                    dims=time.dims,
+                    data=pd.IntervalIndex.from_arrays(
+                        left, right, closed=kwargs.get('closed', 'both')
+                    ),
+                    attrs=time.attrs,
+                    encoding=time.encoding
+                )
+            case pd.IntervalIndex():
+                # TODO: Check if this code has issue with ERA5 (rotated pole),
+                #  when `freq`is e.g. `'5H'`.
+                if kwargs:
+                    raise ValueError(
+                        "'kwargs' are not allowed for interval indices"
+                    )
+                left_bnd, right_bnd = time_idx.left, time_idx.right
+                src_freqs = pd.unique(right_bnd - left_bnd)
+                if src_freqs.size == 1:
+                    src_freq = abs(src_freqs[0])
+                else:
+                    raise ValueError(
+                        "'time_idx' must have equal differences for resampling"
+                    )
+                src_diff = time.size * src_freq
+                dst_freq = pd.to_timedelta(freq).to_timedelta64()
+                ratio = float(dst_freq / src_freq)
+                if ratio.is_integer() and ratio >= 1 and dst_freq <= src_diff:
+                    interm_data_vars = {
+                        name: var.variable
+                        for name, var in dset.data_vars.items()
+                    }
+                    interm_coords = dict(dset.coords)
+                    # interm_coords = {
+                    #     axis_: coord
+                    #     for axis_, coord in dset.coords.items()
+                    #     if isinstance(axis_, axis.Axis)
+                    # }
+                    time_axis = (interm_coords.keys() & {axis.time}).pop()
+                    interm_coords[time_axis] = xr.Variable(
+                        dims=time.dims,
+                        data=time_idx.left,
+                        attrs=time.attrs,
+                        encoding=time.encoding
+                    )
+                    interm_dset = xr.Dataset(
+                        data_vars=interm_data_vars,
+                        coords=interm_coords,
+                        attrs=dset.attrs.copy()
+                    )
+                    res = interm_dset.resample(
+                        indexer=idx,
+                        closed='left',
+                        label='left',
+                        origin='start'
+                    )
+                    result_dset = getattr(res, operator)()
+                    left = result_dset[axis.time].to_numpy()
+                    right = left + diff
+                    result_dset[axis.time] = xr.Variable(
+                        dims=time.dims,
+                        data=pd.IntervalIndex.from_arrays(
+                            left, right, closed='both'
+                        ),
+                        attrs=time.attrs,
+                        encoding=time.encoding
+                    )
+                else:
+                    raise ValueError(
+                        "'freq' does not correspond to the interval durations"
+                    )
+            case _:
+                raise NotImplementedError(
+                    f"'time_idx' has the type {type(time_idx).__name__}, "
+                    "which is not supported; it must be an instance of "
+                    "'DatetimeIndex' or 'IntervalIndex'"
+                )
+
+        domain = self.domain
+        name = self.name
+        new_coords = {
+            axis_: coord.pint.quantify().data
+            for axis_, coord in result_dset.coords.items()
+            if isinstance(axis_, axis.Axis)
+        }
+
+        return type(self)(
+            name=name,
+            domain=type(domain)(new_coords, domain.coord_system),
+            data=result_dset[name].data,
+            # ancillary=self.ancillary,
+            properties=self.properties,
+            encoding=self.encoding
+        )
