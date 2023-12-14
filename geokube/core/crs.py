@@ -201,3 +201,52 @@ class Projection(CRS):
     @property
     def dim_Y_axis(self) -> axis.Axis:
         return axis.y
+
+
+# NOTE: The classes `TransverseMercatorConversion` and
+# `LambertConformalConic1SPConversion` have identical signatures for the
+# constructors and thus the identical implementations.
+class TransverseMercatorProjection(Projection):
+    def __init__(
+        self,
+        latitude_natural_origin: float = 0.0,
+        longitude_natural_origin: float = 0.0,
+        false_easting: float = 0.0,
+        false_northing: float = 0.0,
+        scale_factor_natural_origin: float = 1.0,
+        dim_axes: tuple[axis.Horizontal, ...] | None = None,
+        aux_axes: tuple[axis.Horizontal, ...] | None = None,
+    ) -> None:
+        oper = pyproj_crs.coordinate_operation.TransverseMercatorConversion(
+            latitude_natural_origin=latitude_natural_origin,
+            longitude_natural_origin=longitude_natural_origin,
+            false_easting=false_easting,
+            false_northing=false_northing,
+            scale_factor_natural_origin=scale_factor_natural_origin
+        )
+        crs = self._PYPROJ_TYPE(conversion=oper.to_json_dict())
+        super().__init__(dim_axes=dim_axes, aux_axes=aux_axes, crs=crs)
+
+
+class LambertConformalConic1SPProjection(Projection):
+    def __init__(
+        self,
+        latitude_natural_origin: float = 0.0,
+        longitude_natural_origin: float = 0.0,
+        false_easting: float = 0.0,
+        false_northing: float = 0.0,
+        scale_factor_natural_origin: float = 1.0,
+        dim_axes: tuple[axis.Horizontal, ...] | None = None,
+        aux_axes: tuple[axis.Horizontal, ...] | None = None,
+    ) -> None:
+        oper = (
+            pyproj_crs.coordinate_operation.LambertConformalConic1SPConversion(
+                latitude_natural_origin=latitude_natural_origin,
+                longitude_natural_origin=longitude_natural_origin,
+                false_easting=false_easting,
+                false_northing=false_northing,
+                scale_factor_natural_origin=scale_factor_natural_origin
+            )
+        )
+        crs = self._PYPROJ_TYPE(conversion=oper.to_json_dict())
+        super().__init__(dim_axes=dim_axes, aux_axes=aux_axes, crs=crs)
