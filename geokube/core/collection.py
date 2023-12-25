@@ -1,44 +1,37 @@
 from __future__ import annotations
 
-import abc
-from collections.abc import Iterable, Mapping, Sequence
-from functools import wraps
-from typing import Any, Callable, Optional
+from collections.abc import Sequence
 
 import numpy as np
-import numpy.typing as npt
 import pandas as pd
 import xarray as xr
 
-from .axis import Axis
-from .coord_system import _COORDINATE_SYSTEMS
-from .field import Field
-
 from .cube import Cube
 
+
 class Collection:
-    __slots__ = ('__dataframe', '__cube_idx')
+    __slots__ = ('__data_frame', '__cube_idx', '__filters')
 
     __CUBE_COL = "cube"
 
     def __init__(
         self,
         data: Sequence[Sequence[str | Cube]] | pd.DataFrame,
-        filters: Sequence[str] | None = None,
+        filters: Sequence[str] = (),
     ) -> None:
         if isinstance(data, Sequence):
-            self.__filters = tuple(filters) if filters is not None else ()
-            self.__dataframe = pd.DataFrame(
+            self.__filters = tuple(filters)
+            self.__data_frame = pd.DataFrame(
                 data=data, columns=self.__filters + (self.__CUBE_COL,)
             )
         elif isinstance(data, pd.DataFrame):
-            self.__dataframe = data
+            self.__data_frame = data
             if filters:
                 raise ValueError(
-                    "'filters' must be 'None' or empty sequence when 'data' is "
-                    "instance of 'pd.DataFrame'"
+                    "'filters' must be an empty sequence when 'data' is an "
+                    "instance of 'pandas.DataFrame'"
                 )
-            reserved_names = {self.__FIELD_COL}
+            reserved_names = {self.__CUBE_COL}
             self.__filters = tuple(
                 filters
                 for filter in data.columns.to_list()
@@ -46,36 +39,37 @@ class Collection:
             )
         else:
             raise TypeError(
-                "'data' must be either a sequence that contain parameters and "
-                "fields or an instance of 'pandas.DataFrame'"
+                "'data' must be either a sequence that contains filters and "
+                "cubes or an instance of 'pandas.DataFrame'"
             )
-        self.__cube_idx = len(self.__filters) + 1
+        self.__cube_idx = len(self.__filters)
 
-    def filter(
-        self, **filters_kwargs
-    ) -> Collection | Cube:
-        
-        filters = {**filters_kwargs}
+    # TODO: Consider removing `_data`. It is added for testing purposes.
+    @property
+    def _data(self) -> pd.DataFrame:
+        return self.__data_frame
 
-        if not (idx := filters.keys()) <= (filters := set(self.__filters)):
+    def filter(self, **filter_kwargs) -> Collection:
+        if not (
+            (idx := filter_kwargs.keys()) <= (filters := set(self.__filters))
+        ):
             # TODO: Make better message.
             raise ValueError(
                 f"'filter' cannot use the argument(s): {sorted(idx - filters)}"
             )
-
-        mask = np.full(shape=len(self.__dataframe), fill_value=True, dtype=np.bool_)
-        for name, value in filters.items():
-            mask &= np.in1d(self.__data[name], value)
-        data = self.__dataframe.loc[mask, : self.__CUBE_COL]
-        data.index = np.arange(len(data))
-
-        return Collection(
-            data=data,
-            filters=self.__filters,
+        mask = np.full(
+            shape=len(self.__data_frame), fill_value=True, dtype=np.bool_
         )
-    
-    def cubes(self) -> Sequence[Cube]:
-        return list(self.__dataframe[self.__cube_idx])
-    
+        for filter_name, filter_values in filter_kwargs.items():
+            mask &= np.in1d(self.__data_frame[filter_name], filter_values)
+        data = self.__data_frame.loc[mask]
+        data.index = np.arange(len(data))
+        data = self.__data_frame.loc[mask]
+        data.reset_index(inplace=True, drop=True)
+        return Collection(data=data)
+
+    def cubes(self) -> list[Cube]:
+        return self.__data_frame.iloc[:, self.__cube_idx].to_list()
+
     def merge(self) -> xr.Dataset:
         pass

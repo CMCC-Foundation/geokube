@@ -1,4 +1,5 @@
 from geokube.core import axis
+from geokube.core.collection import Collection
 from geokube.core.coord_system import CoordinateSystem
 from geokube.core.crs import CRS, Geodetic, Projection, RotatedGeodetic
 from geokube.core.cube import Cube
