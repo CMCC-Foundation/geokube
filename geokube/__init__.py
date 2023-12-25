@@ -1,6 +1,7 @@
 from geokube.core import axis
 from geokube.core.coord_system import CoordinateSystem
 from geokube.core.crs import CRS, Geodetic, Projection, RotatedGeodetic
+from geokube.core.cube import Cube
 from geokube.core.domain import Grid, Points, Profiles
 from geokube.core.field import GridField, PointsField, ProfilesField
 from geokube.core.feature import PointsFeature
