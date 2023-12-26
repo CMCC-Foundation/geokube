@@ -53,7 +53,7 @@ class DriverEntrypoint:
 
         raise NotImplementedError
     
-        def open_field(
+    def open_field(
         self,
         filename_or_obj: str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore,
         *,
