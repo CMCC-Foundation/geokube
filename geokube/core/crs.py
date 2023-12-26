@@ -47,11 +47,15 @@ class CRS:
         self,
         *args,
         crs: pyproj_crs.CRS | None,
-        default_type: type[pyproj_crs.CRS],
+        default_type: type[pyproj_crs.CRS] | None,
         **kwargs
     ) -> pyproj_crs.CRS:
         if crs is None:
-            return default_type(*args, **kwargs)
+            return (
+                default_type(*args, **kwargs)
+                if default_type is not None else
+                None
+            )
         if not isinstance(crs, pyproj_crs.CRS):
             raise TypeError(
                 "'crs' must be an instance of 'pyproj.crs.crs.CRS' or 'None'"
@@ -99,7 +103,15 @@ class CRS:
             case pyproj_crs.DerivedGeographicCRS():
                 return RotatedGeodetic(crs=crs)
             case pyproj_crs.ProjectedCRS():
-                return Projection(crs=crs)
+                # proj_name = crs_kwa['conversion']['method']['name']
+                proj_gmn = crs.to_cf()['grid_mapping_name']
+                # if (proj_type := _PROJECTION_NAMES.get(proj_name)) is not None:
+                if (proj_type := _PROJECTION_GMN.get(proj_gmn)) is not None:
+                    proj = object.__new__(proj_type)
+                    CRS.__init__(proj, crs=crs)
+                    return proj
+                else:
+                    return Projection(crs=crs)
             case _:
                 raise TypeError(f"'crs' type {type(crs)} is not supported")
 
@@ -203,6 +215,10 @@ class Projection(CRS):
         return axis.y
 
 
+class UnknownProjection(Projection):
+    _PYPROJ_TYPE = None
+
+
 # NOTE: The classes `TransverseMercatorConversion` and
 # `LambertConformalConic1SPConversion` have identical signatures for the
 # constructors and thus the identical implementations.
@@ -250,3 +266,14 @@ class LambertConformalConic1SPProjection(Projection):
         )
         crs = self._PYPROJ_TYPE(conversion=oper.to_json_dict())
         super().__init__(dim_axes=dim_axes, aux_axes=aux_axes, crs=crs)
+
+
+_PROJECTION_NAMES = {
+    'Lambert Conic Conformal (1SP)': LambertConformalConic1SPProjection,
+    'Transverse Mercator': TransverseMercatorProjection
+}
+
+_PROJECTION_GMN = {
+    'lambert_conformal_conic': LambertConformalConic1SPProjection,
+    'transverse_mercator': TransverseMercatorProjection
+}
