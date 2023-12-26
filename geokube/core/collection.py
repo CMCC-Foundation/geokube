@@ -33,7 +33,7 @@ class Collection:
                 )
             reserved_names = {self.__CUBE_COL}
             self.__filters = tuple(
-                filters
+                filter
                 for filter in data.columns.to_list()
                 if filter not in reserved_names
             )
