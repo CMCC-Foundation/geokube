@@ -1,38 +1,36 @@
+from collections.abc import Sequence, Mapping
 import os
+from types import ModuleType
 
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Sequence,
-    Mapping,
-    Literal,
-    Union,
-)
+from typing import Any, Literal, Union
 
+
+# FIXME: There is an error related to `DriverEntrypoint`.
+
+
+# pylint: disable=unused-import, no-name-in-module
+from . import argo, cfnetcdf, nemo, sentinel, wrf  # noqa
+# from .common import DriverEntrypoint
+from geokube.core.collection import Collection
 from geokube.core.field import Field
 from geokube.core.cube import Cube
-from geokube.core.collection import Collection
 
-if TYPE_CHECKING:
 
-    from geokube.drivers.common import DriverEntrypoint
-    # from geokube.core.types import (
-    # )
+T_Driver = Union[
+    Literal["cfnetcf", "nemo", "wrf", "sentinel2", "argo"],
+    # type[DriverEntrypoint],
+    str,  # no nice typing support for custom backends
+    None,
+]
 
-    T_Driver = Union[
-        Literal["cfnetcf", "nemo", "wrf", "sentinel2", "argo"],
-        type[DriverEntrypoint],
-        str,  # no nice typing support for custom backends
-        None,
-    ]
+# DRIVERS = {
+#     "cfnetcdf": drivers.CFNetCDF.open,
+#     "nemo": drivers.Nemo.open,
+#     "wrf": drivers.Wrf.open,
+#     "sentinel2": drivers.Sentinel2.open,
+#     "argo": drivers.Argo.open
+# }
 
-DRIVERS = {
-    "cfnetcdf": drivers.CFNetCDF.open,
-    "nemo": drivers.Nemo.open,
-    "wrf": drivers.Wrf.open,
-    "sentinel2": drivers.Sentinel2.open,
-    "argo": drivers.Argo.open
-}
 
 def open_fields(
     filename_or_obj: str | os.PathLike[Any],
@@ -44,6 +42,7 @@ def open_fields(
 ) -> Field | Mapping[str, Field]:
     pass
 
+
 def open_cubes(
     filename_or_obj: str | os.PathLike[Any], 
     ncvars: list[str] | None = None,
@@ -54,6 +53,7 @@ def open_cubes(
 ) -> Cube | Sequence[Cube]:
     pass
 
+
 def open_collection(
     pattern_or_obj: str,
     *,
@@ -62,12 +62,34 @@ def open_collection(
     xarray_kwargs: dict[str, Any] | None = None,
     **kwargs,        
 ) -> Collection:
-    pass
+    if callable(driver):
+        driver_call = driver
+    else:
+        match driver:
+            case ModuleType():
+                driver_module = driver
+            case str():
+                driver_module = globals()[driver]
+            case _:
+                raise TypeError(f"'driver' type {type(driver)} not supported")
+        driver_call = getattr(driver_module, 'open')
+
+    kwa = driver_kwargs or {}
+    result = driver_call(pattern_or_obj, **kwa, xarray_kwargs=xarray_kwargs)
+    match result:
+        case Field():
+            return Collection(data=[Cube(fields=[result])])
+        case Cube():
+            return Collection(data=[result])
+        case Collection():
+            return result
+        case _:
+            raise TypeError("'result' must be a field, cube, or collection")
 
 
-coll = geokube.open_collection(
-    '/path/to/files', 
-    driver='wrf', 
-    driver_kwargs={ 'projection': 'lmabert'},
-    xarray_kwargs={ 'engine': 'zarr'}
-)
+# coll = geokube.open_collection(
+#     '/path/to/files', 
+#     driver='wrf', 
+#     driver_kwargs={ 'projection': 'lmabert'},
+#     xarray_kwargs={ 'engine': 'zarr'}
+# )

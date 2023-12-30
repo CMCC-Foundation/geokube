@@ -1,9 +1,15 @@
+from collections.abc import Sequence
+from typing import Any
+
 import pint
 import xarray as xr
 
 from geokube import (
-    axis, CoordinateSystem, Geodetic, Profiles, ProfilesField, units
+    CoordinateSystem, Cube, Geodetic, Profiles, ProfilesField, axis, units
 )
+
+
+# TODO: Chenge the name of `open` because it is a name of a built-in function.
 
 
 _ARGO_DATA_VARS = (
@@ -27,13 +33,29 @@ _ARGO_DATA_VARS = (
 )
 
 
-def open_argo(path: str, variable: str, **kwargs) -> ProfilesField:
+def open(
+    path: str,
+    variables: str | Sequence[str] | None = None,
+    xarray_kwargs: dict[str, Any] | None = None,
+    **kwargs
+) -> ProfilesField | Cube:
     import gsw
 
-    var = str(variable)
-    redundant_vars = set(_ARGO_DATA_VARS) - {'PRES', var}
+    match variables:
+        case None:
+            vars_ = ['PRES', 'TEMP', 'PSAL']
+        case str():
+            vars_ = [variables]
+        case Sequence():
+            vars_ = list(variables)
+
+    redundant_vars = set(_ARGO_DATA_VARS) - {'PRES', *vars_}
     kwa = {'decode_coords': 'all', 'drop_variables': redundant_vars}
-    with xr.open_dataset(path, **kwa, **kwargs) as dset:
+
+    if xarray_kwargs:
+        kwa |= xarray_kwargs
+
+    with xr.open_dataset(path, **kwa) as dset:
         time = dset['TIME']
         time_vals = time.to_numpy()
         lat = dset['LATITUDE']
@@ -55,14 +77,23 @@ def open_argo(path: str, variable: str, **kwargs) -> ProfilesField:
             horizontal=Geodetic(), elevation=axis.vertical, time=axis.time
         )
         domain = Profiles(coords=coords, coord_system=coord_system)
-        data_var = dset[var]
-        data_vals, data_units = data_var.data, data_var.attrs.get('units', '')
-        field = ProfilesField(
-            name=var.lower(),
-            domain=domain,
-            data=pint.Quantity(data_vals, data_units),
-            anciliary=None,
-            properties=dset.attrs,
-            encoding=dset.encoding
-        )
-        return field
+        fields = []
+        for var in vars_:
+            data_var = dset[var]
+            data_vals = data_var.data
+            data_units = data_var.attrs.get('units', '')
+            try:
+                data_qty = pint.Quantity(data_vals, data_units)
+            except ValueError:
+                # TODO: Consider how to deal with the "units" of `PSAL`.
+                data_qty = pint.Quantity(data_vals)
+            field = ProfilesField(
+                name=var.lower(),
+                domain=domain,
+                data=data_qty,
+                ancillary=None,
+                properties=dset.attrs,
+                encoding=dset.encoding
+            )
+            fields.append(field)
+        return fields[0] if len(fields) == 1 else Cube(fields=fields)
