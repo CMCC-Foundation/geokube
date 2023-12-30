@@ -18,6 +18,7 @@ class Cube:
     )
 
     # TODO: Check if the slot `_ancillary` is needed.
+    # TODO: Consider keeping the fields sequence.
 
     #
     # should we use compose here? use feature as an internal object
@@ -135,6 +136,7 @@ class Cube:
             needed_vars = {key}
             redundant_vars = self._dset.data_vars.keys() - needed_vars
             dset = self._dset.drop_vars(names=redundant_vars)
+            dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
             return self._field_cls._from_xarray_dataset(dset)
 
         raise TypeError("'key' must be an instance of 'str' or 'Axis'")
