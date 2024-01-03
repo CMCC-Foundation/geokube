@@ -1,32 +1,51 @@
+"""
+Field
+=====
+
+A field construct that contains a data variable with related units,
+domain, ancillary constructs, properties, etc.
+
+Classes
+-------
+
+:class:`geokube.core.field.Field`
+    Base class for field constructs
+
+:class:`geokube.core.field.PointsField`
+    Field defined on a point domain
+
+:class:`geokube.core.field.ProfilesField`
+    Field defined on a profile domain
+
+:class:`geokube.core.field.GridField`
+    Field defined on a gridded domain
+
+"""
+
 from __future__ import annotations
 
-import abc
 from collections.abc import Mapping, Sequence
-from typing import Any, Callable, Self
+from typing import Callable, Self
 
 import dask.array as da
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from pyproj import Transformer
 import pint
+import pyarrow as pa
+from pyproj import Transformer
 import xarray as xr
 
-from . import axis, indexes
+from . import axis
+from .coord_system import CoordinateSystem
 from .crs import Geodetic
 from .domain import Domain, Grid, Points, Profiles
-from .indexers import get_array_indexer, get_indexer
-from .points import to_points_dict
-from .quantity import get_magnitude
-import pyarrow as pa
-from .coord_system import CoordinateSystem
-
-from .crs import Geodetic
-from .domain import Domain, Grid
 from .feature import (
     PointsFeature, ProfilesFeature, GridFeature, _as_points_dataset
 )
 
+
+# TODO: Check whether `pyarrow` stuff should be documented or removed.
 
 def to_pyarrow_tensor(data):
     # this method return a pyarrow tensor
@@ -41,11 +60,13 @@ def to_pyarrow_tensor(data):
     # type is given by tensor.type
     return pa.FixedShapeTensorArray.from_numpy_ndarray(data)
 
+
 _ARRAY_TYPES = (np.ndarray, da.Array)
 
 _FIELD_NAME_ATTR_ = '_geokube.field_name'
 
 
+# TODO: Consider making this class internal.
 class Field:
     __slots__ = ()
     _DOMAIN_CLS_: type[Domain]
