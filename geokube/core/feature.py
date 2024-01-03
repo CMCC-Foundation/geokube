@@ -1,6 +1,32 @@
+"""
+Feature
+=======
+
+A feature construct that serves as a base class for domains and fields.
+
+
+Classes
+-------
+
+:class:`geokube.core.feature.FeatureMixin`
+    Mixin class for common domain and field properties and methods
+
+:class:`geokube.core.feature.Feature`
+    Base class for feature, domain, and field constructs
+
+:class:`geokube.core.feature.PointsFeature`
+    Feature defined on a point domain
+
+:class:`geokube.core.feature.ProfilesFeature`
+    Feature defined on a profile domain
+
+:class:`geokube.core.feature.GridFeature`
+    Feature defined on a gridded domain
+
+"""
+
 from collections.abc import Mapping
 from datetime import date, datetime
-from itertools import chain
 from numbers import Number
 from typing import Self, Any
 from warnings import warn
@@ -9,8 +35,8 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
-import pint_xarray
-import pyarrow as pa
+# pylint: disable=unused-import
+import pint_xarray  # noqa: F401
 import xarray as xr
 
 from . import axis, indexes
@@ -20,8 +46,6 @@ from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
 
-
-# class FeatureMixin():
 
 # NOTE:
 # inherit from xr Dataset do not work since it is not possible to create 
@@ -35,53 +59,202 @@ from .quantity import get_magnitude
 # enhanced with the coordinate system class.
 # 
 
+
 class FeatureMixin:
+    """
+    Mixin class for common domain and field properties and methods.
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes: tuple
+        Return the auxiliary axes of a domain.
+    aux_coords: dict
+        Return the auxiliary coordinates of a domain.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+    isel(indexers: Mapping, **xarray_kwargs)
+    bounding_box(south, north, west, east, bottom, top)
+    nearest_horizontal(latitude, longitude)
+    nearest_vertical(elevation)
+    time_range(start, end)
+    nearest_time(time)
+    latest()
+
+    """
+
     @property
     def coords(self) -> dict[axis.Axis, pint.Quantity]:
+        """
+        Return the coordinates of a domain, with their units.
+
+        The coordinates contain the axes, coordinate values, and
+        coordinate units.  They are represented as a `dict` with the
+        :class:`geokube.core.axis.Axis` instance keys and
+        :class:`pint.Quantity` values.
+
+        """
         return self._coords
 
     @property
-    def coord_system(self):
+    def coord_system(self) -> CoordinateSystem:
+        """
+        Return the coordinate system of a domain.
+
+        The coordinate system is an instance of the class
+        :class:`geokube.core.coord_system.CoordinateSystem`.  It
+        contains the information on the spatial, temporal, and other
+        axes and related units, as well as about the horizontal
+        coordinate reference system.
+
+        """
         return self._coord_system
 
     @property
-    def crs(self) -> dict[axis.Axis, pint.Quantity]:
+    def crs(self) -> CRS:
+        """
+        Return the coordinate reference system of a domain.
+
+        The horizontal coordinate reference system is an instance of a
+        subclass of the class :class:`geokube.core.crs.CRS`.  It
+        contains dimension and auxiliary horizontal axes, and can be
+        used for transformations.
+
+        """
         return self.coord_system.spatial.crs
 
-    # CF Methods 
-    @property  # return dimensional axes
+    @property
     def dim_axes(self) -> tuple[axis.Axis, ...]:
+        """
+        Return the dimension axes of a domain.
+
+        There can be any number of kind of axes.  They are represented
+        as a `tuple` of :class:`geokube.core.axis.Axis` instances.
+
+        """
         return self.coord_system.dim_axes
 
     @property
     def dim_coords(self) -> dict[axis.Axis, pint.Quantity]:
+        """
+        Return the dimension coordinates of a domain.
+
+        The coordinates contain the axes, coordinate values, and
+        coordinate units.  They are represented as a `dict` with the
+        :class:`geokube.core.axis.Axis` instance keys and
+        :class:`pint.Quantity` values.
+
+        """
         return self._dim_coords
 
-    @property  # return auxiliary axes
+    @property
     def aux_axes(self) -> tuple[axis.Horizontal, ...]:
+        """
+        Return the auxiliary axes of a domain.
+
+        Auxiliary axes can be only horizontal.  They are represented
+        as a `tuple` of :class:`geokube.core.axis.Horizontal`
+        instances.
+
+        """
         return self.coord_system.aux_axes
 
     @property
     def aux_coords(self) -> dict[axis.Axis, pint.Quantity]:
+        """
+        Return the auxiliary coordinates of a domain.
+
+        The coordinates contain the axes, coordinate values, and
+        coordinate units.  They are represented as a `dict` with the
+        :class:`geokube.core.axis.Axis` instance keys and
+        :class:`pint.Quantity` values.
+
+        """
         return self._aux_coords
 
     def sel(
-        self, indexers: Mapping[axis.Axis, Any], **xarray_kwargs: Mapping
+        self, indexers: Mapping[axis.Axis, Any] | None = None,
+        **xarray_kwargs
     ) -> Self:
-#        return type(self)(self._dset.sel(indexers, **xarray_kwargs))
-        return self._from_xarray_dataset(
-            self._dset.sel(indexers, **xarray_kwargs)
-        )
-    
-    def isel(
-        self, indexers: Mapping[axis.Axis, Any], **xarray_kwargs: Mapping
-    ) -> Self:
-#        return type(self)(self._dset.isel(indexers, **xarray_kwargs))
-        return self._from_xarray_dataset(
-            self._dset.isel(indexers, **xarray_kwargs)
-        )
+        """
+        Return a new feature, domain, or field selected by labels.
 
-    # spatial operations
+        The subsetting operation can be done only along the dimensions.
+        Subsetting is unit-aware, which means that unit conversion can
+        be performed on the labels in the background if necesssary.
+        The coordinates and data variables are reduced.  The type of
+        the caller and other data are preserved.
+
+        Parameters
+        ----------
+        indexers : dict-like, optional
+            A mapping with the keys that must be the dimensional axes
+            and the values that represent the corresponding labels.
+            The values can be scalars, arrays, or slices. They can have
+            the units (i.e. can be instances of the class
+            :class:`pint.Quantity`).  If a label does not have a unit,
+            then it is assumed that its unit is the default unit for
+            the corresponding axis (key).
+
+        xarray_kwargs : dict, optional
+            Keyword arguments passed to :meth:`xarray.Dataset.sel`.
+
+        Returns
+        -------
+        out : caller type
+            New feature, domain, or field created as a result of
+            subsetting.  The type of the subsetted object is preserved.
+
+        """
+        dset = self._dset.sel(indexers=indexers, **xarray_kwargs)
+        out = self._from_xarray_dataset(dset)
+        return out
+
+    def isel(
+        self, indexers: Mapping[axis.Axis, Any] | None = None,
+        **xarray_kwargs
+    ) -> Self:
+        """
+        Return a new feature, domain, or field selected by indexes.
+
+        The subsetting operation can be done only along the dimensions.
+        The coordinates and data variables are reduced.  The type of
+        the caller and other data are preserved.
+
+        Parameters
+        ----------
+        indexers : dict-like, optional
+            A mapping with the keys that must be the dimensional axes
+            and the values that represent the corresponding integer
+            indexes.
+
+        xarray_kwargs : dict, optional
+            Keyword arguments passed to :meth:`xarray.Dataset.isel`.
+
+        Returns
+        -------
+        out : caller type
+            New feature, domain, or field created as a result of
+            subsetting.  The type of the subsetted object is preserved.
+
+        """
+        dset = self._dset.isel(indexers, **xarray_kwargs)
+        out = self._from_xarray_dataset(dset)
+        return out
+
+    # Spatial subsetting ------------------------------------------------------
+
     def bounding_box(
         self,
         south: Number | pint.Quantity | None = None,
@@ -115,6 +288,8 @@ class FeatureMixin:
     ) -> Self:
         idx = {axis.vertical: elevation}
         return self.sel(idx, method='nearest', tolerance=np.inf)
+
+    # Temporal subsetting -----------------------------------------------------
 
     def time_range(
         self,
@@ -254,6 +429,7 @@ class PointsFeature(Feature):
 
     @property
     def number_of_points(self) -> int:
+        """Returns the number of points in a domain or field."""
         return self._dset['_points'].size
 
 
@@ -287,10 +463,12 @@ class ProfilesFeature(Feature):
 
     @property
     def number_of_profiles(self) -> int:
+        """Returns the number of profiles in a domain or field."""
         return self._dset['_profiles'].size
 
     @property
     def number_of_levels(self) -> int:
+        """Returns the number of levels in a domain or field."""
         return self._dset['_levels'].size
 
     def bounding_box(
@@ -547,192 +725,3 @@ def _as_points_dataset(feature: Feature) -> xr.Dataset:
         data_vars=new_data, coords=new_coords, attrs=feature._dset.attrs
     )
     return new_dset
-
-
-class GridFeature_(Feature):
-    __slots__ = ('_DIMS_',)
-
-    def __init__(
-        self,
-        coords: (
-            Mapping[axis.Axis, pint.Quantity | xr.DataArray]
-            | xr.core.coordinates.DatasetCoordinates
-        ),
-        coord_system: CoordinateSystem,
-        data_vars: Mapping[str, pint.Quantity | xr.DataArray] | None = None,
-        attrs: Mapping | None = None
-    ) -> None:
-        crs = coord_system.spatial.crs
-        self._DIMS_ = coord_system.dim_axes
-
-        # TODO: Refactor this.
-        match coords:
-            case Mapping():
-                res_coords = {}
-                for axis_, coord in coords.items():
-                    if isinstance(coord, xr.DataArray):
-                        coord_data = coord.data
-                        if isinstance(coord_data, pint.Quantity):
-                            coord_vals = coord_data.magnitude
-                            coord_units = str(coord_data.units)
-                        else:
-                            coord_vals = coord_data
-                            coord_units = 'dimensionless'
-                        if (
-                            coord.dtype is np.dtype(object)
-                            and isinstance(coord_vals[0], pd.Interval)
-                        ):
-                            coord = xr.DataArray(
-                                data=pd.IntervalIndex(
-                                    coord_vals, closed='both'
-                                ),
-                                dims=coord.dims,
-                                attrs={'units': coord_units}
-                            )
-                        res_coords[axis_] = coord
-                    else:
-                        dims: tuple[axis.Axis, ...]
-                        if axis_ in self._DIMS_:
-                            # Dimension coordinates.
-                            match coord.ndim:
-                                case 0:
-                                    dims = ()
-                                case 1:
-                                    dims = (axis_,)
-                                case _:
-                                    raise ValueError(
-                                        "'coords' have a dimension axis "
-                                        f"{axis_} that has multi-dimensional "
-                                        "values"
-                                    )
-                        else:
-                            # Auxiliary coordinates.
-                            dims = crs.dim_axes if coord.ndim else ()
-                        coord_vals = coord.magnitude
-                        if (
-                            coord_vals.dtype is np.dtype(object)
-                            and isinstance(coord_vals[0], pd.Interval)
-                        ):
-                            coord_data = pd.IntervalIndex(
-                                coord_vals, closed='both'
-                            )
-                        else:
-                            coord_data = coord_vals
-                        coord_ = xr.DataArray(
-                            data=coord_data,
-                            dims=dims,
-                            attrs={'units': str(coord.units)}
-                        )
-                        #
-                        # dequantify is needed because pandas index do not keep quantity 
-                        # in the coordinates
-                        # -> dequantify put units as attributes in the dataset
-                        # we need to add also cf-attributes
-                        # 
-                        # res_coords[axis_] = coord_.pint.dequantify()
-                        res_coords[axis_] = coord_
-
-            case xr.core.coordinates.DatasetCoordinates():
-                res_coords = coords
-            case _:
-                raise TypeError(
-                    "'coords' can be a mapping or coordinates object"
-                )
-
-        match data_vars:
-            case Mapping():
-                res_data_vars = {
-                    str(name): (
-                        var
-                        if isinstance(var, xr.DataArray) else
-                        xr.DataArray(data=var, dims=self._DIMS_)
-                    )
-                    for name, var in data_vars.items()
-                }
-            case None:
-                res_data_vars = None
-            case _:
-                raise TypeError("'data_vars' can be a mapping or 'None'")
-
-        super().__init__(
-            data_vars=res_data_vars,
-            coords=res_coords,
-            coord_system=coord_system,
-            attrs=attrs
-        )
-        if (
-            {axis.latitude, axis.longitude}
-            == set(self._coord_system.spatial.crs.aux_axes)
-        ):
-            self._dset = self._dset.set_xindex(
-                self.aux_axes, indexes.TwoDimHorGridIndex
-            )
-
-    def nearest_horizontal(
-        self,
-        latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
-    ) -> PointsFeature:
-        # Preparing data, labels, units, and dimensions.
-        # TODO: Reconsider this.
-        name = self._dset.attrs['_geokube.field_name']
-        coord_system = self.coord_system
-        dset = self._dset
-        lat = dset[axis.latitude]
-        lat_vals = lat.data
-        lon = dset[axis.longitude]
-        lon_vals = lon.data
-
-        # lat_labels = get_magnitude(latitude, lat_data.units)
-        # lon_labels = get_magnitude(longitude, lon_data.units)
-        lat_labels = np.asarray(latitude)
-        lon_labels = np.asarray(longitude)
-
-        if isinstance(coord_system.spatial.crs, Geodetic):
-            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
-            # dims = ('_latitude', '_longitude')
-            dims = (axis.latitude, axis.longitude)
-        else:
-            all_dims = {lat.dims, lon.dims}
-            if len(all_dims) != 1:
-                raise ValueError(
-                    "'dset' must contain latitude and longitude with the same"
-                    "dimensions for rotated geodetic and projection grids"
-                )
-            dims = all_dims.pop()
-
-        # Calculating indexers and subsetting.
-        # ---> ???
-        idx = get_array_indexer(
-            [lat_vals, lon_vals],
-            [lat_labels, lon_labels],
-            method='nearest',
-            tolerance=np.inf,
-            return_all=False
-        )
-
-        pts_dim = ('_points',)
-        pts_idx = [(pts_dim, dim_idx) for dim_idx in idx]
-        result_idx = dict(zip(dims, pts_idx))
-        dset = dset.isel(indexers=result_idx)
-        dset = dset.drop_vars(
-            names=[self.coord_system.spatial.crs.to_cf()['grid_mapping_name']]
-        )
-
-        # Creating the resulting points field.
-        new_coords = to_points_dict(name=name, dset=dset)
-        del new_coords['points']
-        new_data = new_coords.pop(name)
-        # NOTE: This is important to quantify data since it seems that
-        # `xarray.Dataset.pint.quantify()` does not work well with non-string
-        # dimensions.
-        new_coords = {
-            axis_: pint.Quantity(coord, dset[axis_].attrs['units'])
-            for axis_, coord in new_coords.items()
-        }
-
-        return PointsFeature(
-            coords=new_coords,
-            coord_system=coord_system,
-            data_vars={name: new_data}
-        )

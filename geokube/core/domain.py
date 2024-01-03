@@ -1,13 +1,39 @@
+"""
+Domain
+======
+
+A domain construct that contains dimension and auxiliary axes,
+coordinate values and related units, coordinate reference system, etc.
+
+
+Classes
+-------
+
+:class:`geokube.core.domain.Domain`
+    Base class for domain constructs
+
+:class:`geokube.core.domain.Points`
+    Point domain defined at scattered locations and times
+
+:class:`geokube.core.domain.Profiles`
+    Profile domain defined along a vertical line at fixed locations
+
+:class:`geokube.core.domain.Grid`
+    Gridded domain defined at a spatial and temporal grid
+
+"""
+
 from collections.abc import Mapping, Sequence
-from typing import Any, Self
+from typing import Self
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
-import pint_xarray
-import xarray as xr
+# pylint: disable=unused-import
+import pint_xarray  # noqa: F401
 from pyproj import Transformer
+import xarray as xr
 
 from . import axis
 from .coord_system import CoordinateSystem
@@ -19,6 +45,7 @@ from .crs import Geodetic
 from .units import units
 
 
+# TODO: Consider making this class internal.
 # TODO: Consider renaming this class to `DomainMixin`.
 # NOTE: maybe we don't need this class
 class Domain:
