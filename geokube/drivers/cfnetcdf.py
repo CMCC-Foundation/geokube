@@ -1,3 +1,5 @@
+from typing import Any
+
 import pandas as pd
 import xarray as xr
 import cf_xarray as cfxr  # pylint: disable=unused-import  # noqa: F401
@@ -17,10 +19,16 @@ _FEATURE_MAP: dict[str | None, type[field.Field]] = {
 }
 
 
-def open_cf_netcdf(path: str, variable: str, **kwargs) -> field.Field:
+def open(
+    path: str,
+    variable: str,
+    xarray_kwargs: dict[str, Any] | None = None,
+    **kwargs
+) -> field.Field:
     var_name = str(variable)
-    kwargs.setdefault('decode_coords', 'all')
-    with xr.open_dataset(path, **kwargs) as dset:
+    kwa = xarray_kwargs or {}
+    kwa.setdefault('decode_coords', 'all')
+    with xr.open_dataset(path, **kwa) as dset:
         dset_cf = dset.cf
         dset_coords = dict(dset.coords)
 
