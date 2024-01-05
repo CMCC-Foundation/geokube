@@ -9,7 +9,7 @@ from typing import Any, Literal, Union
 
 
 # pylint: disable=unused-import, no-name-in-module
-from . import argo, cfnetcdf, nemo, sentinel, wrf  # noqa
+from . import argo, cfnetcdf, nemo, sentinel2, wrf  # noqa
 # from .common import DriverEntrypoint
 from geokube.core.collection import Collection
 from geokube.core.field import Field
