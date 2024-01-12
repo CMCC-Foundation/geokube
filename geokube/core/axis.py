@@ -150,6 +150,8 @@ grid_longitude = GridLongitude()
 latitude = Latitude()
 longitude = Longitude()
 vertical = Vertical()
+height = Height()
+depth = Depth()
 time = Time()
 timedelta = Time(encoding={'dtype': 'timedelta64'})
 
@@ -168,6 +170,8 @@ __predefined_axis__ = {
     'latitude': latitude,
     'longitude': longitude,
     'vertical': vertical,
+    'height': height,
+    'depth': depth,
     'time': time,
     'timedelta': timedelta
 }

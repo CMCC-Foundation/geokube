@@ -145,6 +145,7 @@ class CoordinateSystem:
 
     @property
     def units(self) -> dict[axis.Axis, pint.Unit]:
+        # TODO: Consider providing units in the initializer.
         return {axis: axis.units for axis in self.__all_axes}
 
     def add_axis(self, new_axis: axis.UserDefined) -> Self:

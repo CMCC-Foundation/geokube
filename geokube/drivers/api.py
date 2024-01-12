@@ -17,7 +17,7 @@ from geokube.core.cube import Cube
 
 
 T_Driver = Union[
-    Literal["cfnetcf", "nemo", "wrf", "sentinel2", "argo"],
+    Literal["cfnetcdf", "nemo", "wrf", "sentinel2", "argo"],
     # type[DriverEntrypoint],
     str,  # no nice typing support for custom backends
     None,
