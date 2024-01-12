@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -155,11 +155,13 @@ depth = Depth()
 time = Time()
 timedelta = Time(encoding={'dtype': 'timedelta64'})
 
+
 def create(
     name: str, units: pint.Unit | str, encoding: dict
 ) -> None:
     # TODO: Implement this.
     pass
+
 
 __predefined_axis__ = {
     'x': x,
@@ -176,6 +178,30 @@ __predefined_axis__ = {
     'timedelta': timedelta
 }
 
+
 def _from_string(name: str):
-    if (name in __predefined_axis__):
-        return __predefined_axis__[name]
+    return __predefined_axis__.get(name)
+
+
+UserDefinedT_co = TypeVar(
+    'UserDefinedT_co', bound=UserDefined, covariant=True
+)
+
+
+def custom(
+    type_name: str,
+    default_units: str | pint.Unit | None = None,
+    default_encoding: Mapping[str, Any] | None = None,
+    default_dtype: npt.DTypeLike | None = None,
+) -> UserDefinedT_co:
+    # NOTE: To be used in this manner: `ensemble = custom('Ensemble')`.
+    name = str(type_name)
+    base = (UserDefined,)
+    dict_ = {
+        '_DEFAULT_UNITS_': pint.Unit(default_units),
+        '_DEFAULT_ENCODING_': dict(default_encoding or {}),
+        '_DEFAULT_DTYPE_': np.dtype(default_dtype)
+    }
+    cls_ = type(name, base, dict_)
+    obj = cls_()
+    return obj
