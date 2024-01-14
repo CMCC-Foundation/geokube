@@ -128,7 +128,7 @@ class CellMethod:
 
     @classmethod
     def parse(cls, val: str | None) -> Self:
-        # FIXME: This examples do not work:
+        # FIXME: These examples do not work:
         # * `val = 'lon: maximum time: mean'`,
         # * `val = 'time: mean lon: maximum'`,
         # * `val = 'lat: lon: standard_deviation (interval: 0.1 degree_N interval: 0.2 degree_E)'`.
