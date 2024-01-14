@@ -37,6 +37,7 @@ from pyproj import Transformer
 import xarray as xr
 
 from . import axis
+from .cell_method import CellMethod
 from .coord_system import CoordinateSystem
 from .crs import Geodetic
 from .domain import Domain, Grid, Points, Profiles
@@ -70,6 +71,8 @@ _FIELD_NAME_ATTR_ = '_geokube.field_name'
 class Field:
     __slots__ = ()
     _DOMAIN_CLS_: type[Domain]
+
+    _dset: xr.Dataset
 
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
@@ -111,7 +114,7 @@ class Field:
                 ancillary[c] = dset[c].data
         else:
             ancillary = None
-        
+
         return cls(
             name=name,
             domain=domain,
@@ -184,7 +187,7 @@ class Field:
     @property # return field name
     def name(self) -> str:
         return self._dset.attrs[_FIELD_NAME_ATTR_]
-    
+
     @property # define data method to return field data
     def data(self):
         return self._dset[self.name].data
@@ -196,6 +199,13 @@ class Field:
     @property
     def encoding(self):
         return self._dset[self.name].encoding
+
+    @property
+    def cell_method(self) -> CellMethod | None:
+        darr = self._dset[self.name]
+        if (cmethod := darr.attrs.get('cell_methods')) is not None:
+            return CellMethod.parse(cmethod)
+        return None
 
     # return an xarray dataset CF-Compliant
     def to_xarray(self) -> xr.Dataset:
@@ -327,7 +337,8 @@ class PointsField(Field, PointsFeature):
         data: npt.ArrayLike | pint.Quantity | None = None,
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
-        encoding: Mapping | None = None
+        encoding: Mapping | None = None,
+        cell_method: str = ''
     ) -> None:
         n_pts = domain.number_of_points
         match data:
@@ -356,6 +367,8 @@ class PointsField(Field, PointsFeature):
         data_vars = {}
         attrs = properties if properties is not None else {}
         attrs['units'] = data_.units
+        if cell_method:
+            attrs['cell_methods'] = cell_method
         data_vars[name] = xr.DataArray(
             data=data_.magnitude, dims=self._DIMS_, attrs=attrs
         )
@@ -388,7 +401,8 @@ class ProfilesField(Field, ProfilesFeature):
         data: npt.ArrayLike | pint.Quantity | None = None,
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
-        encoding: Mapping | None = None
+        encoding: Mapping | None = None,
+        cell_method: str = ''
     ) -> None:
         n_prof, n_lev = domain.number_of_profiles, domain.number_of_levels
         data_shape = (n_prof, n_lev)
@@ -455,6 +469,8 @@ class ProfilesField(Field, ProfilesFeature):
         data_vars = {}
         attrs = properties if properties is not None else {}
         attrs['units'] = data_.units
+        if cell_method:
+            attrs['cell_methods'] = cell_method
         data_vars[name] = xr.DataArray(
             data=data_.magnitude, dims=self._DIMS_, attrs=attrs
         )
@@ -490,7 +506,8 @@ class GridField(Field, GridFeature):
 #        dim_axes: Sequence[axis.Axis] | None = None, # This should not be used ... we fix the field to have all axis of the Domain!
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
-        encoding: Mapping | None = None
+        encoding: Mapping | None = None,
+        cell_method: str = ''
     ) -> None:
 #        aux_axes = domain.coord_system.aux_axes
 #        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
@@ -531,6 +548,8 @@ class GridField(Field, GridFeature):
         field_attrs |= {
             'units': data_.units, 'grid_mapping': grid_mapping_name
         }
+        if cell_method:
+            field_attrs['cell_methods'] = cell_method
         data_vars[name] = xr.DataArray(
             data=None if data_ is None else data_.magnitude,
             dims=domain._dset.dims,
