@@ -394,6 +394,14 @@ class Feature(FeatureMixin):
 
         self._aux_coords = {ax: ds[ax].data for ax in coord_system.aux_axes}
 
+    def __eq__(self, other, /) -> bool:
+        if type(self) is not type(other):
+            return False
+        return self._dset.identical(other._dset)
+
+    def __ne__(self, other, /) -> bool:
+        return not self == other
+
     @classmethod
     def _from_xarray_dataset(
         cls,

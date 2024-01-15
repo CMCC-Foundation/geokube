@@ -9,7 +9,7 @@ from typing import Any, Literal, Union
 
 
 # pylint: disable=unused-import, no-name-in-module
-from . import argo, cfnetcdf, nemo, sentinel, wrf  # noqa
+from . import argo, cfnetcdf, nemo, sentinel2, wrf  # noqa
 # from .common import DriverEntrypoint
 from geokube.core.collection import Collection
 from geokube.core.field import Field
@@ -17,7 +17,7 @@ from geokube.core.cube import Cube
 
 
 T_Driver = Union[
-    Literal["cfnetcf", "nemo", "wrf", "sentinel2", "argo"],
+    Literal["cfnetcdf", "nemo", "wrf", "sentinel2", "argo"],
     # type[DriverEntrypoint],
     str,  # no nice typing support for custom backends
     None,
