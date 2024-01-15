@@ -10,6 +10,7 @@ from geokube import (
     Collection, CoordinateSystem, CRS, Cube, Geodetic, RotatedGeodetic, axis
 )
 from geokube.core import domain, field
+from geokube.core.cell_method import CellMethod
 
 
 _FEATURE_MAP: dict[str | None, type[field.Field]] = {
@@ -88,7 +89,16 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
                 encoding=coord.encoding
             )
     # Time bounds.
-    if t_bnds := (dset.cf.bounds.get('time') or dset.cf.bounds.get('T')):
+    if (cm_attr := dset[variable].attrs.get('cell_methods')) is not None:
+        cell_method = CellMethod.parse(cm_attr)
+        cm_axis = cell_method.axis
+        cm_time = cm_axis == 'time' or 'time' in cm_axis
+    else:
+        cm_time = False
+    if (
+        cm_time
+        and (t_bnds := (dset.cf.bounds.get('time') or dset.cf.bounds.get('T')))
+    ):
         assert len(t_bnds) == 1
         time_vals = dset[t_bnds[0]].to_numpy()
         time_bnds = pd.IntervalIndex.from_arrays(
@@ -132,7 +142,7 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
     var = dset[variable]
     data = xr.Variable(
         dims=tuple(axes[dim] for dim in var.dims),
-        data=var.to_numpy(),
+        data=var.data,
         attrs=var.attrs,
         encoding=var.encoding
     )
@@ -170,6 +180,12 @@ def _create_all_fields(
         new_dset = darr.to_dataset().drop_vars(names=redundant_names)
         new_dset.attrs |= dset.attrs
         new_dset.encoding |= dset.encoding
+
+        # Fixing bounds.
+        for coord in new_dset.coords.values():
+            if (bound_name := coord.encoding.get('bounds')) is not None:
+                bounds = {bound_name: dset[bound_name].variable}
+                new_dset = new_dset.assign_coords(coords=bounds)
 
         # Creating and adding the corresponding field.
         new_field = _create_field(new_dset, var)

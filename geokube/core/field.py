@@ -367,6 +367,9 @@ class PointsField(Field, PointsFeature):
         data_vars = {}
         attrs = properties if properties is not None else {}
         attrs['units'] = data_.units
+        # TODO: Check if domain/axis time has intervals when the cell
+        # method exists and is different than points.
+        # NOTE: Cell methods and intervals go together.
         if cell_method:
             attrs['cell_methods'] = cell_method
         data_vars[name] = xr.DataArray(
@@ -469,6 +472,9 @@ class ProfilesField(Field, ProfilesFeature):
         data_vars = {}
         attrs = properties if properties is not None else {}
         attrs['units'] = data_.units
+        # TODO: Check if domain/axis time has intervals when the cell
+        # method exists and is different than points.
+        # NOTE: Cell methods and intervals go together.
         if cell_method:
             attrs['cell_methods'] = cell_method
         data_vars[name] = xr.DataArray(
@@ -548,6 +554,9 @@ class GridField(Field, GridFeature):
         field_attrs |= {
             'units': data_.units, 'grid_mapping': grid_mapping_name
         }
+        # TODO: Check if domain/axis time has intervals when the cell
+        # method exists and is different than points.
+        # NOTE: Cell methods and intervals go together.
         if cell_method:
             field_attrs['cell_methods'] = cell_method
         data_vars[name] = xr.DataArray(
