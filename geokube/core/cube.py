@@ -5,7 +5,7 @@ import pint
 from . import axis
 from .coord_system import CoordinateSystem
 from .domain import Domain
-from .field import _FIELD_NAME_ATTR_, Field
+from .field import Field
 
 
 # Cube is a set of multiple fields on the same domain!
@@ -137,7 +137,7 @@ class Cube:
             redundant_vars = self._dset.data_vars.keys() - needed_vars
             dset = self._dset.drop_vars(names=redundant_vars)
             dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
-            dset.attrs[_FIELD_NAME_ATTR_] = key
+            # dset.attrs[_FIELD_NAME_ATTR_] = key
             return self._field_cls._from_xarray_dataset(dset)
 
         raise TypeError("'key' must be an instance of 'str' or 'Axis'")

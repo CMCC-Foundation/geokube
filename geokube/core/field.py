@@ -64,7 +64,7 @@ def to_pyarrow_tensor(data):
 
 _ARRAY_TYPES = (np.ndarray, da.Array)
 
-_FIELD_NAME_ATTR_ = '_geokube.field_name'
+# _FIELD_NAME_ATTR_ = '_geokube.field_name'
 
 
 # TODO: Consider making this class internal.
@@ -90,6 +90,8 @@ class Field:
         feature_cls = cls.__mro__[2]
         # pylint: disable=unnecessary-dunder-call
         feature_cls.__init__(obj, ds, cf_mappings)
+        names = feature_cls._get_var_names(obj)
+        obj._name = names.pop()
         return obj
 
     # 
@@ -186,7 +188,7 @@ class Field:
 
     @property # return field name
     def name(self) -> str:
-        return self._dset.attrs[_FIELD_NAME_ATTR_]
+        return self._name
 
     @property # define data method to return field data
     def data(self):
@@ -327,7 +329,7 @@ class Field:
 
 
 class PointsField(Field, PointsFeature):
-    __slots__ = ()
+    __slots__ = ('_name',)
     _DOMAIN_CLS_ = Points
 
     def __init__(
@@ -364,6 +366,8 @@ class PointsField(Field, PointsFeature):
                 "the coordinates"
             )
 
+        # TODO: Move the common part for all field types to `Field.__init__`,
+        # together with the `_name` field.
         data_vars = {}
         attrs = properties if properties is not None else {}
         attrs['units'] = data_.units
@@ -388,13 +392,16 @@ class PointsField(Field, PointsFeature):
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(data_vars)
-        dset.attrs[_FIELD_NAME_ATTR_] = name
+        # dset.attrs[_FIELD_NAME_ATTR_] = name
 
         super().__init__(dset)
+        names = self._get_var_names()
+        assert len(names) == 1
+        self._name = names.pop()
 
 
 class ProfilesField(Field, ProfilesFeature):
-    __slots__ = ()
+    __slots__ = ('_name',)
     _DOMAIN_CLS_ = Profiles
 
     def __init__(
@@ -469,6 +476,8 @@ class ProfilesField(Field, ProfilesFeature):
                     "as the coordinates"
                 )
 
+        # TODO: Move the common part for all field types to `Field.__init__`,
+        # together with the `_name` field.
         data_vars = {}
         attrs = properties if properties is not None else {}
         attrs['units'] = data_.units
@@ -491,16 +500,19 @@ class ProfilesField(Field, ProfilesFeature):
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(data_vars)
-        dset.attrs[_FIELD_NAME_ATTR_] = name
+        # dset.attrs[_FIELD_NAME_ATTR_] = name
 
         super().__init__(dset)
+        names = self._get_var_names()
+        assert len(names) == 1
+        self._name = names.pop()
 
     def as_points(self) -> PointsField:
         return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
 
 class GridField(Field, GridFeature):
-    __slots__ = ()
+    __slots__ = ('_name',)
     _DOMAIN_CLS_ = Grid
     # NOTE: The default order of axes is assumed.
 
@@ -548,8 +560,9 @@ class GridField(Field, GridFeature):
         #                                          name=grid_mapping_name,
         #                                          attrs = grid_mapping_attrs)
 
+        # TODO: Move the common part for all field types to `Field.__init__`,
+        # together with the `_name` field.
         data_vars = {}
-
         field_attrs = properties if properties is not None else {} # TODO: attrs can contain both properties and CF attrs
         field_attrs |= {
             'units': data_.units, 'grid_mapping': grid_mapping_name
@@ -592,9 +605,12 @@ class GridField(Field, GridFeature):
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(data_vars)
-        dset.attrs[_FIELD_NAME_ATTR_] = name
+        # dset.attrs[_FIELD_NAME_ATTR_] = name
 
         super().__init__(dset)
+        names = self._get_var_names()
+        assert len(names) == 1
+        self._name = names.pop()
 
     # Spatial operations ------------------------------------------------------
 
@@ -699,7 +715,7 @@ class GridField(Field, GridFeature):
         spatial = coord_system.spatial
         crs = spatial.crs
         attrs = dset.attrs
-        name = attrs[_FIELD_NAME_ATTR_]
+        name = self.name
         del coords[dset[name].attrs['grid_mapping']]
 
         match target:
@@ -747,7 +763,7 @@ class GridField(Field, GridFeature):
             result_dset = result_dset.drop(labels=(axis_x, axis_y))
 
         result_dset = result_dset.pint.quantify()
-        result_dset.attrs[_FIELD_NAME_ATTR_] = attrs[_FIELD_NAME_ATTR_]
+        # result_dset.attrs[_FIELD_NAME_ATTR_] = attrs[_FIELD_NAME_ATTR_]
         result_coord_system = CoordinateSystem(
             horizontal=target_domain.coord_system.spatial.crs,
             elevation=spatial.elevation,

@@ -150,7 +150,7 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
     data.attrs.setdefault('units', 'dimensionless')
     data_vars = {variable: data}
     result_dset = result_dset.assign(data_vars)
-    result_dset.attrs[field._FIELD_NAME_ATTR_] = variable
+    result_dset.attrs.update(dset.attrs)
 
     # Field. ------------------------------------------------------------------
     field_type = _FEATURE_MAP[dset.attrs.get('featureType')]

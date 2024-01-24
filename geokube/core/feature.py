@@ -45,6 +45,7 @@ from .crs import CRS, Geodetic, RotatedGeodetic
 from .indexers import get_array_indexer, get_indexer
 from .points import to_points_dict
 from .quantity import get_magnitude
+from .units import units
 
 
 # NOTE:
@@ -312,6 +313,76 @@ class FeatureMixin:
         idx = {axis.time: slice(latest, latest)}
         return self.sel(idx)
 
+    # Writing to file ---------------------------------------------------------
+
+    def to_netcdf(self, path: str, **kwargs) -> None:
+        dset = self._dset
+        dset = dset.drop_indexes(dset.xindexes)
+
+        coords = dict(dset.coords)
+        axes = {}
+        for axis_, coord in coords.items():
+            if isinstance(axis_, axis.Axis):
+                axes[axis_] = (
+                    coord.attrs.get('standard_name')
+                    or axis_.encoding['standard_name']
+                )
+        dims = {}
+        for dim in dset.dims:
+            names = set(dims.values())
+            if (
+                isinstance(dim, axis.Axis)
+                and (dim_name := dim.encoding['standard_name']) not in names
+            ):
+                dims[dim] = dim_name
+        dset = dset.rename_vars(axes).swap_dims(dims)
+
+        if (
+            (time_coord := coords.get(axis.time)) is not None
+            and (
+                (bnds := time_coord.encoding.get('bounds'))
+                in {'time_bnds', 'time_bounds'}
+            )
+            and isinstance(time_coord.data[0], pd.Interval)
+        ):
+            inter = pd.IntervalIndex(time_coord.to_numpy())
+            left, right = inter.left.to_numpy(), inter.right.to_numpy()
+            time_vals = np.empty(shape=(time_coord.size, 2), dtype=left.dtype)
+            time_vals[:, 0], time_vals[:, 1] = left, right
+            dset = dset.assign_coords(
+                coords={
+                    bnds: xr.Variable(dims=('time', 'bnds'), data=time_vals),
+                    'time': xr.Variable(
+                        dims=('time',),
+                        data=left,
+                        attrs=time_coord.attrs,
+                        encoding=time_coord.encoding
+                    )
+                }
+            )
+
+        # TODO: Use `itertools.chain` to create a single loop.
+        for coord in dset.coords.values():
+            attrs = coord.attrs
+            if 'units' in attrs and units[attrs['units']] == units[None]:
+                del attrs['units']
+        for var in dset.data_vars.values():
+            attrs = var.attrs
+            if 'units' in attrs and units[attrs['units']] == units[None]:
+                del attrs['units']
+
+        dset.attrs.pop('grid_mapping', None)
+        if gmn := dset.cf.grid_mapping_names:
+            crs_var_name = next(iter(gmn.values()))[0]
+            for var in dset.data_vars.values():
+                var.attrs.pop('grid_mapping', None)
+                var.encoding.setdefault('grid_mapping', crs_var_name)
+
+        # TODO: Improve squeezing.
+        dset = dset.squeeze()
+
+        return dset.to_netcdf(path, **kwargs)
+
 
 class Feature(FeatureMixin):
     __slots__ = (
@@ -401,6 +472,15 @@ class Feature(FeatureMixin):
 
     def __ne__(self, other, /) -> bool:
         return not self == other
+
+    def _get_var_names(self) -> set[str]:
+        all_vars = set()
+        anc_vars = set()
+        for var_name, var in self._dset.data_vars.items():
+            all_vars.add(var_name)
+            if (anc_attr := var.attrs.get('ancillary_variables')) is not None:
+                anc_vars |= set(anc_attr.split(' '))
+        return all_vars - anc_vars
 
     @classmethod
     def _from_xarray_dataset(
@@ -698,12 +778,14 @@ def _to_points_dict(feature: Feature) -> dict[axis.Axis, pint.Quantity]:
             coord.data[coord_idx], coord.attrs['units']
         )
 
-    name = dset.attrs.get('_geokube.field_name')
+    names = feature._get_var_names()
 
-    if name is None:
+    if not names:
         return data
 
     # Data.
+    assert len(names) == 1
+    name = names.pop()
     darr = dset[name]
     vals = darr.to_numpy().reshape(n_vals)
     data[name] = pint.Quantity(vals, darr.attrs.get('units'))
@@ -723,7 +805,9 @@ def _as_points_dataset(feature: Feature) -> xr.Dataset:
     }
 
     # Creating the resulting data.
-    if (name := feature._dset.attrs.get('_geokube.field_name')) is not None:
+    if names := feature._get_var_names():
+        assert len(names) == 1
+        name = names.pop()
         new_data = {name: new_coords.pop(name)}
     else:
         new_data = None
