@@ -39,6 +39,7 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "cf_xarray>=0.8.4",
     "dask>=2023.6.0",
     "matplotlib>=3.5",
     "netcdf4",

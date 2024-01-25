@@ -10,16 +10,16 @@ Classes
 -------
 
 :class:`geokube.core.domain.Domain`
-    Base class for domain constructs
+    Base class for domain constructs.
 
 :class:`geokube.core.domain.Points`
-    Point domain defined at scattered locations and times
+    Point domain defined at scattered locations and times.
 
 :class:`geokube.core.domain.Profiles`
-    Profile domain defined along a vertical line at fixed locations
+    Profile domain defined along vertical lines at fixed locations.
 
 :class:`geokube.core.domain.Grid`
-    Gridded domain defined at a spatial and temporal grid
+    Gridded domain defined at a spatial and temporal grid.
 
 """
 
@@ -41,7 +41,7 @@ from .feature import (
     GridFeature, PointsFeature, ProfilesFeature, _as_points_dataset
 )
 from .quantity import get_magnitude, create_quantity
-from .crs import Geodetic
+from .crs import CRS, Geodetic
 from .units import units
 
 
@@ -49,6 +49,25 @@ from .units import units
 # TODO: Consider renaming this class to `DomainMixin`.
 # NOTE: maybe we don't need this class
 class Domain:
+    """
+    Base class for domain constructs.
+
+    Methods
+    -------
+    as_xarray_dataset(coords, coord_system)
+        Return xarray dataset representation of the caller.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Points`
+        Point domain defined at scattered locations and times.
+    :class:`geokube.core.domain.Profiles`
+        Profile domain defined along a vertical line at fixed locations.
+    :class:`geokube.core.domain.Grid`
+        Gridded domain defined at a spatial and temporal grid.
+
+    """
+
     __slots__ = ()
 
     # NOTE: `Domain` and `Field` have exactly the same method.
@@ -77,6 +96,24 @@ class Domain:
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
         coord_system: CoordinateSystem
     ) -> xr.Dataset:
+        """
+        Return xarray dataset representation of the caller.
+
+        Parameters
+        ----------
+        coords : dict_like
+            Mapping of axes and the corresponding coordinates. The keys
+            are the instances of the subtypes of
+            :class:`geokube.core.axis.Axis` and the values are
+            array-like objects, pint quantities, or xarray data arrays.
+        coord_system : CoordinateSystem
+            Coordinate system.
+
+        Returns
+        -------
+        ds : xarray dataset
+            Dataset representation of the caller.
+        """
         da = coord_system.crs.as_xarray()
         r_coords = dict(coords)
         r_coords[da.name] = da
@@ -86,6 +123,71 @@ class Domain:
 
 
 class Points(Domain, PointsFeature):
+    """
+    Point domain defined at scattered locations and times.
+
+    Parameters
+    ----------
+    coords : dict_like or sequence
+        Mapping of axes and the corresponding coordinates. The keys
+        are the instances of the subtypes of
+        :class:`geokube.core.axis.Axis` and the values are
+        array-like objects or pint quantities.  It can also be a
+        two-dimensional sequence of point coordinates.
+    coord_system : CoordinateSystem
+        Coordinate system.
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+    number_of_points : int
+        The number of points.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+    as_xarray_dataset(coords, coord_system)
+        Return xarray dataset representation of the caller.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Profiles`
+        Profile domain defined along a vertical line at fixed locations.
+    :class:`geokube.core.domain.Grid`
+        Gridded domain defined at a spatial and temporal grid.
+
+    """
+
     __slots__ = ()
 
     def __init__(
@@ -148,6 +250,74 @@ class Points(Domain, PointsFeature):
 
 
 class Profiles(Domain, ProfilesFeature):
+    """
+    Profile domain defined along vertical lines at fixed locations.
+
+    Parameters
+    ----------
+    coords : dict_like or sequence
+        Mapping of axes and the corresponding coordinates. The keys
+        are the instances of the subtypes of
+        :class:`geokube.core.axis.Axis` and the values are
+        array-like objects or pint quantities.
+    coord_system : CoordinateSystem
+        Coordinate system.
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+    number_of_profiles : int
+        The number of profiles in a domain or field.
+    number_of_levels : int
+        The number of levels in a domain or field.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    as_points()
+        Return points representation of the data and coordinates.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+    as_xarray_dataset(coords, coord_system)
+        Return xarray dataset representation of the caller.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Points`
+        Point domain defined at scattered locations and times.
+    :class:`geokube.core.domain.Grid`
+        Gridded domain defined at a spatial and temporal grid.
+
+    """
+
     __slots__ = ()
 
     def __init__(
@@ -235,10 +405,88 @@ class Profiles(Domain, ProfilesFeature):
         super().__init__(ds=ds)
 
     def as_points(self) -> Points:
+        """
+        Return points representation of the data and coordinates.
+
+        Returns
+        -------
+        Points
+            Points domain with the same data and coordinates.
+        """
         return Points._from_xarray_dataset(_as_points_dataset(self))
 
 
 class Grid(Domain, GridFeature):
+    """
+    Gridded domain defined at a spatial and temporal grid.
+
+    Parameters
+    ----------
+    coords : dict_like or sequence
+        Mapping of axes and the corresponding coordinates. The keys
+        are the instances of the subtypes of
+        :class:`geokube.core.axis.Axis` and the values are
+        array-like objects or pint quantities.
+    coord_system : CoordinateSystem
+        Coordinate system.
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    infer_resolution(axis)
+        Return inferred resolution for a given axis.
+    as_geodetic()
+        Return the transformed gridded domain with the geodetic CRS.
+    spatial_transform_to(crs)
+        Return the values of horizontal coordinates in a given CRS.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    as_points()
+        Return points representation of the data and coordinates.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+    as_xarray_dataset(coords, coord_system)
+        Return xarray dataset representation of the caller.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Points`
+        Point domain defined at scattered locations and times.
+    :class:`geokube.core.domain.Profiles`
+        Profile domain defined along a vertical line at fixed locations.
+
+    """
+
     # TODO: Consider auxiliary coordinates other than the
     # latitude and longitude. Especially consider how to represent them in the
     # API.
@@ -308,10 +556,33 @@ class Grid(Domain, GridFeature):
         dset = Domain.as_xarray_dataset(result_coords, coord_system)
         super().__init__(dset)
 
-    def infer_resolution(self, axis):
+    def infer_resolution(self, axis: axis.Axis) -> float:
+        """
+        Return inferred resolution for a given axis.
+
+        Parameters
+        ----------
+        axis : axis.Axis
+            The axis to use for inferring the resolution.
+
+        Returns
+        -------
+        float
+            The inferred resolution for a given axis.
+
+        """
         return self.coords[axis].ptp() / (self.coords[axis].size - 1)
 
-    def as_geodetic(self, as_points=False):
+    def as_geodetic(self) -> Self:
+        """
+        Return the transformed gridded domain with the geodetic CRS.
+
+        Returns
+        -------
+        Grid
+            New gridded domain with the geodetic CRS.
+
+        """
         coord_system = CoordinateSystem(
             horizontal=Geodetic(),
             elevation = self.coord_system.elevation,
@@ -348,7 +619,22 @@ class Grid(Domain, GridFeature):
 
         return type(self)(coords=coords, coord_system=coord_system)
 
-    def spatial_transform_to(self, crs):
+    def spatial_transform_to(self, crs: CRS) -> tuple:
+        """
+        Return the values of horizontal coordinates in a given CRS.
+
+        Parameters
+        ----------
+        crs : CRS
+            Target coordinate reference system.
+
+        Returns
+        -------
+        tuple
+            The values of horizontal coordinates after the
+            transformation.
+
+        """
         # TODO: we assume that they have the same datum. We need to change
         # the code when datum are different!!
         # 
@@ -366,4 +652,12 @@ class Grid(Domain, GridFeature):
         return transformer.transform(lon, lat)
 
     def as_points(self) -> Points:
+        """
+        Return points representation of the data and coordinates.
+
+        Returns
+        -------
+        Points
+            Points domain with the same data and coordinates.
+        """
         return Points._from_xarray_dataset(_as_points_dataset(self))
