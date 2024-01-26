@@ -34,4 +34,4 @@ jobs:
         push: true
         tags: | 
           ${{ vars.GEOKUBE_REGISTRY }}/geokube:${{ env.TAG }}
-          ${{ secrets.GEOKUBE_REGISTRY }}/geokube:latest
+          ${{ vars.GEOKUBE_REGISTRY }}/geokube:latest
