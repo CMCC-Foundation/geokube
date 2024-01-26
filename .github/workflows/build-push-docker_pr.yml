@@ -33,5 +33,5 @@ jobs:
         file: ./Dockerfile
         push: true
         tags: | 
-          ${{ vars.GEOKUBE_REGISTR }}/geokube:${{ env.TAG }}
-          ${{ secrets.GEOKUBE_REGISTR }}/geokube:latest
+          ${{ vars.GEOKUBE_REGISTRY }}/geokube:${{ env.TAG }}
+          ${{ secrets.GEOKUBE_REGISTRY }}/geokube:latest
