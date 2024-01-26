@@ -1,4 +1,4 @@
-name: Build Docker image of the GEOKUBE component and push to the dev repository
+name: Build geokube Docker image and push to geokube container registry
 
 on:
   pull_request:
@@ -23,7 +23,7 @@ jobs:
       with:
         username: nologin
         password: ${{ secrets.DOCKER_PASSWORD }}
-        registry: ${{ secrets.DOCKER_DEV_REPO_URL }}
+        registry: ${{ vars.GEOKUBE_REGISTRY }}
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2        
     - name: Build and push
@@ -33,5 +33,5 @@ jobs:
         file: ./Dockerfile
         push: true
         tags: | 
-          ${{ secrets.DOCKER_DEV_REPO_URL }}/geokube:${{ env.TAG }}
-          ${{ secrets.DOCKER_DEV_REPO_URL }}/geokube:latest      
+          ${{ vars.GEOKUBE_REGISTR }}/geokube:${{ env.TAG }}
+          ${{ secrets.GEOKUBE_REGISTR }}/geokube:latest
