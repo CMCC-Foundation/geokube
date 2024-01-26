@@ -10,7 +10,7 @@ jobs:
     name: Build geokube and publish to TestPyPI
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.9"]
         os: [ubuntu-latest]
 #    environment:
 #        name: testpypi
@@ -32,13 +32,3 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-    pypi-publish:
-      name: Upload release to PyPI
-      runs-on: ubuntu-latest
-      environment:
-        name: testpypi
-        url: https://test.pypi.org/p/geokube
-      permissions:
-        id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
-      steps:
-      # retrieve your distributions here

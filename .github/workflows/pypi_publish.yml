@@ -10,7 +10,7 @@ jobs:
     name: Build Kit4DL and publish to PyPI
     strategy:
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.9"]
         os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
     environment: release
