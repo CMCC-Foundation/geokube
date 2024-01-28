@@ -21,3 +21,4 @@ def test_userdefined_axes():
     uaxis = custom('test_axis')
     assert uaxis.units == units['']
     assert uaxis.dtype == np.dtype('str')
+    assert isinstance(uaxis, axis.UserDefined)
