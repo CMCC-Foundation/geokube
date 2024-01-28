@@ -139,8 +139,7 @@ class Time(Axis):
 class UserDefined(Axis):
     # FIXME: Hash cannot be the class name -> redefine hash with axis name.
     _DEFAULT_UNITS_ = units['']
-    _DEFAULT_DTYPE_ = 'str'
-
+    _DEFAULT_ENCODING_ = { 'dtype': 'str'}
 
 x = X()
 y = Y()
@@ -192,15 +191,13 @@ def custom(
     type_name: str,
     default_units: str | pint.Unit | None = None,
     default_encoding: Mapping[str, Any] | None = None,
-    default_dtype: npt.DTypeLike | None = None,
 ) -> UserDefinedT_co:
     # NOTE: To be used in this manner: `ensemble = custom('Ensemble')`.
     name = str(type_name)
     base = (UserDefined,)
     dict_ = {
-        '_DEFAULT_UNITS_': pint.Unit(default_units),
-        '_DEFAULT_ENCODING_': dict(default_encoding or {}),
-        '_DEFAULT_DTYPE_': np.dtype(default_dtype)
+        '_DEFAULT_UNITS_': pint.Unit(default_units or ''),
+        '_DEFAULT_ENCODING_': dict(default_encoding or UserDefined._DEFAULT_ENCODING_),
     }
     cls_ = type(name, base, dict_)
     obj = cls_()
