@@ -74,38 +74,6 @@ class Field:
         obj._name = names.pop()
         return obj
 
-    # 
-    # - this is the same method name in Feature class ->
-    # in order to have precedence Field should be inherited first
-    # 
-    @classmethod
-    def _from_xrdset(
-        cls, dset: xr.Dataset, coord_system: CoordinateSystem
-    ) -> Self:
-        coords = {}        
-        for ax in coord_system.axes:
-            coords[ax] = dset.coords[ax]
-        domain = cls._DOMAIN_CLS_(coords=coords, coord_system=coord_system)
-        name = dset.attrs[_FIELD_NAME_ATTR_]
-        data = dset[name].data
-        properties = dset[name].attrs
-        encoding = dset[name].encoding
-        if 'ancillary_variables' in dset[name].attrs:
-            ancillary = {}
-            for c in dset[name].attrs['ancillary_variables'].split():
-                ancillary[c] = dset[c].data
-        else:
-            ancillary = None
-
-        return cls(
-            name=name,
-            domain=domain,
-            data=data,
-            ancillary=ancillary,
-            properties=properties,
-            encoding=encoding
-        )
-
     @classmethod
     def as_xarray_dataset(
         cls,
