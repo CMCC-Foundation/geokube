@@ -210,14 +210,14 @@ class Field:
 
         See Also
         --------
-        :class:`geokube.core.domain.Points`
+        :class:`geokube.core.domain.Points` :
             Point domain defined at scattered locations and times
 
-        :class:`geokube.core.domain.Profiles`
+        :class:`geokube.core.domain.Profiles` :
             Profile domain defined along a vertical line at fixed
             locations
 
-        :class:`geokube.core.domain.Grid`
+        :class:`geokube.core.domain.Grid` :
             Gridded domain defined at a spatial and temporal grid
 
         """
@@ -489,7 +489,7 @@ class PointsField(Field, PointsFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Points`
+    :class:`geokube.core.domain.Points` :
         Point domain defined at scattered locations and times.
     :class:`geokube.core.field.ProfilesField` :
         Field defined on a profile domain
@@ -650,7 +650,7 @@ class ProfilesField(Field, ProfilesFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Profiles`
+    :class:`geokube.core.domain.Profiles` :
         Profile domain defined along a vertical line at fixed locations.
     :class:`geokube.core.field.PointsField` :
         Field defined on a point domain.
@@ -864,7 +864,7 @@ class GridField(Field, GridFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Grid`
+    :class:`geokube.core.domain.Grid` :
         Gridded domain defined at a spatial and temporal grid.
     :class:`geokube.core.field.PointsField` :
         Field defined on a point domain.
