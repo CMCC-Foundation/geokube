@@ -45,27 +45,7 @@ from .feature import (
     PointsFeature, ProfilesFeature, GridFeature, _as_points_dataset
 )
 
-
-# TODO: Check whether `pyarrow` stuff should be documented or removed.
-
-def to_pyarrow_tensor(data):
-    # this method return a pyarrow tensor
-    # tensor_type = pa.fixed_shape_tensor(pa.int32(), (2, 3))
-    # arr = [[1, 2, 3, 4], [10, 20, 30, 40], [100, 200, 300, 400]]
-    # storage = pa.array(arr, pa.list_(pa.int32(), 4))
-    # tensor_array = pa.ExtensionArray.from_storage(tensor_type, storage)
-    # 
-    # arr = self.magnitude # this should be numpy array
-    # storage = pa.array(arr, pa.list_(self.patype, self.size))
-    # pa.ExtensionArray.from_storage(self._pyarrow_tensor_type(), storage)
-    # type is given by tensor.type
-    return pa.FixedShapeTensorArray.from_numpy_ndarray(data)
-
-
 _ARRAY_TYPES = (np.ndarray, da.Array)
-
-# _FIELD_NAME_ATTR_ = '_geokube.field_name'
-
 
 # TODO: Consider making this class internal.
 class Field:
@@ -142,31 +122,6 @@ class Field:
         ds.attrs['grid_mapping'] = da.name
         return ds
 
-    # def _prepare_dset(self,
-    #                   name,
-    #                   data, 
-    #                   domain,
-    #                   ancillary,
-    #                   encoding: Mapping | None = None,
-    #                   properties: Mapping | None = None):
-    #     data_vars = {}
-    #     attrs = properties if not None else {}
-    #     data_vars[name] = xr.DataArray(data=data, dims=self._DIMS_, attrs=attrs)
-    #     data_vars[name].encoding = encoding if not None else {} # This is not working!!!
-        
-    #     if ancillary is not None:
-    #         for anc_name, anc_data in ancillary.items():
-    #             data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
-        
-    #     ds_attrs = {_FIELD_NAME_ATTR_: name}
-
-    #     self.super().__init__(
-    #         data_vars = data_vars,
-    #         coords = domain.coords,
-    #         attrs = ds_attrs,
-    #         coord_system=domain.coord_system
-    #     )
-
     @property # TODO: define setter method
     def domain(self) -> Domain:
         coords = {}
@@ -211,122 +166,8 @@ class Field:
 
     # return an xarray dataset CF-Compliant
     def to_xarray(self) -> xr.Dataset:
-        # we assume that we do not have any CF attributes in the xarray data structure
-        # underline the Field. We need to convert Field to an xarray Dataset with CF attributes
-
-        # grid_mapping = self.domain.coord_system.spatial.crs.to_cf()
-        # # add grid_mapping variable
-        # grid_mapping_var = xr.DataArray(name=grid_mapping['grid_mapping_name'],
-        #                                 attrs = grid_mapping)
-
-        # coords = {}
-        # for ax, coord in self.coords.items():
-        #     coords[ax] = xr.DataArray(name=str(ax), 
-        #                               data=coord.data, 
-        #                               dims=self._dset.coords[ax].dims, 
-        #                               attrs=ax.encoding)
-
-        # coords[grid_mapping_var.name] = grid_mapping_var
-
-        # field_var = xr.DataArray(data=self.data, 
-        #                          coords=coords,
-        #                          dims=self.coord_system.dim_axes)
-        # field_var.attrs={}
-        # field_var.attrs['grid_mapping'] = grid_mapping['grid_mapping_name'] 
-
-        # ds = xr.Dataset(
-        #     data_vars = {
-        #         self.name: field_var,
-        #     },
-        #     coords = coords
-        # )
-        # return ds
-                
         ds = self._dset  # we need to copy the ds metadata (and not the data) maybe .copy()
         return ds
-    
-    # Pyarrow conversions -----------------------------------------------------
-
-    def build_pyarrow_metadata(self):
-        # geokube Field JSON Schema
-        # -> name: ‘string’
-        # -> kind: ‘string’ (Gridded, Points, Profile, Timeseries)
-        # -> properties: dict
-        # -> cf-encoding: dict
-        # -> coord_system: dict
-        import json
-        metadata = {'name': self.name,
-                    'kind': str(type(self.domain)),
-                    'properties': json.dumps(self.properties).encode('utf-8'),
-                    'cf_encoding': json.dumps(self.encoding).encode('utf-8')
-        }
-        metadata['coord_system'] = {} 
-        metadata['coord_system']['horizontal'] = str(self.coord_system.spatial.crs)
-        metadata['coord_system']['elevation'] = str(self.domain.coord_system.spatial.elevation)
-        metadata['coord_system']['time'] = str(self.domain.coord_system.time)
-        metadata['coord_system']['ud_axes'] = []   
-        for axis in self.domain.coord_system.user_axes:
-             metadata['coord_system']['ud_axes'].append(str(axis))
-        metadata['coord_system'] = json.dumps(metadata['coord_system']).encode('utf-8')
-        
-        return metadata
-
-    def to_pyarrow_table(self): 
-        # this method return a pyarrow Table with a schema
-        # data contains tensors for the field and domain
-        # 
-        # schema -> schema for field and domain
-        tensor_data = []
-        schema_data = []
-
-        field_tensor = to_pyarrow_tensor(self.data.magnitude)
-        tensor_data.append(field_tensor)
-        schema_data.append(pa.field(self.name, field_tensor.type))
-
-        # Add coordinates to tensor and schema
-        for ax, coord in self.domain.coordinates().items():
-            coord_tensor = to_pyarrow_tensor(coord.magnitude)
-            tensor_data.append(coord_tensor)
-            schema_data.append(pa.field(ax, coord_tensor.type))
-
-        # create Table
-        return pa.Table.from_arrays(tensor_data, 
-                                    schema=pa.schema(schema_data, 
-                                                     metadata=self.build_pyarrow_metadata()) 
-                                    )
-# TODO: move outside of the class and associate featuretype with class
-    @classmethod
-    def from_pyarrow_table(cls, table): 
-        # this method return a geokube field starting from a pyarrow Table 
-        # the schema metadata contains 
-        # data contains tensors for the field and domain
-        # 
-        # schema -> schema for field and domain
-        import json 
-        from .coord_system import CoordinateSystem
-        from .crs import Geodetic
-
-        metadata = table.schema.metadata
-        name = metadata[b'name'].decode()
-        feature_type = metadata[b'feature_type'].decode()
-        properties = json.loads(metadata[b'properties'].decode())
-        encoding = json.loads(metadata[b'cf_encoding'].decode())
-        cs = json.loads(metadata[b'coord_system'].decode())
-
-        data = table[name].combine_chunks().to_numpy_ndarray()
-
-        coord_system = CoordinateSystem(
-            horizontal=Geodetic(),
-            elevation=axis._from_string(cs['elevation']),
-            time=axis._from_string(cs['time']),
-        )
-
-        coords = {}
-        for ax in coord_system.axes:
-            coords[ax] = table[ax].combine_chunks().to_numpy_ndarray()
-        domain = cls.__DOMAIN_CLS__(coords = coords, coord_system = coord_system)
-        return cls(name = name, data = data, domain=domain,properties=properties,encoding=encoding)
-
 
 class PointsField(Field, PointsFeature):
     __slots__ = ('_name',)
@@ -387,12 +228,9 @@ class PointsField(Field, PointsFeature):
                     data=anc_data, dims=self._DIMS_
                 )
 
-        # ds_attrs = {_FIELD_NAME_ATTR_: name}
-
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(data_vars)
-        # dset.attrs[_FIELD_NAME_ATTR_] = name
 
         super().__init__(dset)
         names = self._get_var_names()
@@ -495,12 +333,9 @@ class ProfilesField(Field, ProfilesFeature):
             for anc_name, anc_data in ancillary.items():
                 data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
 
-        # ds_attrs = {_FIELD_NAME_ATTR_: name}
-
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(data_vars)
-        # dset.attrs[_FIELD_NAME_ATTR_] = name
 
         super().__init__(dset)
         names = self._get_var_names()
@@ -521,15 +356,12 @@ class GridField(Field, GridFeature):
         name: str,
         domain: Grid,
         data: npt.ArrayLike | pint.Quantity | None = None,
-#        dim_axes: Sequence[axis.Axis] | None = None, # This should not be used ... we fix the field to have all axis of the Domain!
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None,
         cell_method: str = ''
     ) -> None:
-#        aux_axes = domain.coord_system.aux_axes
-#        self._DIMS_ = domain.coord_system.dim_axes if dim_axes is None else tuple(dim_axes)
-#        
+
         match data:
             case pint.Quantity():
                 data_ = (
@@ -548,17 +380,8 @@ class GridField(Field, GridFeature):
 
         #NOTE: THIS CODE CAN BE PUT IN ONE METHOD COMMON FOR ALL FIELDS! (MAYBE!)
 
-        # coords = {}
-        # for ax, coord in domain.coords.items():
-        #     coords[ax] = xr.DataArray(coord, 
-        #                               dims=domain._dset[ax].dims, 
-        #                               attrs=domain._dset[ax].attrs)
-
         grid_mapping_attrs = domain.coord_system.spatial.crs.to_cf()
         grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
-        # coords[grid_mapping_name] = xr.DataArray(data=np.byte(1),
-        #                                          name=grid_mapping_name,
-        #                                          attrs = grid_mapping_attrs)
 
         # TODO: Move the common part for all field types to `Field.__init__`,
         # together with the `_name` field.
@@ -588,46 +411,14 @@ class GridField(Field, GridFeature):
 
             data_vars[name].attrs['ancillary_variables'] = " ".join(ancillary_names)
 
-        # ds_attrs = {_FIELD_NAME_ATTR_: name}
-
-# UNTIL HERE
-
-        # ds = xr.Dataset(
-        #     data_vars=data_vars,
-        #     coords=coords,
-        #     attrs=ds_attrs
-        # )
-
-        # super().__init__(
-        #     ds=ds
-        # )
-
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(data_vars)
-        # dset.attrs[_FIELD_NAME_ATTR_] = name
 
         super().__init__(dset)
         names = self._get_var_names()
         assert len(names) == 1
         self._name = names.pop()
-
-    # Spatial operations ------------------------------------------------------
-
-    # def nearest_horizontal(
-    #     self,
-    #     latitude: npt.ArrayLike | pint.Quantity,
-    #     longitude: npt.ArrayLike | pint.Quantity
-    # ) -> PointsField:  # Self:
-    #     feature = super().nearest_horizontal(latitude, longitude)
-
-    #     return PointsField(
-    #         name=self.name,
-    #         domain=Points(
-    #             coords=feature.coords, coord_system=feature.coord_system
-    #         ),
-    #         data=feature._dset[self.name].data
-    #     )
 
     def regrid(
         self, 
@@ -705,73 +496,6 @@ class GridField(Field, GridFeature):
             properties=self.properties,
             encoding=self.encoding
         )
-
-    def interpolate_(
-        self, target: Domain | Field, method: str = 'nearest', **kwargs
-    ) -> Field:
-        dset = self._dset.pint.dequantify()
-        coords = dict(dset.coords)
-        coord_system = self._coord_system
-        spatial = coord_system.spatial
-        crs = spatial.crs
-        attrs = dset.attrs
-        name = self.name
-        del coords[dset[name].attrs['grid_mapping']]
-
-        match target:
-            case Domain():
-                target_domain = target
-            case Field():
-                target_domain = target.domain
-            case _:
-                raise TypeError("'target' must be a domain or field")
-        target_dims = (axis.latitude, axis.longitude)
-        target_coords = target_domain.coords
-        target_coords = {axis: target_coords[axis] for axis in target_dims}
-
-        if isinstance(self.crs, Geodetic):
-            target_coords = coords | target_coords
-            kwargs.setdefault('fill_value', 'extrapolate')
-            result_dset = dset.interp(
-                coords=target_coords, method=method, kwargs=kwargs
-            )
-        else:
-            target_lat = target_coords[axis.latitude]
-            target_lon = target_coords[axis.longitude]
-            if target_lat.ndim == target_lon.ndim == 1:
-                target_lon, target_lat = np.meshgrid(target_lon, target_lat)
-            transformer = Transformer.from_crs(
-                crs_from=target_domain.coord_system.spatial.crs._crs,
-                crs_to=crs._crs,
-                always_xy=True
-            )
-            target_x, target_y = transformer.transform(target_lon, target_lat)
-            # NOTE: This is required to get the same axes as given in `coords`.
-            axis_x, axis_y = coords.keys() & crs.dim_axes
-            target_coords = xr.Dataset(
-                data_vars={
-                    axis_x: xr.DataArray(data=target_x, dims=target_dims),
-                    axis_y: xr.DataArray(data=target_y, dims=target_dims)
-                },
-                coords=target_coords
-            )
-            dset = dset.drop(labels=(axis.latitude, axis.longitude))
-            kwargs.setdefault('fill_value', None)
-            result_dset = dset.interp(
-                coords=target_coords, method=method, kwargs=kwargs
-            )
-            result_dset = result_dset.drop(labels=(axis_x, axis_y))
-
-        result_dset = result_dset.pint.quantify()
-        # result_dset.attrs[_FIELD_NAME_ATTR_] = attrs[_FIELD_NAME_ATTR_]
-        result_coord_system = CoordinateSystem(
-            horizontal=target_domain.coord_system.spatial.crs,
-            elevation=spatial.elevation,
-            time=coord_system.time,
-            user_axes=coord_system.user_axes
-        )
-        result_field = self._from_xrdset(result_dset, result_coord_system)
-        return result_field
 
     def interpolate(
         self, target: Domain | Field, method: str = 'nearest', **kwargs
@@ -957,122 +681,6 @@ class GridField(Field, GridFeature):
             domain=type(domain)(new_coords, domain.coord_system),
             data=pint.Quantity(new_data, dset[self.name].attrs.get('units')),
             ancillary=self.ancillary,
-            properties=self.properties,
-            encoding=self.encoding
-        )
-
-    def resample_(
-        self, freq: str, operator: str = 'mean', **kwargs
-    ) -> Self:
-        dset = self._dset
-        time = dset[axis.time]
-        idx = {axis.time: freq}
-        diff = pd.to_timedelta(freq).to_timedelta64()
-
-        match time_idx := dset.xindexes[axis.time].index.index:
-            case pd.DatetimeIndex():
-                res = dset.resample(indexer=idx, label='left', **kwargs)
-                result_dset = getattr(res, operator)()
-                left = result_dset[axis.time].to_numpy()
-                right = left + diff
-                # grouper = res.groupers[0]
-                # closed = grouper.grouper.closed or 'both'
-                # if (label := grouper.index_grouper.label) == 'left':
-                #     left = result_dset.xindexes[axis.time].index.to_numpy()
-                #     right = left + diff
-                # else:
-                #     right = result_dset.xindexes[axis.time].index.to_numpy()
-                #     left = right - diff
-                result_dset[axis.time] = xr.Variable(
-                    dims=time.dims,
-                    data=pd.IntervalIndex.from_arrays(
-                        left, right, closed=kwargs.get('closed', 'both')
-                    ),
-                    attrs=time.attrs,
-                    encoding=time.encoding
-                )
-            case pd.IntervalIndex():
-                # TODO: Check if this code has issue with ERA5 (rotated pole),
-                #  when `freq`is e.g. `'5H'`.
-                if kwargs:
-                    raise ValueError(
-                        "'kwargs' are not allowed for interval indices"
-                    )
-                left_bnd, right_bnd = time_idx.left, time_idx.right
-                src_freqs = pd.unique(right_bnd - left_bnd)
-                if src_freqs.size == 1:
-                    src_freq = abs(src_freqs[0])
-                else:
-                    raise ValueError(
-                        "'time_idx' must have equal differences for resampling"
-                    )
-                src_diff = time.size * src_freq
-                dst_freq = pd.to_timedelta(freq).to_timedelta64()
-                ratio = float(dst_freq / src_freq)
-                if ratio.is_integer() and ratio >= 1 and dst_freq <= src_diff:
-                    interm_data_vars = {
-                        name: var.variable
-                        for name, var in dset.data_vars.items()
-                    }
-                    interm_coords = dict(dset.coords)
-                    # interm_coords = {
-                    #     axis_: coord
-                    #     for axis_, coord in dset.coords.items()
-                    #     if isinstance(axis_, axis.Axis)
-                    # }
-                    time_axis = (interm_coords.keys() & {axis.time}).pop()
-                    interm_coords[time_axis] = xr.Variable(
-                        dims=time.dims,
-                        data=time_idx.left,
-                        attrs=time.attrs,
-                        encoding=time.encoding
-                    )
-                    interm_dset = xr.Dataset(
-                        data_vars=interm_data_vars,
-                        coords=interm_coords,
-                        attrs=dset.attrs.copy()
-                    )
-                    res = interm_dset.resample(
-                        indexer=idx,
-                        closed='left',
-                        label='left',
-                        origin='start'
-                    )
-                    result_dset = getattr(res, operator)()
-                    left = result_dset[axis.time].to_numpy()
-                    right = left + diff
-                    result_dset[axis.time] = xr.Variable(
-                        dims=time.dims,
-                        data=pd.IntervalIndex.from_arrays(
-                            left, right, closed='both'
-                        ),
-                        attrs=time.attrs,
-                        encoding=time.encoding
-                    )
-                else:
-                    raise ValueError(
-                        "'freq' does not correspond to the interval durations"
-                    )
-            case _:
-                raise NotImplementedError(
-                    f"'time_idx' has the type {type(time_idx).__name__}, "
-                    "which is not supported; it must be an instance of "
-                    "'DatetimeIndex' or 'IntervalIndex'"
-                )
-
-        domain = self.domain
-        name = self.name
-        new_coords = {
-            axis_: coord.pint.quantify().data
-            for axis_, coord in result_dset.coords.items()
-            if isinstance(axis_, axis.Axis)
-        }
-
-        return type(self)(
-            name=name,
-            domain=type(domain)(new_coords, domain.coord_system),
-            data=result_dset[name].data,
-            # ancillary=self.ancillary,
             properties=self.properties,
             encoding=self.encoding
         )

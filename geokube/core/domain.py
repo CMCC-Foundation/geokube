@@ -47,7 +47,6 @@ from .units import units
 
 # TODO: Consider making this class internal.
 # TODO: Consider renaming this class to `DomainMixin`.
-# NOTE: maybe we don't need this class
 class Domain:
     __slots__ = ()
 
