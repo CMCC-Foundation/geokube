@@ -9,23 +9,23 @@ Classes
 -------
 
 :class:`geokube.core.field.Field`
-    Base class for field constructs
+    Base class for field constructs.
 
 :class:`geokube.core.field.PointsField`
-    Field defined on a point domain
+    Field defined on a point domain.
 
 :class:`geokube.core.field.ProfilesField`
-    Field defined on a profile domain
+    Field defined on a profile domain.
 
 :class:`geokube.core.field.GridField`
-    Field defined on a gridded domain
+    Field defined on a gridded domain.
 
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Callable, Self
+from typing import Callable, Self, TYPE_CHECKING
 
 import dask.array as da
 import numpy as np
@@ -49,10 +49,43 @@ _ARRAY_TYPES = (np.ndarray, da.Array)
 
 # TODO: Consider making this class internal.
 class Field:
-    __slots__ = ()
-    _DOMAIN_CLS_: type[Domain]
+    """
+    Base class for field constructs.
 
-    _dset: xr.Dataset
+    Attributes
+    ----------
+    domain : Domain
+        The domain construct over which a field is defined.
+    ancillary : dict or quantity
+        Ancillary variables and data of a field.
+    name : str
+        The name of a represented quantity.
+    data : array_like or quantity
+        The values of a single physical variable.
+    properties : dict
+        The static metadata of the field
+    encoding : dict
+        The encoding of a data variable.
+    cell_method : CellMethod or None
+        The cell method of a field if any, otherwise None.
+
+    See Also
+    --------
+    :class:`geokube.core.field.PointsField` :
+        Field defined on a point domain.
+    :class:`geokube.core.field.ProfilesField` :
+        Field defined on a profile domain
+    :class:`geokube.core.field.GridField` :
+        Field defined on a gridded domain.
+
+    """
+
+    __slots__ = ()
+
+    if TYPE_CHECKING:
+        _DOMAIN_CLS_: type[Domain]
+        _dset: xr.Dataset
+        _name: str
 
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
@@ -92,6 +125,27 @@ class Field:
 
     @property # TODO: define setter method
     def domain(self) -> Domain:
+        """
+        Return the domain construct over which a field is defined.
+
+        A domain construct that contains dimension and auxiliary axes,
+        coordinate values and related units, coordinate reference
+        system, etc.  The type of a domain corresponts to the type of a
+        field.
+
+        See Also
+        --------
+        :class:`geokube.core.domain.Points` :
+            Point domain defined at scattered locations and times
+
+        :class:`geokube.core.domain.Profiles` :
+            Profile domain defined along a vertical line at fixed
+            locations
+
+        :class:`geokube.core.domain.Grid` :
+            Gridded domain defined at a spatial and temporal grid
+
+        """
         coords = {}
         for ax in self.coord_system.axes:
             coords[ax] = self.coords[ax]
@@ -101,7 +155,17 @@ class Field:
 
     @property
     def ancillary(self, name: str | None = None) -> dict | pint.Quantity:
+        """
+        Return ancillary variables and data of a field.
+
+        The ancillary variables are stored in a dictionary of
+        multidimensional arrays that contains ancillary metadata which
+        vary within the domain.
+
+        """
+        # TODO: Check this!
         if name is not None:
+            # TODO: Quantify the data.
             return self[name].data
         ancillary_ = {}
         for c in self._dset.data_vars:
@@ -111,22 +175,44 @@ class Field:
 
     @property # return field name
     def name(self) -> str:
+        """Return the name of a represented quantity."""
         return self._name
 
     @property # define data method to return field data
-    def data(self):
+    def data(self) -> np.ndarray | da.Array | pint.Quantity:
+        """
+        Return the values of a single physical variable.
+
+        Data are stored in a multidimensional array defined over the
+        domain.  The order of the array dimensions should correspond to
+        the order of the axes in the coordinate system of the domain.
+        This array can be an instance of :class:`numpy.ndarray`,
+        :class:`dask.array.core.Array`, or :class:`pint.Quantity`.
+
+        """
+        # TODO: Quantify the data.
         return self._dset[self.name].data
 
     @property
-    def properties(self):
+    def properties(self) -> dict:
+        """Return the static metadata of the field."""
         return self._dset[self.name].attrs
 
     @property
-    def encoding(self):
+    def encoding(self) -> dict:
+        """Return the The encoding of a data variable."""
         return self._dset[self.name].encoding
 
     @property
     def cell_method(self) -> CellMethod | None:
+        """
+        Return the cell method of a field if any, otherwise None.
+
+        A CellMethod object describes how data represent variation
+        within the cells of a field.  If a field does not have a cell
+        method, it is None.
+
+        """
         darr = self._dset[self.name]
         if (cmethod := darr.attrs.get('cell_methods')) is not None:
             return CellMethod.parse(cmethod)
@@ -138,6 +224,91 @@ class Field:
         return ds
 
 class PointsField(Field, PointsFeature):
+    """
+    Field defined on a point domain.
+
+    Parameters
+    ----------
+    name : str
+        The name of a represented quantity.
+    domain : points domain
+        The domain construct over which a field is defined.
+    data : array_like or quantity
+        The values of a single physical variable.
+    ancillary : dict_like, optional
+        Ancillary variables and data of a field.
+    properties : dict_like, optional
+        The static metadata of the field
+    encoding : dict_like, optional
+        The encoding of a data variable.
+    cell_method : str, default ''
+        The cell method of a field if any.
+
+    Attributes
+    ----------
+    domain : points domain
+        The domain construct over which a field is defined.
+    ancillary : dict or quantity
+        Ancillary variables and data of a field.
+    name : str
+        The name of a represented quantity.
+    data : array_like or quantity
+        The values of a single physical variable.
+    properties : dict
+        The static metadata of the field
+    encoding : dict
+        The encoding of a data variable.
+    cell_method : CellMethod or None
+        The cell method of a field if any, otherwise None.
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+    number_of_points : int
+        The number of points.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Points` :
+        Point domain defined at scattered locations and times.
+    :class:`geokube.core.field.ProfilesField` :
+        Field defined on a profile domain
+    :class:`geokube.core.field.GridField` :
+        Field defined on a gridded domain.
+
+    """
+
     __slots__ = ('_name',)
     _DOMAIN_CLS_ = Points
 
@@ -207,6 +378,134 @@ class PointsField(Field, PointsFeature):
 
 
 class ProfilesField(Field, ProfilesFeature):
+    """
+    Field defined on a profile domain.
+
+    Parameters
+    ----------
+    name : str
+        The name of a represented quantity.
+    domain : points domain
+        The domain construct over which a field is defined.
+    data : array_like or quantity
+        The values of a single physical variable.
+    ancillary : dict_like, optional
+        Ancillary variables and data of a field.
+    properties : dict_like, optional
+        The static metadata of the field
+    encoding : dict_like, optional
+        The encoding of a data variable.
+    cell_method : str, default ''
+        The cell method of a field if any.
+
+    Attributes
+    ----------
+    domain : profiles domain
+        The domain construct over which a field is defined.
+    ancillary : dict or quantity
+        Ancillary variables and data of a field.
+    name : str
+        The name of a represented quantity.
+    data : array_like or quantity
+        The values of a single physical variable.
+    properties : dict
+        The static metadata of the field
+    encoding : dict
+        The encoding of a data variable.
+    cell_method : CellMethod or None
+        The cell method of a field if any, otherwise None.
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+    number_of_profiles : int
+        The number of profiles in a domain or field.
+    number_of_levels : int
+        The number of levels in a domain or field.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    as_points()
+        Return points representation of the data and coordinates.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Profiles` :
+        Profile domain defined along a vertical line at fixed locations.
+    :class:`geokube.core.field.PointsField` :
+        Field defined on a point domain.
+    :class:`geokube.core.field.GridField` :
+        Field defined on a gridded domain.
+
+    Examples
+    --------
+
+    Creating a profiles field assumes instantiating at least a
+    coordinate system, domain, and data.  It is sufficient to specify
+    the data units for one profile:
+
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> time = ['2023-08', '2023-09', '2023-10', '2023-11', '2023-12']
+    >>> vertical = (
+    ...     10
+    ...     + np.random.default_rng(seed=0).random(size=(5, 12))
+    ...     + np.tile(np.arange(12), 5).reshape(5, 12)
+    ... )
+    >>> prof_domain = Profiles(
+    ...     coords={
+    ...         axis.latitude: [30, 35, 40, 45, 50],
+    ...         axis.longitude: [10, 15, 20, 25, 30],
+    ...         axis.time: time,
+    ...         axis.vertical: vertical * units.bar
+    ...     },
+    ...     coord_system=coord_system
+    ... )
+    >>> prof_field = ProfilesField(
+    ...     name='temperature',
+    ...     data=[
+    ...         [300, 350] * units.kelvin,
+    ...         [280, 300, 320, 340, 360, 380],
+    ...         [289, 295],
+    ...         [295, 300, 305, 310, 315],
+    ...         [298, 299, 300, 301, 302]
+    ...     ],
+    ...     domain=prof_domain
+    ... )
+
+    """
+
     __slots__ = ('_name',)
     _DOMAIN_CLS_ = Profiles
 
@@ -311,10 +610,142 @@ class ProfilesField(Field, ProfilesFeature):
         self._name = names.pop()
 
     def as_points(self) -> PointsField:
+        """
+        Return points representation of the data and coordinates.
+
+        Returns
+        -------
+        PointsField
+            Points Field with the same data and coordinates.
+        """
         return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
 
 class GridField(Field, GridFeature):
+    """
+    Field defined on a gridded domain.
+
+    Parameters
+    ----------
+    name : str
+        The name of a represented quantity.
+    domain : grid domain
+        The domain construct over which a field is defined.
+    data : array_like or quantity
+        The values of a single physical variable.
+    ancillary : dict_like, optional
+        Ancillary variables and data of a field.
+    properties : dict_like, optional
+        The static metadata of the field
+    encoding : dict_like, optional
+        The encoding of a data variable.
+    cell_method : str, default ''
+        The cell method of a field if any.
+
+    Attributes
+    ----------
+    domain : grid domain
+        The domain construct over which a field is defined.
+    ancillary : dict or quantity
+        Ancillary variables and data of a field.
+    name : str
+        The name of a represented quantity.
+    data : array_like or quantity
+        The values of a single physical variable.
+    properties : dict
+        The static metadata of the field
+    encoding : dict
+        The encoding of a data variable.
+    cell_method : CellMethod or None
+        The cell method of a field if any, otherwise None.
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    regrid(target, method)
+        Return the new field with the data that correspond to `target`.
+    interpolate_(target, method, **kwargs)
+        Return the new interpolated field onto the target coordinates.
+    is_geodetic()
+        Return a Boolean if a field has a geodetic CRS.
+    as_geodetic()
+        Return the transformed gridded field with the geodetic CRS.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    resample(freq, operator, **kwargs)
+        Return a field with resampled data and time coordinate.
+    as_points()
+        Return points representation of the data and coordinates.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.domain.Grid` :
+        Gridded domain defined at a spatial and temporal grid.
+    :class:`geokube.core.field.PointsField` :
+        Field defined on a point domain.
+    :class:`geokube.core.field.ProfilesField` :
+        Field defined on a profile domain
+
+    Examples
+    --------
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> grid_domain = Grid(
+    ...     coords={
+    ...         axis.time: [
+    ...             '2023-10-01',
+    ...             '2023-10-02',
+    ...             '2023-10-03',
+    ...             '2023-10-04',
+    ...             '2023-10-05'
+    ...         ],
+    ...         axis.vertical: [0, 10, 20, 30] * units.cm,
+    ...         axis.latitude: [30, 35, 40],
+    ...         axis.longitude: [10, 15]
+    ...     },
+    ...     coord_system=coord_system
+    ... )
+    >>> grid_field = GridField(
+    ...     name='temperature',
+    ...     domain=grid_domain,
+    ...     data=np.arange(120).reshape(5, 4, 3, 2) * units.deg_C,
+    ...     cell_method='time: maximum'
+    ... )
+
+    """
+
     __slots__ = ('_name',)
     _DOMAIN_CLS_ = Grid
     # NOTE: The default order of axes is assumed.
@@ -393,14 +824,43 @@ class GridField(Field, GridFeature):
         target: GridField | Grid,
         method: str = 'bilinear'
     ) -> Self:
+        """
+        Return the new field with the data that correspond to `target`.
+
+        This method regrids the field according to the specified target
+        domain and regridding method.  The resulting field has the
+        spatial coordinates from `target`, keeps other coordinates and
+        attributes, and contains the regridded data.
+
+        Parameters
+        ----------
+        target : grid domain or field
+            Target grid for regridding.  If a grid domain is passed, it
+            is used directly.  If a field is passed, only its domain is
+            used.
+        method : str, default 'bilinear'
+            Regridding method
+
+        Returns
+        -------
+        GridField
+            Resulting field with the regridded data.
+
+        Raises
+        ------
+        TypeError
+            If `target` is not an instance of
+            :class:`geokube.core.domain.Grid` or
+            :class:`geokube.core.field.GridField`.
+        """
         import xesmf as xe
 
-        if not isinstance(target, Domain):
+        if not isinstance(target, Grid):
             if isinstance(target, GridField):
                 target = target.domain
             else:
                 raise TypeError(
-                    "'target' must be an instance of Domain or GridField"
+                    "'target' must be an instance of Grid or GridField"
                 )
         #
         # TODO: check if they have the same CRS
@@ -466,8 +926,40 @@ class GridField(Field, GridFeature):
         )
 
     def interpolate(
-        self, target: Domain | Field, method: str = 'nearest', **kwargs
+        self, target: Domain | Field, method: str = 'nearest', **xarray_kwargs
     ) -> Field:
+        """
+        Return the new interpolated field onto the target coordinates.
+
+        The resulting field has the spatial coordinates from `target`,
+        keeps other coordinates and attributes, and contains the
+        interpolated data.
+
+        Parameters
+        ----------
+        target : domain or field
+            Target that contains the horizontal coordinates for
+            interpolation.  If a domain is passed, it is used directly.
+            If a field is passed, only the spatial part of its domain is
+            used.
+        method : str, default 'nearest'
+            Interpolation method.
+        **xarray_kwargs : dict, optional
+            Additional arguments passed to
+            :meth:`xarray.Dataset.interp`.
+
+        Returns
+        -------
+        GridField
+            Resulting field with the interpolated data.
+
+        Raises
+        ------
+        TypeError
+            If `target` is not an instance of
+            :class:`geokube.core.domain.Domain` or
+            :class:`geokube.core.field.Field`.
+        """
         # spatial interpolation
         # dset = self._dset.pint.dequantify() - it is needed since units are not kept!
         # dset = self._dset.pint.dequantify()
@@ -544,10 +1036,28 @@ class GridField(Field, GridFeature):
             encoding=self.encoding
         )
 
-    def is_geodetic(self):
+    def is_geodetic(self) -> bool:
+        """
+        Return a Boolean if a field has a geodetic CRS.
+
+        Returns
+        -------
+        bool
+            True if a field has a geodetic CRS and False otherwise.
+
+        """
         return isinstance(self.crs, Geodetic) 
 
-    def as_geodetic(self):
+    def as_geodetic(self) -> Field:
+        """
+        Return the transformed gridded field with the geodetic CRS.
+
+        Returns
+        -------
+        Field
+            New gridded field with the geodetic CRS.
+
+        """
         if self.is_geodetic():
             return self
         
@@ -557,11 +1067,52 @@ class GridField(Field, GridFeature):
         )
 
     def as_points(self) -> PointsField:
+        """
+        Return points representation of the data and coordinates.
+
+        Returns
+        -------
+        PointsField
+            Points field with the same data and coordinates.
+        """
         return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
     def resample(
         self, freq: str, operator: Callable | str = 'nanmean', **kwargs
     ) -> Self:
+        """
+        Return a field with resampled data and time coordinate.
+
+        This method performs frequency conversion of a field.  The field
+        must have the time axis and coordinate.  Time can be represented
+        either as instances or intervals.
+
+        Parameters
+        ----------
+        freq : str
+            Target resample frequency.
+        operator : callable or str, default 'nanmean'
+            Operation to be applied on the data during resampling.
+        **kwargs : dict, optional
+            Additional arguments passed to :mod:`pandas` objects.
+
+        Returns
+        -------
+        GridField
+            A field defined on the gridded domain obatained as a result
+            of resampling.
+
+        Raises
+        ------
+        ValueError
+            * If the time values are intervals and `keargs` are passed.
+            * If the time values are intervals of varying durations.
+            * If `freq` does not correspond to the interval durations.
+        NotImplementedError
+            * If the time value array contains anything other than
+              datetime or interval data.
+
+        """
         dset = self._dset
         data = dset[self.name].data
         time_idx = dset.xindexes[axis.time].index.index

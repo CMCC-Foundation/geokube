@@ -9,21 +9,24 @@ Classes
 -------
 
 :class:`geokube.core.feature.FeatureMixin`
-    Mixin class for common domain and field properties and methods
+    Mixin class for common domain and field properties and methods.
 
 :class:`geokube.core.feature.Feature`
-    Base class for feature, domain, and field constructs
+    Base class for feature, domain, and field constructs.
 
 :class:`geokube.core.feature.PointsFeature`
-    Feature defined on a point domain
+    Feature defined on a point domain.
 
 :class:`geokube.core.feature.ProfilesFeature`
-    Feature defined on a profile domain
+    Feature defined on a profile domain.
 
 :class:`geokube.core.feature.GridFeature`
-    Feature defined on a gridded domain
+    Feature defined on a gridded domain.
 
 """
+
+# NOTE: There is probably no need to use the full path to the class from this
+# module in the docstrings. 
 
 from collections.abc import Mapping
 from datetime import date, datetime
@@ -43,7 +46,6 @@ from . import axis, indexes
 from .coord_system import CoordinateSystem
 from .crs import CRS, Geodetic, RotatedGeodetic
 from .indexers import get_array_indexer, get_indexer
-from .points import to_points_dict
 from .quantity import get_magnitude
 from .units import units
 
@@ -77,21 +79,31 @@ class FeatureMixin:
         Return the dimension axes of a domain.
     dim_coords : dict
         Return the dimension coordinates of a domain.
-    aux_axes: tuple
+    aux_axes : tuple
         Return the auxiliary axes of a domain.
-    aux_coords: dict
+    aux_coords : dict
         Return the auxiliary coordinates of a domain.
 
     Methods
     -------
     sel(indexers, **xarray_kwargs)
-    isel(indexers: Mapping, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
     bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
     nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
     nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
     time_range(start, end)
+        Return a subset defined within the time bounds.
     nearest_time(time)
+        Return a subset with the nearest time values.
     latest()
+        Return a subset with just the latest (largest) time value.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
 
     """
 
@@ -152,7 +164,7 @@ class FeatureMixin:
         Return the dimension coordinates of a domain.
 
         The coordinates contain the axes, coordinate values, and
-        coordinate units.  They are represented as a `dict` with the
+        coordinate units.  They are represented as a dict with the
         :class:`geokube.core.axis.Axis` instance keys and
         :class:`pint.Quantity` values.
 
@@ -165,8 +177,7 @@ class FeatureMixin:
         Return the auxiliary axes of a domain.
 
         Auxiliary axes can be only horizontal.  They are represented
-        as a `tuple` of :class:`geokube.core.axis.Horizontal`
-        instances.
+        as a tuple of :class:`geokube.core.axis.Horizontal` instances.
 
         """
         return self.coord_system.aux_axes
@@ -177,7 +188,7 @@ class FeatureMixin:
         Return the auxiliary coordinates of a domain.
 
         The coordinates contain the axes, coordinate values, and
-        coordinate units.  They are represented as a `dict` with the
+        coordinate units.  They are represented as a dict with the
         :class:`geokube.core.axis.Axis` instance keys and
         :class:`pint.Quantity` values.
 
@@ -265,6 +276,31 @@ class FeatureMixin:
         bottom: Number | pint.Quantity | None = None,
         top: Number | pint.Quantity | None = None
     ) -> Self:
+        """
+        Return a subset defined with a bounding box.
+
+        This operation extracts a subset of values within a bounding
+        box specified with the parameters north, south, east, and west.
+        It is unit-aware, which means that the units do not need to be
+        converted before passing to the method.  If a quantity is
+        passed, the units are automatically adjusted.  If just a number
+        is provided, it is assumed that the units are the same as the
+        corresponding coordinate.
+
+        Parameters
+        ----------
+        south, north, west, east : number or quantity, optional
+            Horizontal bounds.
+        bottom, top : number or quantity, optional
+            Vertical bounds.
+
+        Returns
+        -------
+        feature : caller type
+            A feature, domain, or field obtained after subsetting the
+            caller.
+
+        """
         # TODO: manage when north, south, west and east are None
         # we need to consider min/max for lat/lon
         h_idx = {
@@ -281,12 +317,48 @@ class FeatureMixin:
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity
     ) -> Self:
+        """
+        Return the nearest horizontal locations from the domain.
+
+        Parameters
+        ----------
+        latitude, longitude : array_like or quantity
+            Horizontal coordinates for subsetting.
+
+        Returns
+        -------
+        caller type
+            A feature, domain, or field with the the nearest horizontal
+            locations from the domain to all latitude-longitude pairs.
+
+        """
         idx = {axis.latitude: latitude, axis.longitude: longitude}
         return self.sel(idx, method='nearest', tolerance=np.inf)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
+        """
+        Return the nearest vertical locations from the domain.
+
+        This operation is unit-aware, which means that the units do not
+        need to be converted before passing to the method.  If a
+        quantity is passed, the units are automatically adjusted.  If
+        just a number or array is provided, it is assumed that the units
+        are the same as the corresponding coordinate.
+
+        Parameters
+        ----------
+        elevation : array_like or quantity
+            Vertical coordinates for subsetting.
+
+        Returns
+        -------
+        caller type
+            A feature, domain, or field with the the nearest vertical
+            locations to the elevation.
+
+        """
         idx = {axis.vertical: elevation}
         return self.sel(idx, method='nearest', tolerance=np.inf)
 
@@ -297,16 +369,67 @@ class FeatureMixin:
         start: date | datetime | str | None = None,
         end: date | datetime | str | None = None
     ) -> Self:
+        """
+        Return a subset defined within the time bounds.
+
+        This operation extracts a subset of values along the time axis,
+        within the time interval between `start` and `end`.
+
+        Parameters
+        ----------
+        start, end : date, datetime, or str, optional
+            Time bounds.
+
+        Returns
+        -------
+        caller type
+            A feature, domain, or field obtained after subsetting the
+            caller along the time axis.
+
+        """
         idx = {axis.time: slice(start, end)}
         return self.sel(idx)
 
     def nearest_time(
         self, time: date | datetime | str | npt.ArrayLike
     ) -> Self:
+        """
+        Return a subset with the nearest time values.
+
+        This operation extracts a subset of values along the time axis,
+        which are nearest to the values specified with `time`.
+
+        Parameters
+        ----------
+        time : array_like, optional
+            Time values to search for.
+
+        Returns
+        -------
+        caller type
+            A feature, domain, or field obtained after subsetting the
+            caller along the time axis.
+
+        """
         idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
         return self.sel(idx, method='nearest', tolerance=None)
 
     def latest(self) -> Self:
+        """
+        Return a subset with just the latest (largest) time value.
+
+        Returns
+        -------
+        caller type
+            A feature, domain, or field obtained after subsetting the
+            caller along the time axis.
+
+        Raises
+        ------
+        NotImplementedError
+            If the time axis is not present.
+
+        """
         if axis.time not in self._dset.coords:
             raise NotImplementedError()
         latest = self._dset[axis.time].max().astype(str).item()
@@ -315,7 +438,21 @@ class FeatureMixin:
 
     # Writing to file ---------------------------------------------------------
 
-    def to_netcdf(self, path: str, **kwargs) -> None:
+    def to_netcdf(self, path: str, **xarray_kwargs) -> None:
+        """
+        Write the contents to a netCDF file.
+
+        This operation extracts a subset of values along the time axis,
+        which are nearest to the values specified with `time`.
+
+        Parameters
+        ----------
+        path : str
+            The path of the target netCDF file.
+        **xarray_kwargs : dict, optional
+            Extra arguments to :meth:`xarray.Dataset.to_netcdf`.
+
+        """
         dset = self._dset
         dset = dset.drop_indexes(dset.xindexes)
 
@@ -381,10 +518,69 @@ class FeatureMixin:
         # TODO: Improve squeezing.
         dset = dset.squeeze()
 
-        return dset.to_netcdf(path, **kwargs)
+        dset.to_netcdf(path, **xarray_kwargs)
 
 
 class Feature(FeatureMixin):
+    """
+    Base class for feature constructs.
+
+    Parameters
+    ----------
+    ds : xarray dataset
+        CF-compliant dataset with all the inputs.
+    cf_mappings : dict_like
+        CF-compliant hints
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.feature.PointsFeature` :
+        Feature defined on a point domain.
+    :class:`geokube.core.feature.ProfilesFeature` :
+        Feature defined on a profile domain.
+    :class:`geokube.core.feature.GridFeature` :
+        Feature defined on a gridded domain.
+
+    """
+
     __slots__ = (
         '_dset', '_coord_system', '_coords', '_aux_coords', '_dim_coords'
     )
@@ -466,11 +662,13 @@ class Feature(FeatureMixin):
         self._aux_coords = {ax: ds[ax].data for ax in coord_system.aux_axes}
 
     def __eq__(self, other, /) -> bool:
+        """Return ``self == other``."""
         if type(self) is not type(other):
             return False
         return self._dset.identical(other._dset)
 
     def __ne__(self, other, /) -> bool:
+        """Return ``self != other``."""
         return not self == other
 
     def _get_var_names(self) -> set[str]:
@@ -494,6 +692,65 @@ class Feature(FeatureMixin):
 
 
 class PointsFeature(Feature):
+    """
+    Feature defined on a point domain.
+
+    Parameters
+    ----------
+    ds : xarray dataset
+        CF-compliant dataset with all the inputs.
+    cf_mappings : dict_like
+        CF-compliant hints
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+    number_of_points : int
+        The number of points.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.feature.ProfilesFeature` :
+        Feature defined on a profile domain.
+    :class:`geokube.core.feature.GridFeature` :
+        Feature defined on a gridded domain.
+
+    """
+
     __slots__ = ('_n_points',)
     _DIMS_ = ('_points',)
 
@@ -517,11 +774,74 @@ class PointsFeature(Feature):
 
     @property
     def number_of_points(self) -> int:
-        """Returns the number of points in a domain or field."""
+        """Returns the number of points."""
         return self._dset['_points'].size
 
 
 class ProfilesFeature(Feature):
+    """
+    Feature defined on a profile domain.
+
+    Parameters
+    ----------
+    ds : xarray dataset
+        CF-compliant dataset with all the inputs.
+    cf_mappings : dict_like
+        CF-compliant hints
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+    number_of_profiles : int
+        The number of profiles in a domain or field.
+    number_of_levels : int
+        The number of levels in a domain or field.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    as_points()
+        Return points representation of the data and coordinates.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.feature.PointsFeature` :
+        Feature defined on a point domain.
+    :class:`geokube.core.feature.GridFeature` :
+        Feature defined on a gridded domain.
+
+    """
+
     __slots__ = ('_n_profiles', '_n_levels')
     _DIMS_ = ('_profiles', '_levels')
 
@@ -568,6 +888,31 @@ class ProfilesFeature(Feature):
         bottom: Number | None = None,
         top: Number | None = None
     ) -> Self:
+        """
+        Return a subset defined with a bounding box.
+
+        This operation extracts a subset of values within a bounding
+        box specified with the parameters north, south, east, and west.
+        It is unit-aware, which means that the units do not need to be
+        converted before passing to the method.  If a quantity is
+        passed, the units are automatically adjusted.  If just a number
+        is provided, it is assumed that the units are the same as the
+        corresponding coordinate.
+
+        Parameters
+        ----------
+        south, north, west, east : number or quantity, optional
+            Horizontal bounds.
+        bottom, top : number or quantity, optional
+            Vertical bounds.
+
+        Returns
+        -------
+        feature : caller type
+            A feature, domain, or field obtained after subsetting the
+            caller.
+
+        """
         h_idx = {
             axis.latitude: slice(south, north),
             axis.longitude: slice(west, east)
@@ -606,6 +951,27 @@ class ProfilesFeature(Feature):
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
     ) -> Self:
+        """
+        Return the nearest vertical locations from the domain.
+
+        This operation is unit-aware, which means that the units do not
+        need to be converted before passing to the method.  If a
+        quantity is passed, the units are automatically adjusted.  If
+        just a number or array is provided, it is assumed that the units
+        are the same as the corresponding coordinate.
+
+        Parameters
+        ----------
+        elevation : array_like or quantity
+            Vertical coordinates for subsetting.
+
+        Returns
+        -------
+        caller type
+            A feature, domain, or field with the the nearest vertical
+            locations to the elevation.
+
+        """
         # TODO: Try to move this functionality to
         # `indexes.TwoDimHorPointsIndex.sel`.
         dset = self._dset
@@ -663,10 +1029,76 @@ class ProfilesFeature(Feature):
         return feature
 
     def as_points(self) -> PointsFeature:
-        return PointsFeature._from_xarray_dataset(_as_points_dataset(self))
+        """
+        Return points representation of the data and coordinates.
+
+        Returns
+        -------
+        PointsFeature
+            Points feature with the same data and coordinates.
+        """
 
 
 class GridFeature(Feature):
+    """
+    Feature defined on a gridded domain.
+
+    Parameters
+    ----------
+    ds : xarray dataset
+        CF-compliant dataset with all the inputs.
+    cf_mappings : dict_like
+        CF-compliant hints
+
+    Attributes
+    ----------
+    coords : dict
+        Return the coordinates of a domain, with their units.
+    coord_system : CoordinateSystem
+        Return the coordinate system of a domain.
+    crs : CRS
+        Return the coordinate reference system of a domain.
+    dim_axes : tuple
+        Return the dimension axes of a domain.
+    dim_coords : dict
+        Return the dimension coordinates of a domain.
+    aux_axes : tuple
+        Return the auxiliary axes of a domain.
+    aux_coords : dict
+        Return the auxiliary coordinates of a domain.
+
+    Methods
+    -------
+    sel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by labels.
+    isel(indexers, **xarray_kwargs)
+        Return a new feature, domain, or field selected by indexes.
+    bounding_box(south, north, west, east, bottom, top)
+        Return a subset defined with a bounding box.
+    nearest_horizontal(latitude, longitude)
+        Return the nearest horizontal locations from the domain.
+    nearest_vertical(elevation)
+        Return the nearest vertical locations from the domain.
+    time_range(start, end)
+        Return a subset defined within the time bounds.
+    nearest_time(time)
+        Return a subset with the nearest time values.
+    latest()
+        Return a subset with just the latest (largest) time value.
+    as_points()
+        Return points representation of the data and coordinates.
+    to_netcdf(path, **xarray_kwargs)
+        Write the contents to a netCDF file.
+
+    See Also
+    --------
+    :class:`geokube.core.feature.PointsFeature` :
+        Feature defined on a point domain.
+    :class:`geokube.core.feature.ProfilesFeature` :
+        Feature defined on a profile domain.
+
+    """
+
     __slots__ = ('_DIMS_',)
 
     def __init__(
@@ -702,6 +1134,21 @@ class GridFeature(Feature):
         longitude: npt.ArrayLike | pint.Quantity,
         as_points: bool = True
     ) -> Self | PointsFeature:
+        """
+        Return the nearest horizontal locations from the domain.
+
+        Parameters
+        ----------
+        latitude, longitude : array_like or quantity
+            Horizontal coordinates for subsetting.
+
+        Returns
+        -------
+        caller type or PointsFeature
+            A feature, domain, or field with the the nearest horizontal
+            locations from the domain to all latitude-longitude pairs.
+
+        """
         lat, lon = self._dset[axis.latitude], self._dset[axis.longitude]
         lat_vals, lon_vals = lat.to_numpy(), lon.to_numpy()
         if isinstance(self.crs, Geodetic):
@@ -738,6 +1185,14 @@ class GridFeature(Feature):
         return result
 
     def as_points(self) -> PointsFeature:
+        """
+        Return points representation of the data and coordinates.
+
+        Returns
+        -------
+        PointsFeature
+            Points feature with the same data and coordinates.
+        """
         return PointsFeature._from_xarray_dataset(_as_points_dataset(self))
 
 
