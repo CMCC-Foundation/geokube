@@ -18,7 +18,7 @@ setuptools.setup(
     description="Python package for Earth Science Data Analysis",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/geokube/geokube",
+    url="https://github.com/CMCC-Foundation/geokube",
     packages=setuptools.find_packages(),
     install_requires=[
         "pytest-cov",

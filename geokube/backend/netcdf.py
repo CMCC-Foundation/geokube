@@ -43,6 +43,8 @@ def _get_engine(path: list | str):
         return "rasterio"
     elif ext == ".nc":
         return "netcdf4"
+    elif ext == ".jp2":
+        return "rasterio"
     else:
         raise ValueError(
             f"there is not engine associated with the extension `{ext}`"
