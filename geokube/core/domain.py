@@ -186,6 +186,39 @@ class Points(Domain, PointsFeature):
     :class:`geokube.core.domain.Grid` :
         Gridded domain defined at a spatial and temporal grid.
 
+    Examples
+    --------
+
+    Creating a points domain assumes instantiating a coordinate system
+    and coordinates.  One way to pass the coordinates is with a mapping
+    of axis-coordinate pairs:
+
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> pts_domain = Points(
+    ...     coords={
+    ...         axis.latitude: [35, 25],
+    ...         axis.longitude: [10, 12] * units.degree_E,
+    ...         axis.vertical: [0, 10] * units.meter,
+    ...         axis.time: ['2023-07-12T11', '2023-08-10T15']
+    ...     },
+    ...     coord_system=coord_system
+    ... )
+
+    Alternatively, the coodinates can be created by passing a sequence
+    of point coordinates:
+
+    >>> pts_domain = Points(
+    ...     coords=[
+    ...         ('2023-07-12T11', 0, 35, 10),
+    ...         ('2023-08-10T15', 10, 25, 12)
+    ...     ],
+    ...     coord_system=coord_system
+    ... )
+
     """
 
     __slots__ = ()
@@ -315,6 +348,33 @@ class Profiles(Domain, ProfilesFeature):
         Point domain defined at scattered locations and times.
     :class:`geokube.core.domain.Grid` :
         Gridded domain defined at a spatial and temporal grid.
+
+    Examples
+    --------
+
+    Creating a profiles domain assumes instantiating a coordinate system
+    and coordinates:
+
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> time = ['2023-08', '2023-09', '2023-10', '2023-11', '2023-12']
+    >>> vertical = (
+    ...     10
+    ...     + np.random.default_rng(seed=0).random(size=(5, 12))
+    ...     + np.tile(np.arange(12), 5).reshape(5, 12)
+    ... )
+    >>> prof_domain = Profiles(
+    ...     coords={
+    ...         axis.latitude: [30, 35, 40, 45, 50],
+    ...         axis.longitude: [10, 15, 20, 25, 30],
+    ...         axis.time: time,
+    ...         axis.vertical: vertical * units.bar
+    ...     },
+    ...     coord_system=coord_system
+    ... )
 
     """
 
@@ -484,6 +544,29 @@ class Grid(Domain, GridFeature):
         Point domain defined at scattered locations and times.
     :class:`geokube.core.domain.Profiles` :
         Profile domain defined along a vertical line at fixed locations.
+
+    Examples
+    --------
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> grid_domain = Grid(
+    ...     coords={
+    ...         axis.time: [
+    ...             '2023-10-01',
+    ...             '2023-10-02',
+    ...             '2023-10-03',
+    ...             '2023-10-04',
+    ...             '2023-10-05'
+    ...         ],
+    ...         axis.vertical: [0, 10, 20, 30] * units.cm,
+    ...         axis.latitude: [30, 35, 40],
+    ...         axis.longitude: [10, 15]
+    ...     },
+    ...     coord_system=coord_system
+    ... )
 
     """
 

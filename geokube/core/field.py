@@ -25,7 +25,7 @@ Classes
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Callable, Self
+from typing import Callable, Self, TYPE_CHECKING
 
 import dask.array as da
 import numpy as np
@@ -101,9 +101,11 @@ class Field:
     """
 
     __slots__ = ()
-    _DOMAIN_CLS_: type[Domain]
 
-    _dset: xr.Dataset
+    if TYPE_CHECKING:
+        _DOMAIN_CLS_: type[Domain]
+        _dset: xr.Dataset
+        _name: str
 
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
@@ -657,6 +659,45 @@ class ProfilesField(Field, ProfilesFeature):
     :class:`geokube.core.field.GridField` :
         Field defined on a gridded domain.
 
+    Examples
+    --------
+
+    Creating a profiles field assumes instantiating at least a
+    coordinate system, domain, and data.  It is sufficient to specify
+    the data units for one profile:
+
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> time = ['2023-08', '2023-09', '2023-10', '2023-11', '2023-12']
+    >>> vertical = (
+    ...     10
+    ...     + np.random.default_rng(seed=0).random(size=(5, 12))
+    ...     + np.tile(np.arange(12), 5).reshape(5, 12)
+    ... )
+    >>> prof_domain = Profiles(
+    ...     coords={
+    ...         axis.latitude: [30, 35, 40, 45, 50],
+    ...         axis.longitude: [10, 15, 20, 25, 30],
+    ...         axis.time: time,
+    ...         axis.vertical: vertical * units.bar
+    ...     },
+    ...     coord_system=coord_system
+    ... )
+    >>> prof_field = ProfilesField(
+    ...     name='temperature',
+    ...     data=[
+    ...         [300, 350] * units.kelvin,
+    ...         [280, 300, 320, 340, 360, 380],
+    ...         [289, 295],
+    ...         [295, 300, 305, 310, 315],
+    ...         [298, 299, 300, 301, 302]
+    ...     ],
+    ...     domain=prof_domain
+    ... )
+
     """
 
     __slots__ = ('_name',)
@@ -870,6 +911,35 @@ class GridField(Field, GridFeature):
         Field defined on a point domain.
     :class:`geokube.core.field.ProfilesField` :
         Field defined on a profile domain
+
+    Examples
+    --------
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+    >>> grid_domain = Grid(
+    ...     coords={
+    ...         axis.time: [
+    ...             '2023-10-01',
+    ...             '2023-10-02',
+    ...             '2023-10-03',
+    ...             '2023-10-04',
+    ...             '2023-10-05'
+    ...         ],
+    ...         axis.vertical: [0, 10, 20, 30] * units.cm,
+    ...         axis.latitude: [30, 35, 40],
+    ...         axis.longitude: [10, 15]
+    ...     },
+    ...     coord_system=coord_system
+    ... )
+    >>> grid_field = GridField(
+    ...     name='temperature',
+    ...     domain=grid_domain,
+    ...     data=np.arange(120).reshape(5, 4, 3, 2) * units.deg_C,
+    ...     cell_method='time: maximum'
+    ... )
 
     """
 
