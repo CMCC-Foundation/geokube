@@ -46,7 +46,7 @@ from . import axis, indexes
 from .coord_system import CoordinateSystem
 from .crs import CRS, Geodetic, RotatedGeodetic
 from .indexers import get_array_indexer, get_indexer
-from .quantity import get_magnitude
+from .quantity import create_quantity, get_magnitude
 from .units import units
 
 
@@ -652,10 +652,17 @@ class Feature(FeatureMixin):
 
         self._coord_system = coord_system
 
-        self._coords = {
-            axis_: ds[axis_].pint.quantify().data
-            for axis_ in coord_system.axes
-        }
+        # self._coords = {
+        #     axis_: ds[axis_].pint.quantify().data
+        #     for axis_ in coord_system.axes
+        # }
+        coords = {}
+        for axis_ in coord_system.axes:
+            darr = ds[axis_]
+            coords[axis_] = create_quantity(
+                darr, darr.attrs.get('units'), darr.dtype
+            )
+        self._coords = coords
 
         self._dim_coords = {ax: ds[ax].data for ax in coord_system.dim_axes}
 

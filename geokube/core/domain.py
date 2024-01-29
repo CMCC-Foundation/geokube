@@ -240,7 +240,7 @@ class Points(Domain, PointsFeature):
                     coord_units = units.get(axis_)
                     coord_dtype = attrs.pop('dtype', None)
                     coord_ = create_quantity(coord, coord_units, coord_dtype)
-                    attrs['units'] = coord_.units
+                    attrs['units'] = str(coord_.units)
                     result_coords[axis_] = xr.DataArray(
                         data=coord_.magnitude, dims=self._DIMS_, attrs=attrs
                     )
@@ -269,7 +269,7 @@ class Points(Domain, PointsFeature):
                     coord_units = units.get(axis_)
                     coord_dtype = attrs.pop('dtype', None)
                     coord_ = vals.to_numpy(dtype=coord_dtype)
-                    attrs['units'] = coord_units
+                    attrs['units'] = str(coord_units)
                     result_coords[axis_] = xr.DataArray(
                         data=coord_, dims=self._DIMS_, attrs=attrs
                     )
@@ -426,7 +426,7 @@ class Profiles(Domain, ProfilesFeature):
                 )
             n_prof_tot, n_lev_tot = vert_shape
 
-        vert_attrs['units'] = vert_qty.units
+        vert_attrs['units'] = str(vert_qty.units)
         result_coords[vert_axis] = xr.DataArray(
             data=vert_qty.magnitude, dims=self._DIMS_, attrs=vert_attrs
         )
@@ -437,7 +437,7 @@ class Profiles(Domain, ProfilesFeature):
             qty = create_quantity(
                 vals, coord_system.units.get(axis_), attrs.pop('dtype')
             )
-            attrs['units'] = qty.units
+            attrs['units'] = str(qty.units)
             if qty.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
@@ -604,7 +604,7 @@ class Grid(Domain, GridFeature):
                 coord_units = coord_system.units.get(axis_)
                 coord_dtype = attrs.pop('dtype', None)
                 coord_qty = create_quantity(coord, coord_units, coord_dtype)
-                attrs['units'] = coord_qty.units
+                attrs['units'] = str(coord_qty.units)
                 coord_vals = coord_qty.magnitude
                 if (
                     coord_vals.dtype is np.dtype(object)

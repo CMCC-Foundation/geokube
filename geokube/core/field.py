@@ -44,6 +44,7 @@ from .domain import Domain, Grid, Points, Profiles
 from .feature import (
     PointsFeature, ProfilesFeature, GridFeature, _as_points_dataset
 )
+from .quantity import create_quantity
 
 _ARRAY_TYPES = (np.ndarray, da.Array)
 
@@ -179,7 +180,7 @@ class Field:
         return self._name
 
     @property # define data method to return field data
-    def data(self) -> np.ndarray | da.Array | pint.Quantity:
+    def data(self) -> pint.Quantity:
         """
         Return the values of a single physical variable.
 
@@ -190,8 +191,9 @@ class Field:
         :class:`dask.array.core.Array`, or :class:`pint.Quantity`.
 
         """
-        # TODO: Quantify the data.
-        return self._dset[self.name].data
+        darr = self._dset[self.name]
+        qty = create_quantity(darr.data, darr.attrs.get('units'), darr.dtype)
+        return qty
 
     @property
     def properties(self) -> dict:
@@ -222,6 +224,7 @@ class Field:
     def to_xarray(self) -> xr.Dataset:
         ds = self._dset  # we need to copy the ds metadata (and not the data) maybe .copy()
         return ds
+
 
 class PointsField(Field, PointsFeature):
     """
@@ -350,7 +353,7 @@ class PointsField(Field, PointsFeature):
         # together with the `_name` field.
         data_vars = {}
         attrs = properties if properties is not None else {}
-        attrs['units'] = data_.units
+        attrs['units'] = str(data_.units)
         # TODO: Check if domain/axis time has intervals when the cell
         # method exists and is different than points.
         # NOTE: Cell methods and intervals go together.
@@ -585,7 +588,7 @@ class ProfilesField(Field, ProfilesFeature):
         # together with the `_name` field.
         data_vars = {}
         attrs = properties if properties is not None else {}
-        attrs['units'] = data_.units
+        attrs['units'] = str(data_.units)
         # TODO: Check if domain/axis time has intervals when the cell
         # method exists and is different than points.
         # NOTE: Cell methods and intervals go together.
@@ -787,7 +790,7 @@ class GridField(Field, GridFeature):
         data_vars = {}
         field_attrs = properties if properties is not None else {} # TODO: attrs can contain both properties and CF attrs
         field_attrs |= {
-            'units': data_.units, 'grid_mapping': grid_mapping_name
+            'units': str(data_.units), 'grid_mapping': grid_mapping_name
         }
         # TODO: Check if domain/axis time has intervals when the cell
         # method exists and is different than points.
