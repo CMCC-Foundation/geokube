@@ -682,11 +682,11 @@ def custom(
 
     """
     # NOTE: To be used in this manner: `ensemble = custom('Ensemble')`.
-    name = str(type_name)
+    name = str(name)
     base = (UserDefined,)
     dict_ = {
-        '_DEFAULT_UNITS_': pint.Unit(default_units or ''),
-        '_DEFAULT_ENCODING_': dict(default_encoding or UserDefined._DEFAULT_ENCODING_),
+        '_DEFAULT_UNITS_': pint.Unit(units or UserDefined._DEFAULT_UNITS_),
+        '_DEFAULT_ENCODING_': dict(encoding or UserDefined._DEFAULT_ENCODING_),
     }
     cls_ = type(name, base, dict_)
     obj = cls_()

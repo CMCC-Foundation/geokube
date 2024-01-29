@@ -16,7 +16,7 @@ from tests.fixtures.features import *
 #
 
 def test_create_points_1(points1):    
-    assert points1.dim_axes == (axis.vertical, axis.latitude, axis.longitude)
+    assert points1.dim_axes == (axis.time, axis.vertical, axis.latitude, axis.longitude)
     assert points1.number_of_points == 2
 
     assert np.all(points1.coords[axis.vertical] == pint.Quantity([10.5, 11.2], units['meter']))
@@ -24,7 +24,7 @@ def test_create_points_1(points1):
     assert np.all(points1.coords[axis.longitude] == pint.Quantity([-12.2, 10.2], units['degrees_east']))
 
 def test_create_points_2(points2):    
-    assert points2.dim_axes == (axis.vertical, axis.latitude, axis.longitude)
+    assert points2.dim_axes == (axis.time, axis.vertical, axis.latitude, axis.longitude)
     assert points2.number_of_points == 2
 
     assert np.all(points2.coords[axis.vertical] == pint.Quantity([10.5, 11.2], units['meter']))
@@ -77,7 +77,7 @@ def test_to_netcdf_points(points1):
 #
 
 def test_create_profiles(profiles):    
-    assert profiles.dim_axes == (axis.vertical, axis.latitude, axis.longitude)
+    assert profiles.dim_axes == (axis.time, axis.vertical, axis.latitude, axis.longitude)
     assert profiles.number_of_profiles == 2
     assert profiles.number_of_levels == 4
 
@@ -127,7 +127,7 @@ def test_to_netcdf_profiles(profiles):
 #
 
 def test_create_grid(grid):    
-    assert grid.dim_axes == (axis.vertical, axis.latitude, axis.longitude)
+    assert grid.dim_axes == (axis.time, axis.vertical, axis.latitude, axis.longitude)
 
     # assert np.all(grid.coords[axis.latitude] == pint.Quantity([42.2, 56.2], units['degrees_north']))
     # assert np.all(grid.coords[axis.longitude] == pint.Quantity([-12.2, 10.2], units['degrees_east']))

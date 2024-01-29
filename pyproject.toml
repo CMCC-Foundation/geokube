@@ -16,7 +16,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "geokube"
-version = "0.4a0"
+version = "0.3a0"
 authors = [
     {name = "geokube Contributors", email = "geokube@googlegroups.com"}
 ]
@@ -39,7 +39,6 @@ classifiers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "cf_xarray>=0.8.4",
     "dask>=2023.6.0",
     "matplotlib>=3.5",
     "netcdf4",
