@@ -6,12 +6,6 @@ from functools import partial
 import numpy as np
 import re
 import pint
-# import cf_units as cf
-
-# from ..utils.hcube_logger import HCubeLogger
-
-# _LOG = HCubeLogger(name="Units")
-
 
 def maybe_adjust_object_by_unit(
     magnitude, expected_units=None

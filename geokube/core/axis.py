@@ -590,8 +590,7 @@ class UserDefined(Axis):
 
     # FIXME: Hash cannot be the class name -> redefine hash with axis name.
     _DEFAULT_UNITS_ = units['']
-    _DEFAULT_DTYPE_ = 'str'
-
+    _DEFAULT_ENCODING_ = { 'dtype': 'str'}
 
 x = X()
 y = Y()
@@ -640,10 +639,9 @@ UserDefinedT_co = TypeVar(
 
 
 def custom(
-    type_name: str,
-    units: pint.Unit | str = '',
+    name: str,
+    units: str | pint.Unit | None = None,
     encoding: Mapping[str, Any] | None = None,
-    dtype: npt.DTypeLike | None = None,
 ) -> UserDefinedT_co:
     """
     Create a user-defined axis subclass and return its instance.
@@ -656,14 +654,12 @@ def custom(
 
     Parameters
     ----------
-    type_name : str
+    name : str
         The name of the user-defined class.
     units : pint unit or str, default: ''
         Default units of the user-defined class.
     encoding : dict_like, default: None
         Default encoding of the user-defined class.
-    dtype : npt.DTypeLike | None, optional
-        Default NumPy data-type of the user-defined class.
 
     Returns
     -------
@@ -677,21 +673,20 @@ def custom(
     Examples
     --------
     >>> discrete = axis.custom(
-    ...     type_name='DiscreteType',
+    ...     name='Discrete',
     ...     units='m',
-    ...     encoding={'standard_name': 'name'}
+    ...     encoding={'standard_name': 'name', 'dtype': 'float64'}
     ... )
     >>> discrete
-    DiscreteType(units='meter', encoding={'standard_name': 'name'})
+    Discrete(units='meter', encoding={'standard_name': 'name', 'dtype': 'float64'})
 
     """
     # NOTE: To be used in this manner: `ensemble = custom('Ensemble')`.
     name = str(type_name)
     base = (UserDefined,)
     dict_ = {
-        '_DEFAULT_UNITS_': pint.Unit(units),
-        '_DEFAULT_ENCODING_': dict(encoding or {}),
-        '_DEFAULT_DTYPE_': np.dtype(dtype)
+        '_DEFAULT_UNITS_': pint.Unit(default_units or ''),
+        '_DEFAULT_ENCODING_': dict(default_encoding or UserDefined._DEFAULT_ENCODING_),
     }
     cls_ = type(name, base, dict_)
     obj = cls_()

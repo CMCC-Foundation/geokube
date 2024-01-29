@@ -403,8 +403,8 @@ class RotatedGeodetic(CRS):
 
     def __init__(
         self,
-        grid_north_pole_latitude: float | None = None,
-        grid_north_pole_longitude: float | None = None,
+        grid_north_pole_latitude: float | None = 0.0,
+        grid_north_pole_longitude: float | None = 0.0,
         north_pole_grid_longitude: float = 0.0,
         crs: pyproj_crs.DerivedGeographicCRS | None = None,
         dim_axes: tuple[axis.Horizontal, ...] | None = None,
