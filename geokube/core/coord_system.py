@@ -167,6 +167,29 @@ class CoordinateSystem:
     SpatialCoordinateSystem :
         The spatial part of the coordinate system of a domain.
 
+    Examples
+    --------
+
+    Coordinate system with geodetic CRS:
+
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=Geodetic(),
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+
+    Coordinate system with rotated geodetic CRS:
+
+    >>> rotated_crs = RotatedGeodetic(
+    ...     grid_north_pole_latitude=47.0,
+    ...     grid_north_pole_longitude=-168.0
+    ... )
+    >>> coord_system = CoordinateSystem(
+    ...     horizontal=rotated_crs,
+    ...     elevation=axis.vertical,
+    ...     time=axis.time
+    ... )
+
     """
 
     __slots__ = (

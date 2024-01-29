@@ -3,7 +3,7 @@ Coordinate Reference System
 ===========================
 
 The horizontal coordinate reference system with dimension and auxiliary
-axes.  It can be either geodetic, rotated or a projection.
+axes.  It can be either geodetic, rotated, or a projection.
 
 Classes
 -------

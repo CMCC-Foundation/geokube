@@ -683,6 +683,7 @@ def custom(
     ... )
     >>> discrete
     DiscreteType(units='meter', encoding={'standard_name': 'name'})
+
     """
     # NOTE: To be used in this manner: `ensemble = custom('Ensemble')`.
     name = str(type_name)
