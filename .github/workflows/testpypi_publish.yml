@@ -10,11 +10,8 @@ jobs:
     name: Build geokube and publish to TestPyPI
     strategy:
       matrix:
-        python-version: ["3.9"]
+        python-version: ["3.11"]
         os: [ubuntu-latest]
-#    environment:
-#        name: testpypi
-#        url: https://test.pypi.org/p/geokube
     permissions:
         id-token: write
     runs-on: ${{ matrix.os }}

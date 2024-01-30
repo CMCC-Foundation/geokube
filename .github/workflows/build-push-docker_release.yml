@@ -14,7 +14,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: "3.9"
+        python-version: 3.11
     - name: Install WHEEL tool
       run: pip install wheel
     - name: Build WHEEL file
@@ -32,4 +32,4 @@ jobs:
         file: ./Dockerfile
         push: true
         tags: | 
-          ${{ vars.GEOKUBE_REGISTRY }}/geokube:${{ env.TAG }}
+          ${{ vars.GEOKUBE_REGISTRY }}/geokube:${{ env.RELEASE_TAG }}
