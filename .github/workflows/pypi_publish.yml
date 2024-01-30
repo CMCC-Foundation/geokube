@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-and-publish:
-    name: Build Kit4DL and publish to PyPI
+    name: Build geokube package and publish to PyPI
     strategy:
       matrix:
         python-version: ["3.9"]
