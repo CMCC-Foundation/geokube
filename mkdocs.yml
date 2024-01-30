@@ -1,0 +1,40 @@
+site_name: geokube
+site_description: geokube - a Python package based on xarray for Geoscience Data Analysis and Visualization
+theme:
+  name: material
+  palette:
+  - media: '(prefers-color-scheme: light)'
+    scheme: default
+    primary: blue grey
+    accent: amber
+  features:
+  - search.suggest
+  - search.highlight
+  - content.tooltips
+  - content.code.annotate
+  - content.code.copy
+  - content.code.select
+  icon:
+    repo: fontawesome/brands/github-alt
+  logo: img/favicon.svg
+  favicon: img/favicon.svg
+  language: en
+repo_name: CMCC-Foundation/geolake
+repo_url: https://github.com/CMCC-Foundation/geokube
+edit_uri: ''
+use_directory_urls: false
+
+plugins:
+- mkdocstrings:
+
+nav:
+- geokube: index.md
+- API:
+  - axis.md
+  - crs.md
+  - coord_system.md
+  - feature.md
+  - domain.md
+  - field.md
+- about.md
+
