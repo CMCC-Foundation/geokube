@@ -1,3 +1,6 @@
+"""The driver for Argo profile data."""
+
+
 from collections.abc import Sequence
 from typing import Any
 
@@ -39,6 +42,28 @@ def open(
     xarray_kwargs: dict[str, Any] | None = None,
     **kwargs
 ) -> ProfilesField | Cube:
+    """
+    Return a profiles field or cube of profiles fields from file(s).
+
+    Parameters
+    ----------
+    path : str
+        Path to the file(s).
+    variables : str or sequence of str, default: None
+        Variables to extract from the file(s).
+    xarray_kwargs : dict, optional
+        Additional keyword arguments passed to the function
+        xarray.open_mfdataset.
+    **kwargs : dict, optional
+        Additional keyword arguments.  Used for consistency among the
+        drivers.  Ignored.
+
+    Returns
+    -------
+    ProfilesField or Cube
+        Profiles field or cube of profiles fields from file(s).
+
+    """
     import gsw
 
     match variables:

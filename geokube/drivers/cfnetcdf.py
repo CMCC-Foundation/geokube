@@ -1,3 +1,6 @@
+"""The driver for CF-compliant NetCDF data."""
+
+
 from collections.abc import Sequence
 import os
 from typing import Any
@@ -217,6 +220,33 @@ def open(
     xarray_kwargs: dict[str, Any] | None = None,
     **kwargs
 ) -> Collection:
+    """
+    Return a collection of fields from file(s).
+
+    Parameters
+    ----------
+    path : str, os.PathLike, or sequence
+        Path to the file(s).
+    variables : str or sequence of str, default: None
+        Variables to extract from the file(s).
+    xarray_kwargs : dict | None, optional
+        Additional keyword arguments passed to the function
+        xarray.open_mfdataset.
+    **kwargs : dict, optional
+        Additional keyword arguments.  Used for consistency among the
+        drivers.  Ignored.
+
+    Returns
+    -------
+    Collection
+        Collection of fields from file(s).
+
+    Raises
+    ------
+    TypeError
+        If `variables` is not str, sequence of str, or None.
+
+    """
     kwa = xarray_kwargs or {}
     kwa.setdefault('decode_coords', 'all')
     # TODO: Reconsider using the context manager.

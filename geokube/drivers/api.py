@@ -1,7 +1,9 @@
+"""API for calling the drivers."""
+
+
 from collections.abc import Sequence, Mapping
 import os
 from types import ModuleType
-
 from typing import Any, Literal, Union
 
 
@@ -9,11 +11,11 @@ from typing import Any, Literal, Union
 
 
 # pylint: disable=unused-import, no-name-in-module
-from . import argo, cfnetcdf, sentinel2  # noqa
-# from .common import DriverEntrypoint
 from geokube.core.collection import Collection
 from geokube.core.field import Field
 from geokube.core.cube import Cube
+from . import argo, cfnetcdf, sentinel2  # noqa
+# from .common import DriverEntrypoint
 
 
 T_Driver = Union[
@@ -57,11 +59,42 @@ def open_cubes(
 def open_collection(
     pattern_or_obj: str,
     *,
-    driver: T_Driver = None,
+    driver: T_Driver,
     driver_kwargs: dict[str, Any] | None = None,
     xarray_kwargs: dict[str, Any] | None = None,
-    **kwargs,        
+    **kwargs
 ) -> Collection:
+    """
+    Return a collection of fields from file(s).
+
+    Parameters
+    ----------
+    pattern_or_obj : str
+        Path to the file(s).
+    driver : module, callable, or str
+        The driver with the function ``open`` to call.
+    driver_kwargs : dict, optional
+        Additional keyword arguments passed to the driver ``open``
+        function.
+    xarray_kwargs : dict, optional
+        Additional keyword arguments passed to the function
+        xarray.open_mfdataset when during the call of the driver
+        ``open`` function.
+    **kwargs : dict, optional
+        Additional keyword arguments.
+
+    Returns
+    -------
+    Collection
+        Collection of fields from file(s).
+
+    Raises
+    ------
+    TypeError
+        If `driver` is not of an appropriate type or if the call to the driver
+        does not return an instance of Field, Cube, or Collection.
+
+    """
     if callable(driver):
         driver_call = driver
     else:

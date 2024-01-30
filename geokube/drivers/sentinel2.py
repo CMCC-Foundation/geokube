@@ -1,3 +1,6 @@
+"""The driver for Sentinel 2 data."""
+
+
 from collections.abc import Sequence
 from glob import iglob
 import os
@@ -25,6 +28,30 @@ def open(
     xarray_kwargs: dict[str, Any] = None,
     **kwargs
 ) -> Collection:
+    """
+    Return a collection of fields from file(s).
+
+    Parameters
+    ----------
+    path : str
+        Path to the file(s).
+    resolutions : sequence of str, optional
+        Resolutions.  If omitted, all resolutions are taken.
+    bands : sequence of str, optional
+        Bands.  If omitted, all bands are taken.
+    xarray_kwargs : dict, optional
+        Additional keyword arguments passed to the function
+        xarray.open_mfdataset.
+    **kwargs : dict, optional
+        Additional keyword arguments.  Used for consistency among the
+        drivers.  Ignored.
+
+    Returns
+    -------
+    Collection
+        Collection of fields from file(s).
+
+    """
     # Extract the time from the path.
     path_time = os.path.splitext(os.path.basename(path))[0].split('_')[-1]
     time = pd.to_datetime([path_time]).to_numpy()
