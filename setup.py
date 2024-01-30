@@ -30,7 +30,7 @@ setuptools.setup(
         "rioxarray",
     ],
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Environment :: Web Environment",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: Apache Software License",
