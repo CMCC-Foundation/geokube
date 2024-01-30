@@ -15,7 +15,7 @@ setuptools.setup(
     version=main_ns["__version__"],
     author="geokube Contributors",
     author_email="geokube@googlegroups.com",
-    description="Python package for Earth Science Data Analysis",
+    description="a Python package based on xarray for GeoScience Data Analysis",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/CMCC-Foundation/geokube",
