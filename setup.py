@@ -37,7 +37,7 @@ setuptools.setup(
         "Natural Language :: English",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Topic :: Scientific/Engineering :: Earth Science",
+        "Topic :: Scientific/Engineering",
     ],
     python_requires=">=3.9",
     license="Apache License, Version 2.0",
