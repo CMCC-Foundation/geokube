@@ -19,13 +19,19 @@ theme:
   logo: img/favicon.svg
   favicon: img/favicon.svg
   language: en
-repo_name: CMCC-Foundation/geolake
+repo_name: CMCC-Foundation/geokube
 repo_url: https://github.com/CMCC-Foundation/geokube
 edit_uri: ''
 use_directory_urls: false
 
 plugins:
 - mkdocstrings:
+    enabled: !ENV [ENABLE_MKDOCSTRINGS, true]
+    default_handler: python
+    handlers:
+      python:
+        options:
+          docstring_style: numpy
 
 nav:
 - geokube: index.md
