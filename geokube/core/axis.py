@@ -32,10 +32,10 @@ Latitude
     Latitude axis.
 
 GridLongitude
-    Grid longitude axis along the Y dimension.
+    Grid longitude axis along the X dimension.
 
 GridLatitude
-    Grid latitude axis along the X dimension.
+    Grid latitude axis along the Y dimension.
 
 X
     General X horizontal spatial axis.
@@ -267,7 +267,7 @@ class Latitude(Horizontal):
 
 class GridLongitude(Horizontal):
     """
-    Grid longitude axis along the Y dimension.
+    Grid longitude axis along the X dimension.
 
     Parameters
     ----------
@@ -410,7 +410,7 @@ class Elevation(Spatial):
 
 class Z(Elevation):
     """
-    General Z elevation, i.e. vertical spatial axis.
+    General Z axis, i.e. vertical spatial axis.
 
     Parameters
     ----------
