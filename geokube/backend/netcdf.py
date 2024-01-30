@@ -79,7 +79,7 @@ def open_datacube(
         ds = _read_cache(metadata_cache_path)
         if ds is not None:
             return ds
-    engine = _get_engine(path)
+    engine = kwargs.pop('engine', None) or _get_engine(path)
     if engine == "netcdf4":
         kwargs.setdefault("decode_coords", "all")
     ds = geokube.core.datacube.DataCube.from_xarray(
