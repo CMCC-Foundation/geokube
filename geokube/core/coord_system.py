@@ -13,7 +13,6 @@ The coordinate system of a domain that contains:
 
 Classes
 -------
-
 SpatialCoordinateSystem
     The spatial part of the coordinate system of a domain.
 
@@ -37,23 +36,23 @@ class SpatialCoordinateSystem:
 
     Parameters
     ----------
-    crs : :class:`.crs.CRS`
+    crs : crs.CRS
         Horizontal coordinate reference system with horizontal axes.  It
         can be either geodetic, rotated or a projection.
-    elevation : :class:`.axis.Elevation`, default: None
+    elevation : axis.Elevation, default: None
         Elevation axis.
 
     Attributes
     ----------
-    crs : :class:`.crs.CRS`
+    crs : crs.CRS
         Return the horizontal coordinate reference system.
-    elevation : :class:`.axis.Elevation`, default: None
+    elevation : axis.Elevation, default: None
         Return the elevation axis.
-    dim_axes : :class:`tuple` of :class:`.axis.Spatial`
+    dim_axes : tuple of axis.Spatial
         Return the tuple of spatial dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Spatial`
+    axes : tuple of axis.Spatial
         Return the tuple of spatial dimension and auxiliary axes.
 
     """
@@ -124,35 +123,35 @@ class CoordinateSystem:
 
     Parameters
     ----------
-    horizontal : :class:`.crs.CRS`
+    horizontal : crs.CRS
         Horizontal coordinate reference system with horizontal axes.  It
         can be either geodetic, rotated or a projection.
-    elevation : :class:`.axis.Elevation`, default: None
+    elevation : axis.Elevation, default: None
         Elevation axis.
-    time : :class:`.axis.Time`, default: None
+    time : axis.Time, default: None
         Time axis.
-    user_axes : sequence of :class:`.axis.UserDefined`
+    user_axes : sequence of axis.UserDefined
         User-defined axes.
 
     Attributes
     ----------
-    spatial : :class:`.SpatialCoordinateSystem`
+    spatial : SpatialCoordinateSystem
         Return the spatial part of the coordinate system.
-    crs : :class:`.crs.CRS`
+    crs : crs.CRS
         Return the horizontal coordinate reference system.
-    elevation : :class:`.axis.Elevation`, default: None
+    elevation : axis.Elevation, default: None
         Return the elevation axis.
-    time : :class:`.axis.Time`, default: None
+    time : axis.Time, default: None
         Return the time axis.
-    user_axes : :class:`tuple` of :class:`.axis.UserDefined`
+    user_axes : tuple of axis.UserDefined
         Return the tuple of user-defined axes.
-    dim_axes : :class:`tuple` of :class:`.axis.Spatial`
+    dim_axes : tuple of axis.Spatial
         Return the tuple of spatial dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Spatial`
+    axes : tuple of axis.Spatial
         Return the tuple of spatial dimension and auxiliary axes.
-    units : :class:`dict` of :class:`pint.Unit` and :class:`.axis.Axis`
+    units : dict of pint.Unit and axis.Axis
         Return the units that correspond to the axes.
 
     Methods
@@ -300,13 +299,12 @@ class CoordinateSystem:
         """
         Return a new coordinate system with axis added to user axes.
 
-        This method appends `new_axis` to the end of the sequence
-        :attr:`.user_axes`.  The other axes and the coordinate reference
-        system remain unchanged.
+        This method appends `new_axis` to the end of the user axes.  The
+        other axes and the coordinate reference system remain unchanged.
 
         Parameters
         ----------
-        new_axis : :class:`.axis.UserDefined`
+        new_axis : axis.UserDefined
             The axis to add.
 
         Returns
@@ -327,13 +325,12 @@ class CoordinateSystem:
         """
         Return a new coordinate system without the specified axis.
 
-        This method removes `existing_axis` from the sequence
-        :attr:`.user_axes`.  The other axes and the coordinate reference
-        system remain unchanged.
+        This method removes `existing_axis` from the user axes.  The
+        other axes and the coordinate reference system remain unchanged.
 
         Parameters
         ----------
-        new_axis : :class:`.axis.UserDefined`
+        new_axis : axis.UserDefined
             The axis to add.
 
         Returns

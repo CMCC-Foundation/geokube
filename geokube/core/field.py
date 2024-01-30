@@ -7,17 +7,16 @@ domain, ancillary constructs, properties, etc.
 
 Classes
 -------
-
-:class:`geokube.core.field.Field`
+Field
     Base class for field constructs.
 
-:class:`geokube.core.field.PointsField`
+PointsField
     Field defined on a point domain.
 
-:class:`geokube.core.field.ProfilesField`
+ProfilesField
     Field defined on a profile domain.
 
-:class:`geokube.core.field.GridField`
+GridField
     Field defined on a gridded domain.
 
 """
@@ -72,11 +71,11 @@ class Field:
 
     See Also
     --------
-    :class:`geokube.core.field.PointsField` :
+    PointsField :
         Field defined on a point domain.
-    :class:`geokube.core.field.ProfilesField` :
+    ProfilesField :
         Field defined on a profile domain
-    :class:`geokube.core.field.GridField` :
+    GridField :
         Field defined on a gridded domain.
 
     """
@@ -136,14 +135,14 @@ class Field:
 
         See Also
         --------
-        :class:`geokube.core.domain.Points` :
+        Points :
             Point domain defined at scattered locations and times
 
-        :class:`geokube.core.domain.Profiles` :
+        Profiles :
             Profile domain defined along a vertical line at fixed
             locations
 
-        :class:`geokube.core.domain.Grid` :
+        Grid :
             Gridded domain defined at a spatial and temporal grid
 
         """
@@ -187,8 +186,8 @@ class Field:
         Data are stored in a multidimensional array defined over the
         domain.  The order of the array dimensions should correspond to
         the order of the axes in the coordinate system of the domain.
-        This array can be an instance of :class:`numpy.ndarray`,
-        :class:`dask.array.core.Array`, or :class:`pint.Quantity`.
+        This array can be an instance of numpy.ndarray,
+        dask.array.Array, or pint.Quantity.
 
         """
         darr = self._dset[self.name]
@@ -303,11 +302,11 @@ class PointsField(Field, PointsFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Points` :
+    Points :
         Point domain defined at scattered locations and times.
-    :class:`geokube.core.field.ProfilesField` :
+    ProfilesField :
         Field defined on a profile domain
-    :class:`geokube.core.field.GridField` :
+    GridField :
         Field defined on a gridded domain.
 
     """
@@ -461,11 +460,11 @@ class ProfilesField(Field, ProfilesFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Profiles` :
+    Profiles :
         Profile domain defined along a vertical line at fixed locations.
-    :class:`geokube.core.field.PointsField` :
+    PointsField :
         Field defined on a point domain.
-    :class:`geokube.core.field.GridField` :
+    GridField :
         Field defined on a gridded domain.
 
     Examples
@@ -711,11 +710,11 @@ class GridField(Field, GridFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Grid` :
+    Grid :
         Gridded domain defined at a spatial and temporal grid.
-    :class:`geokube.core.field.PointsField` :
+    PointsField :
         Field defined on a point domain.
-    :class:`geokube.core.field.ProfilesField` :
+    ProfilesField :
         Field defined on a profile domain
 
     Examples
@@ -852,9 +851,7 @@ class GridField(Field, GridFeature):
         Raises
         ------
         TypeError
-            If `target` is not an instance of
-            :class:`geokube.core.domain.Grid` or
-            :class:`geokube.core.field.GridField`.
+            If `target` is not an instance of Grid or GridField.
         """
         import xesmf as xe
 
@@ -948,8 +945,7 @@ class GridField(Field, GridFeature):
         method : str, default 'nearest'
             Interpolation method.
         **xarray_kwargs : dict, optional
-            Additional arguments passed to
-            :meth:`xarray.Dataset.interp`.
+            Additional arguments passed to xarray.Dataset.interp.
 
         Returns
         -------
@@ -959,9 +955,7 @@ class GridField(Field, GridFeature):
         Raises
         ------
         TypeError
-            If `target` is not an instance of
-            :class:`geokube.core.domain.Domain` or
-            :class:`geokube.core.field.Field`.
+            If `target` is not an instance of Domain or Field.
         """
         # spatial interpolation
         # dset = self._dset.pint.dequantify() - it is needed since units are not kept!
@@ -1097,7 +1091,7 @@ class GridField(Field, GridFeature):
         operator : callable or str, default 'nanmean'
             Operation to be applied on the data during resampling.
         **kwargs : dict, optional
-            Additional arguments passed to :mod:`pandas` objects.
+            Additional arguments passed to pandas objects.
 
         Returns
         -------
@@ -1108,7 +1102,7 @@ class GridField(Field, GridFeature):
         Raises
         ------
         ValueError
-            * If the time values are intervals and `keargs` are passed.
+            * If the time values are intervals and `kwargs` are passed.
             * If the time values are intervals of varying durations.
             * If `freq` does not correspond to the interval durations.
         NotImplementedError

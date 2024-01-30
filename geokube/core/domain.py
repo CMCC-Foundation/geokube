@@ -8,17 +8,16 @@ coordinate values and related units, coordinate reference system, etc.
 
 Classes
 -------
-
-:class:`geokube.core.domain.Domain`
+Domain
     Base class for domain constructs.
 
-:class:`geokube.core.domain.Points`
+Points
     Point domain defined at scattered locations and times.
 
-:class:`geokube.core.domain.Profiles`
+Profiles
     Profile domain defined along vertical lines at fixed locations.
 
-:class:`geokube.core.domain.Grid`
+Grid
     Gridded domain defined at a spatial and temporal grid.
 
 """
@@ -58,11 +57,11 @@ class Domain:
 
     See Also
     --------
-    :class:`geokube.core.domain.Points` :
+    Points :
         Point domain defined at scattered locations and times.
-    :class:`geokube.core.domain.Profiles` :
+    Profiles :
         Profile domain defined along a vertical line at fixed locations.
-    :class:`geokube.core.domain.Grid` :
+    Grid :
         Gridded domain defined at a spatial and temporal grid.
 
     """
@@ -102,9 +101,9 @@ class Domain:
         ----------
         coords : dict_like
             Mapping of axes and the corresponding coordinates. The keys
-            are the instances of the subtypes of
-            :class:`geokube.core.axis.Axis` and the values are
-            array-like objects, pint quantities, or xarray data arrays.
+            are the instances of the subtypes of axis.Axis and the
+            values are array-like objects, pint quantities, or xarray
+            data arrays.
         coord_system : CoordinateSystem
             Coordinate system.
 
@@ -130,9 +129,9 @@ class Points(Domain, PointsFeature):
     coords : dict_like or sequence
         Mapping of axes and the corresponding coordinates. The keys
         are the instances of the subtypes of
-        :class:`geokube.core.axis.Axis` and the values are
-        array-like objects or pint quantities.  It can also be a
-        two-dimensional sequence of point coordinates.
+        axis.Axis and the values are array-like objects or pint
+        quantities.  It can also be a two-dimensional sequence of point
+        coordinates.
     coord_system : CoordinateSystem
         Coordinate system.
 
@@ -180,9 +179,9 @@ class Points(Domain, PointsFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Profiles` :
+    Profiles :
         Profile domain defined along a vertical line at fixed locations.
-    :class:`geokube.core.domain.Grid` :
+    Grid :
         Gridded domain defined at a spatial and temporal grid.
 
     Examples
@@ -289,9 +288,8 @@ class Profiles(Domain, ProfilesFeature):
     ----------
     coords : dict_like or sequence
         Mapping of axes and the corresponding coordinates. The keys
-        are the instances of the subtypes of
-        :class:`geokube.core.axis.Axis` and the values are
-        array-like objects or pint quantities.
+        are the instances of the subtypes of axis.Axis and the values
+        are array-like objects or pint quantities.
     coord_system : CoordinateSystem
         Coordinate system.
 
@@ -343,9 +341,9 @@ class Profiles(Domain, ProfilesFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Points` :
+    Points :
         Point domain defined at scattered locations and times.
-    :class:`geokube.core.domain.Grid` :
+    Grid :
         Gridded domain defined at a spatial and temporal grid.
 
     Examples
@@ -483,9 +481,8 @@ class Grid(Domain, GridFeature):
     ----------
     coords : dict_like or sequence
         Mapping of axes and the corresponding coordinates. The keys
-        are the instances of the subtypes of
-        :class:`geokube.core.axis.Axis` and the values are
-        array-like objects or pint quantities.
+        are the instances of the subtypes of axis.Axis and the values
+        are array-like objects or pint quantities.
     coord_system : CoordinateSystem
         Coordinate system.
 
@@ -539,9 +536,9 @@ class Grid(Domain, GridFeature):
 
     See Also
     --------
-    :class:`geokube.core.domain.Points` :
+    Points :
         Point domain defined at scattered locations and times.
-    :class:`geokube.core.domain.Profiles` :
+    Profiles :
         Profile domain defined along a vertical line at fixed locations.
 
     Examples

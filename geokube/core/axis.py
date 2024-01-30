@@ -6,18 +6,16 @@ A domain axis construct defined by a dimension or scalar coordinate
 variable.  The data array that belongs to a field spans the axis
 constructs of the domain.
 
-:obj:`geokube` axes are defined as hashable objects suitable to be the
+``geokube`` axes are defined as hashable objects suitable to be the
 keys of dictionaries and members of sets.
 
 Functions
 ---------
-
 custom(type_name[, units, encoding, dtype])
     Create a user-defined axis subclass and return its instance.
 
 Classes
 -------
-
 Axis
     Base class for axis constructs.
 
@@ -648,9 +646,8 @@ def custom(
 
     This is a utility function that helps creating instances of
     user-defined axes, e.g. discrete axis.  It creates a new subclass of
-    the class :class:`UserDefined` with the provided default `units`,
-    `encoding`, and `dtype`; instantiates this class; and returns the
-    instance.
+    the class UserDefined with the provided default `units`, `encoding`,
+    and `dtype`; instantiates this class; and returns the instance.
 
     Parameters
     ----------

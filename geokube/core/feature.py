@@ -7,20 +7,19 @@ A feature construct that serves as a base class for domains and fields.
 
 Classes
 -------
-
-:class:`geokube.core.feature.FeatureMixin`
+FeatureMixin
     Mixin class for common domain and field properties and methods.
 
-:class:`geokube.core.feature.Feature`
+Feature
     Base class for feature, domain, and field constructs.
 
-:class:`geokube.core.feature.PointsFeature`
+PointsFeature
     Feature defined on a point domain.
 
-:class:`geokube.core.feature.ProfilesFeature`
+ProfilesFeature
     Feature defined on a profile domain.
 
-:class:`geokube.core.feature.GridFeature`
+GridFeature
     Feature defined on a gridded domain.
 
 """
@@ -114,8 +113,7 @@ class FeatureMixin:
 
         The coordinates contain the axes, coordinate values, and
         coordinate units.  They are represented as a `dict` with the
-        :class:`geokube.core.axis.Axis` instance keys and
-        :class:`pint.Quantity` values.
+        axis.Axis instance keys and pint.Quantity values.
 
         """
         return self._coords
@@ -126,10 +124,9 @@ class FeatureMixin:
         Return the coordinate system of a domain.
 
         The coordinate system is an instance of the class
-        :class:`geokube.core.coord_system.CoordinateSystem`.  It
-        contains the information on the spatial, temporal, and other
-        axes and related units, as well as about the horizontal
-        coordinate reference system.
+        coord_system.CoordinateSystem.  It contains the information on
+        the spatial, temporal, and other axes and related units, as well
+        as about the horizontal coordinate reference system.
 
         """
         return self._coord_system
@@ -140,9 +137,8 @@ class FeatureMixin:
         Return the coordinate reference system of a domain.
 
         The horizontal coordinate reference system is an instance of a
-        subclass of the class :class:`geokube.core.crs.CRS`.  It
-        contains dimension and auxiliary horizontal axes, and can be
-        used for transformations.
+        subclass of the class crs.CRS.  It contains dimension and
+        auxiliary horizontal axes, and can be used for transformations.
 
         """
         return self.coord_system.spatial.crs
@@ -153,7 +149,7 @@ class FeatureMixin:
         Return the dimension axes of a domain.
 
         There can be any number of kind of axes.  They are represented
-        as a `tuple` of :class:`geokube.core.axis.Axis` instances.
+        as a tuple of axis.Axis instances.
 
         """
         return self.coord_system.dim_axes
@@ -165,8 +161,7 @@ class FeatureMixin:
 
         The coordinates contain the axes, coordinate values, and
         coordinate units.  They are represented as a dict with the
-        :class:`geokube.core.axis.Axis` instance keys and
-        :class:`pint.Quantity` values.
+        axis.Axis instance keys and pint.Quantity values.
 
         """
         return self._dim_coords
@@ -177,7 +172,7 @@ class FeatureMixin:
         Return the auxiliary axes of a domain.
 
         Auxiliary axes can be only horizontal.  They are represented
-        as a tuple of :class:`geokube.core.axis.Horizontal` instances.
+        as a tuple of axis.Horizontal instances.
 
         """
         return self.coord_system.aux_axes
@@ -189,8 +184,7 @@ class FeatureMixin:
 
         The coordinates contain the axes, coordinate values, and
         coordinate units.  They are represented as a dict with the
-        :class:`geokube.core.axis.Axis` instance keys and
-        :class:`pint.Quantity` values.
+        axis.Axis instance keys and pint.Quantity values.
 
         """
         return self._aux_coords
@@ -215,12 +209,12 @@ class FeatureMixin:
             and the values that represent the corresponding labels.
             The values can be scalars, arrays, or slices. They can have
             the units (i.e. can be instances of the class
-            :class:`pint.Quantity`).  If a label does not have a unit,
-            then it is assumed that its unit is the default unit for
-            the corresponding axis (key).
+            pint.Quantity).  If a label does not have a unit, then it is
+            assumed that its unit is the default unit for the
+            corresponding axis (key).
 
         xarray_kwargs : dict, optional
-            Keyword arguments passed to :meth:`xarray.Dataset.sel`.
+            Keyword arguments passed to xarray.Dataset.sel.
 
         Returns
         -------
@@ -252,7 +246,7 @@ class FeatureMixin:
             indexes.
 
         xarray_kwargs : dict, optional
-            Keyword arguments passed to :meth:`xarray.Dataset.isel`.
+            Keyword arguments passed to xarray.Dataset.isel.
 
         Returns
         -------
@@ -450,7 +444,7 @@ class FeatureMixin:
         path : str
             The path of the target netCDF file.
         **xarray_kwargs : dict, optional
-            Extra arguments to :meth:`xarray.Dataset.to_netcdf`.
+            Extra arguments to xarray.Dataset.to_netcdf.
 
         """
         dset = self._dset
@@ -572,11 +566,11 @@ class Feature(FeatureMixin):
 
     See Also
     --------
-    :class:`geokube.core.feature.PointsFeature` :
+    PointsFeature :
         Feature defined on a point domain.
-    :class:`geokube.core.feature.ProfilesFeature` :
+    ProfilesFeature :
         Feature defined on a profile domain.
-    :class:`geokube.core.feature.GridFeature` :
+    GridFeature :
         Feature defined on a gridded domain.
 
     """
@@ -751,9 +745,9 @@ class PointsFeature(Feature):
 
     See Also
     --------
-    :class:`geokube.core.feature.ProfilesFeature` :
+    ProfilesFeature :
         Feature defined on a profile domain.
-    :class:`geokube.core.feature.GridFeature` :
+    GridFeature :
         Feature defined on a gridded domain.
 
     """
@@ -842,9 +836,9 @@ class ProfilesFeature(Feature):
 
     See Also
     --------
-    :class:`geokube.core.feature.PointsFeature` :
+    PointsFeature :
         Feature defined on a point domain.
-    :class:`geokube.core.feature.GridFeature` :
+    GridFeature :
         Feature defined on a gridded domain.
 
     """
@@ -1099,9 +1093,9 @@ class GridFeature(Feature):
 
     See Also
     --------
-    :class:`geokube.core.feature.PointsFeature` :
+    PointsFeature :
         Feature defined on a point domain.
-    :class:`geokube.core.feature.ProfilesFeature` :
+    ProfilesFeature :
         Feature defined on a profile domain.
 
     """

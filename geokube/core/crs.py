@@ -7,7 +7,6 @@ axes.  It can be either geodetic, rotated, or a projection.
 
 Classes
 -------
-
 CRS
     Base class for the horizontal coordinate reference system.
 
@@ -47,28 +46,26 @@ class CRS:
     Parameters
     ----------
     *args : tuple, optional
-        Positional arguments for creating the underlying
-        :class:`pyproj.CRS` object if `crs` is omitted.  Otherwise
-        ignored.
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+        Positional arguments for creating the underlying pyproj.CRS
+        object if `crs` is omitted.  Otherwise ignored.
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
-    crs : :class:`pyproj.CRS`, optional
+    crs : pyproj.CRS, optional
         Underlying CRS object. If omitted, `args` and `kwargs` are used
         to create such an object.
     **kwargs : dict, optional
-        Keyword arguments for creating the underlying
-        :class:`pyproj.CRS` object if `crs` is omitted.  Otherwise
-        ignored.
+        Keyword arguments for creating the underlying pyproj.CRS object
+        if `crs` is omitted.  Otherwise ignored.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
 
     Methods
@@ -76,9 +73,9 @@ class CRS:
     from_cf([*args, **kwargs])
         Return a CRS created using CF Grid Mapping arguments.
     to_cf()
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
     as_xarray()
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
     See Also
     --------
@@ -181,16 +178,16 @@ class CRS:
 
         The Climate and Forecast Grid Mapping attributes can be provided
         as positional or keyword arguments.  They are used by
-        :meth:`pyproj.CRS.from_cf` to create the underlying CRS object.
+        pyproj.CRS.from_cf to create the underlying CRS object.
 
         Parameters
         ----------
         *args : tuple, optional
             Positional CF Grid Mapping arguments for creating the
-            underlying :class:`pyproj.CRS` object.
+            underlying pyproj.CRS object.
         **kwargs : dict, optional
             Keyword CF Grid Mapping arguments for creating the
-            underlying :class:`pyproj.CRS` object.
+            underlying pyproj.CRS object.
 
         Returns
         -------
@@ -204,7 +201,7 @@ class CRS:
 
         See Also:
         ---------
-        to_cf : Return a :class:`dict` of CF Grid Mapping arguments.
+        to_cf : Return a dict of CF Grid Mapping arguments.
 
         """
         crs = pyproj_crs.CRS.from_cf(*args, **kwargs)
@@ -240,17 +237,16 @@ class CRS:
 
     def to_cf(self) -> dict:
         """
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
 
-        The underlying :class:`pyproj.CRS` object is used to create a
-        dict with the Climate and Forecast Grid Mapping attributes.  The
-        method :meth:`pyproj.CRS.to_cf` is called in the background.
+        The underlying pyproj.CRS object is used to create a dict with
+        the Climate and Forecast Grid Mapping attributes.  The method
+        pyproj.CRS.to_cf is called in the background.
 
         Returns
         -------
         dict
-            :class:`dict` of CF Grid Mapping arguments extracted from
-            the CRS.
+            CF Grid Mapping arguments extracted from the CRS.
 
         See Also:
         ---------
@@ -261,11 +257,11 @@ class CRS:
 
     def as_xarray(self) -> xr.DataArray:
         """
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
         Returns
         -------
-        :class:`xarray.DataArray`
+        xarray.DataArray
             Data array that holds the information related to the CRS.
 
         """
@@ -283,32 +279,30 @@ class Geodetic(CRS):
     Parameters
     ----------
     *args : tuple, optional
-        Positional arguments for creating the underlying
-        :class:`pyproj.CRS` object if `crs` is omitted.  Otherwise
-        ignored.
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+        Positional arguments for creating the underlying pyproj.CRS
+        object if `crs` is omitted.  Otherwise ignored.
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
-    crs : :class:`pyproj.CRS`, optional
+    crs : pyproj.CRS, optional
         Underlying CRS object. If omitted, `args` and `kwargs` are used
         to create such an object.
     **kwargs : dict, optional
-        Keyword arguments for creating the underlying
-        :class:`pyproj.CRS` object if `crs` is omitted.  Otherwise
-        ignored.
+        Keyword arguments for creating the underlying pyproj.CRS object
+        if `crs` is omitted.  Otherwise ignored.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
-    dim_X_axis : :class:`.axis.Horizontal`
+    dim_X_axis : axis.Horizontal
         Return the horizontal X, i.e. longitude axis.
-    dim_Y_axis : :class:`.axis.Horizontal`
+    dim_Y_axis : axis.Horizontal
         Return the horizontal Y, i.e. latitude axis.
 
     Methods
@@ -316,9 +310,9 @@ class Geodetic(CRS):
     from_cf([*args, **kwargs])
         Return a CRS created using CF Grid Mapping arguments.
     to_cf()
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
     as_xarray()
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
     See Also
     --------
@@ -359,24 +353,24 @@ class RotatedGeodetic(CRS):
     north_pole_grid_longitude : float, default: 0.0
         The rotation of longitude, in degrees.  Ignored if `crs` is
         specified and ``crs is not None``.
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
-    crs : :class:`pyproj.CRS`, optional
+    crs : pyproj.CRS, optional
         Underlying CRS object.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
-    dim_X_axis : :class:`.axis.Horizontal`
+    dim_X_axis : axis.Horizontal
         Return the horizontal X, i.e. grid longitude axis.
-    dim_Y_axis : :class:`.axis.Horizontal`
+    dim_Y_axis : axis.Horizontal
         Return the horizontal Y, i.e. grid latitude axis.
 
     Methods
@@ -384,9 +378,9 @@ class RotatedGeodetic(CRS):
     from_cf([*args, **kwargs])
         Return a CRS created using CF Grid Mapping arguments.
     to_cf()
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
     as_xarray()
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
     See Also
     --------
@@ -463,32 +457,30 @@ class Projection(CRS):
     Parameters
     ----------
     *args : tuple, optional
-        Positional arguments for creating the underlying
-        :class:`pyproj.CRS` object if `crs` is omitted.  Otherwise
-        ignored.
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+        Positional arguments for creating the underlying pyproj.CRS
+        object if `crs` is omitted.  Otherwise ignored.
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
-    crs : :class:`pyproj.CRS`, optional
+    crs : pyproj.CRS, optional
         Underlying CRS object. If omitted, `args` and `kwargs` are used
         to create such an object.
     **kwargs : dict, optional
-        Keyword arguments for creating the underlying
-        :class:`pyproj.CRS` object if `crs` is omitted.  Otherwise
-        ignored.
+        Keyword arguments for creating the underlying pyproj.CRS object
+        if `crs` is omitted.  Otherwise ignored.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : :tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
-    dim_X_axis : :class:`.axis.Horizontal`
+    dim_X_axis : axis.Horizontal
         Return the horizontal X axis.
-    dim_Y_axis : :class:`.axis.Horizontal`
+    dim_Y_axis : axis.Horizontal
         Return the horizontal Y axis.
 
     Methods
@@ -496,9 +488,9 @@ class Projection(CRS):
     from_cf([*args, **kwargs])
         Return a CRS created using CF Grid Mapping arguments.
     to_cf()
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
     as_xarray()
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
     See Also
     --------
@@ -537,22 +529,22 @@ class UnknownProjection(Projection):
 
     Parameters
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
-    dim_X_axis : :class:`.axis.Horizontal`
+    dim_X_axis : axis.Horizontal
         Return the horizontal X axis.
-    dim_Y_axis : :class:`.axis.Horizontal`
+    dim_Y_axis : axis.Horizontal
         Return the horizontal Y axis.
 
     See Also
@@ -586,22 +578,22 @@ class TransverseMercatorProjection(Projection):
         False northing.
     scale_factor_natural_origin: float, default: 1.0
         Scale factor.
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
-    dim_X_axis : :class:`.axis.Horizontal`
+    dim_X_axis : axis.Horizontal
         Return the horizontal X axis.
-    dim_Y_axis : :class:`.axis.Horizontal`
+    dim_Y_axis : axis.Horizontal
         Return the horizontal Y axis.
 
     Methods
@@ -609,9 +601,9 @@ class TransverseMercatorProjection(Projection):
     from_cf([*args, **kwargs])
         Return a CRS created using CF Grid Mapping arguments.
     to_cf()
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
     as_xarray()
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
     See Also
     --------
@@ -661,22 +653,22 @@ class LambertConformalConic1SPProjection(Projection):
         False northing.
     scale_factor_natural_origin: float, default: 1.0
         Scale factor.
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    dim_axes : tuple of axis.Horizontal, optional
         Horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`, optional
+    aux_axes : tuple of axis.Horizontal, optional
         Horizontal auxiliary axes.
 
     Attributes
     ----------
-    dim_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    dim_axes : tuple of axis.Horizontal
         Return the tuple of horizontal dimension axes.
-    aux_axes : :class:`tuple` of :class:`.axis.Horizontal`
+    aux_axes : tuple of axis.Horizontal
         Return the tuple of horizontal auxiliary axes.
-    axes : :class:`tuple` of :class:`.axis.Horizontal`
+    axes : tuple of axis.Horizontal
         Return the tuple of all horizontal axes.
-    dim_X_axis : :class:`.axis.Horizontal`
+    dim_X_axis : axis.Horizontal
         Return the horizontal X axis.
-    dim_Y_axis : :class:`.axis.Horizontal`
+    dim_Y_axis : axis.Horizontal
         Return the horizontal Y axis.
 
     Methods
@@ -684,9 +676,9 @@ class LambertConformalConic1SPProjection(Projection):
     from_cf([*args, **kwargs])
         Return a CRS created using CF Grid Mapping arguments.
     to_cf()
-        Return a :class:`dict` of CF Grid Mapping arguments.
+        Return a dict of CF Grid Mapping arguments.
     as_xarray()
-        Return an :obj:`xarray` representation of a CRS.
+        Return an xarray representation of a CRS.
 
     See Also
     --------
