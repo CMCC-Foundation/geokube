@@ -18,7 +18,7 @@ from geokube.core.crs import CRS, TransverseMercatorProjection
 
 # TODO: Check whether the units of X and Y in the sentinel data correspond to
 # the default units for X and Y axes (meters).
-# TODO: Chenge the name of `open` because it is a name of a built-in function.
+# TODO: Change the name of `open` because it is a name of a built-in function.
 
 
 def open(
