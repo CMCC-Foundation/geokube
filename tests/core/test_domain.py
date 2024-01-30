@@ -119,8 +119,7 @@ def test_latest_profiles(profiles):
     pass
 
 def test_to_netcdf_profiles(profiles):
-#    profiles.to_netcdf('data/test_profile.nc')
-    pass
+    profiles.to_netcdf('test_profile.nc')
 
 #
 # Grid Tests
@@ -146,17 +145,16 @@ def test_bounding_box_grids(grid, bbox_all, bbox_partial, bbox_noone):
 def test_nearest_horizontal_grid(grid):
     grid_ = grid.nearest_horizontal(latitude=41, longitude=-11)
 
-def test_nearest_vertical_points(grid):
+def test_nearest_vertical_grid(grid):
     grid_ = grid.nearest_vertical(10.7)
 
     grid_ = grid.nearest_vertical(-100.0)
 
-def test_time_range_profiles(grid):
+def test_time_range_grid(grid):
     pass
 
-def test_latest_points(grid):
+def test_latest_grid(grid):
     pass
 
-def test_to_netcdf_points(grid):
-#    grid.to_netcdf('data/test_grid.nc')
-    pass
+def test_to_netcdf_grid(grid):
+    grid.to_netcdf('test_grid.nc')

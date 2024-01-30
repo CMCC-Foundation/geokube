@@ -24,6 +24,6 @@ def test_create_profiles(f_profiles_no_ancillary):
 # Field Grid Test
 #
 
-#def test_create_grid(f_grid_no_ancillary):
-#    assert f_grid_no_ancillary.dim_axes == (axis.vertical, axis.latitude, axis.longitude)
+def test_create_grid(f_grid_no_ancillary):
+    assert f_grid_no_ancillary.dim_axes == (axis.time, axis.vertical, axis.latitude, axis.longitude)
 
