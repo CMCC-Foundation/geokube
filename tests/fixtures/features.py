@@ -44,7 +44,7 @@ def geodetic_cs():
 @pytest.fixture
 def points1(geodetic_cs):
     pts = Points(
-        coords = [('2001-01-01', 10.5, 42.2, -12.2), ('2001-01-02', 11.2, 56.2, 10.2)],
+        coords = [('2001-01-01', 10.5, 42.2, -12.2), ('2001-01-05', 11.2, 56.2, 10.2)],
         coord_system = geodetic_cs
     )
     return pts
@@ -56,7 +56,7 @@ def points2(geodetic_cs):
             axis.latitude: [42.2, 56.2],
             axis.longitude: [-12.2, 10.2],
             axis.vertical: [10.5, 11.2],
-            axis.time: ['2001-01-01', '2001-01-02']
+            axis.time: ['2001-01-01', '2001-01-05']
         },
         coord_system = geodetic_cs
     )
@@ -69,7 +69,7 @@ def profiles(geodetic_cs):
             axis.latitude: [42.2, 56.2],
             axis.longitude: [-12.2, 10.2],
             axis.vertical: [[10.5, 11.2, 12.3], [10.7, 11.5, 12.5, 13.5]],
-            axis.time: ['2001-01-01', '2001-01-02']
+            axis.time: ['2001-01-01', '2001-01-05']
         },
         coord_system = geodetic_cs
     )
@@ -82,7 +82,7 @@ def grid(geodetic_cs):
             axis.latitude: [42.2, 56.2],
             axis.longitude: [-12.2, 10.2],
             axis.vertical: [10.5, 11.2, 12.3],
-            axis.time: ['2001-01-01', '2001-01-02']
+            axis.time: ['2001-01-01', '2001-01-05']
         },
         coord_system = geodetic_cs
     )
@@ -96,7 +96,7 @@ def grid(geodetic_cs):
 @pytest.fixture
 def f_points_no_ancillary(points1):
     return PointsField(
-        data = [22.5, 27.5] * units['degree_C'],
+        data = [22.5, 27.5] * units('degree_C'),
         domain = points1,
         name = 'field_points',
         properties = {'test_property': 'this is a field test property'},
@@ -105,12 +105,12 @@ def f_points_no_ancillary(points1):
 @pytest.fixture
 def f_points(points1):
     return PointsField(
-        data = [22.5, 27.5] * units['degree_C'],
+        data = [22.5, 27.5] * units('degree_C'),
         domain = points1,
         name = 'field_points',
         properties = {'test_property': 'this is a field test property'},
         ancillary = {
-            'anc_1': [0, 1] * units['']
+            'anc_1': [0, 1] * units('')
         },
     )
 
@@ -139,7 +139,7 @@ def f_profiles(profiles):
 def f_grid_no_ancillary(grid):
     a = np.arange(24).reshape(2,3,2,2)
     return GridField(
-        data = a * units['degree_C'],
+        data = a * units('degree_C'),
         domain = grid,
         name = 'field_grid',
         properties = {'test_property': 'this is a field test property'},
@@ -149,11 +149,11 @@ def f_grid_no_ancillary(grid):
 def f_grid(grid):
     a = np.arange(24).reshape(2,3,2,2)
     return GridField(
-        data = a * units['degree_C'],
+        data = a * units('degree_C'),
         domain = grid,
         name = 'field_grid',
         properties = {'test_property': 'this is a field test property'},
         ancillary = {
-            'anc_grid_1': a * units['']
+            'anc_grid_1': a * units('')
         },
     )
