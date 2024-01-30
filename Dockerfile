@@ -9,7 +9,7 @@ RUN conda clean -afy \
     && find /opt/conda/ -follow -type f -name '*.pyc' -delete \
     && find /opt/conda/ -follow -type f -name '*.js.map' -delete \
     && find /opt/conda/lib/python*/site-packages/bokeh/server/static -follow -type f -name '*.js' ! -name '*.min.js' -delete
-COPY dist/geokube-0.2.6b1-py3-none-any.whl /
-RUN pip install /geokube-0.2.6b1-py3-none-any.whl
-RUN rm /geokube-0.2.6b1-py3-none-any.whl
+COPY dist/geokube-0.2.6b2-py3-none-any.whl /
+RUN pip install /geokube-0.2.6b2-py3-none-any.whl
+RUN rm /geokube-0.2.6b2-py3-none-any.whl
 ENV LD_LIBRARY_PATH=/opt/conda/x86_64-conda-linux-gnu/lib:/usr/lib/x86_64-linux-gnu
