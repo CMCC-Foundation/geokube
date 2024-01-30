@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar
+
 
 class DriverEntrypoint:
     """

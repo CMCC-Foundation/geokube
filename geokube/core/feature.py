@@ -4,7 +4,6 @@ Feature
 
 A feature construct that serves as a base class for domains and fields.
 
-
 Classes
 -------
 FeatureMixin
@@ -23,9 +22,6 @@ GridFeature
     Feature defined on a gridded domain.
 
 """
-
-# NOTE: There is probably no need to use the full path to the class from this
-# module in the docstrings. 
 
 from collections.abc import Mapping
 from datetime import date, datetime

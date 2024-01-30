@@ -60,8 +60,8 @@ class Cube:
                 domains.append(domain_dset)
             elif not domains[0].identical(domain_dset):
                 raise ValueError(
-                    "'fields' must be a collection of 'Field' objects with the "
-                    "same domain"
+                    "'fields' must be a collection of 'Field' objects with "
+                    "the same domain"
                 )
             field_name = field.name
             if field_name in names:

@@ -31,8 +31,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
-import pyarrow as pa
-from pyproj import Transformer
 import xarray as xr
 
 from . import axis
@@ -46,6 +44,7 @@ from .feature import (
 from .quantity import create_quantity
 
 _ARRAY_TYPES = (np.ndarray, da.Array)
+
 
 # TODO: Consider making this class internal.
 class Field:
@@ -86,6 +85,7 @@ class Field:
         _DOMAIN_CLS_: type[Domain]
         _dset: xr.Dataset
         _name: str
+        coord_system: CoordinateSystem
 
     # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
@@ -975,8 +975,7 @@ class GridField(Field, GridFeature):
             # be interpolated and we perform the interpolation on the horizontal axes
             #
             target_x, target_y = target.spatial_transform_to(self.crs)
-            kwargs.setdefault('fill_value', None)
-            target_dims = target.crs.dim_axes
+            xarray_kwargs.setdefault('fill_value', None)
             dims = (axis.latitude, axis.longitude)
             target_ = xr.Dataset(
                 data_vars={
@@ -986,7 +985,9 @@ class GridField(Field, GridFeature):
                 coords={axis: target.coords[axis] for axis in dims}
             )
             dset = dset.drop(labels=(axis.latitude, axis.longitude))
-            ds = dset.interp(coords=target_, method=method, kwargs=kwargs)
+            ds = dset.interp(
+                coords=target_, method=method, kwargs=xarray_kwargs
+            )
             # TODO: workaround - remove when adding attributes to field for ancillary data.
             ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
@@ -999,9 +1000,9 @@ class GridField(Field, GridFeature):
                 if axis in target.crs.axes
             }
             target_coords = coords | target_coords
-            kwargs.setdefault('fill_value', 'extrapolate')
+            xarray_kwargs.setdefault('fill_value', 'extrapolate')
             ds = dset.interp(
-                coords=target_coords, method=method, kwargs=kwargs
+                coords=target_coords, method=method, kwargs=xarray_kwargs
             )
 
         # ds contains the data interpolated on the new domain

@@ -70,7 +70,6 @@ from collections.abc import Mapping
 from typing import Any, TypeVar
 
 import numpy as np
-import numpy.typing as npt
 import pint
 
 from .units import units
@@ -589,6 +588,7 @@ class UserDefined(Axis):
     # FIXME: Hash cannot be the class name -> redefine hash with axis name.
     _DEFAULT_UNITS_ = units['']
     _DEFAULT_ENCODING_ = { 'dtype': 'str'}
+
 
 x = X()
 y = Y()

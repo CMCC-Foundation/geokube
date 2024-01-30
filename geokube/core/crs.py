@@ -32,11 +32,11 @@ LambertConformalConic1SPProjection
 
 from __future__ import annotations
 
+import numpy as np
 from pyproj import crs as pyproj_crs
+import xarray as xr
 
 from . import axis
-import xarray as xr
-import numpy as np
 
 
 class CRS:
@@ -223,9 +223,7 @@ class CRS:
             case pyproj_crs.DerivedGeographicCRS():
                 return RotatedGeodetic(crs=crs)
             case pyproj_crs.ProjectedCRS():
-                # proj_name = crs_kwa['conversion']['method']['name']
                 proj_gmn = crs.to_cf()['grid_mapping_name']
-                # if (proj_type := _PROJECTION_NAMES.get(proj_name)) is not None:
                 if (proj_type := _PROJECTION_GMN.get(proj_gmn)) is not None:
                     proj = object.__new__(proj_type)
                     CRS.__init__(proj, crs=crs)
