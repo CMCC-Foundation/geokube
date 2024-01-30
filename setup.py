@@ -21,8 +21,6 @@ setuptools.setup(
     url="https://github.com/CMCC-Foundation/geokube",
     packages=setuptools.find_packages(),
     install_requires=[
-        "pytest-cov",
-        "pytest",
         "shapely",
         "metpy",
         "plotly",
