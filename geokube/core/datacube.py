@@ -354,7 +354,12 @@ class DataCube(DomainMixin):
         ):
             # HACK: The case `self.domain.type is None` is included to be able
             # to handle undefined domain types temporarily.
-            result = {"data": []}
+            if self.time.size == 1:
+                result = {}
+            else:
+                raise NotImplementedError(
+                    f"multiple times are not supported for geojson"
+                )
             cube = (
                 self
                 if isinstance(self.domain.crs, GeogCS)
@@ -436,7 +441,7 @@ class DataCube(DomainMixin):
                             else:
                                 feature["properties"][field.name] = value_                     
                         time_data["features"].append(feature)
-                result["data"].append(time_data)
+                result = time_data
         else:
             raise NotImplementedError(
                 f"'self.domain.type' is {self.domain.type}, which is currently"
@@ -448,6 +453,22 @@ class DataCube(DomainMixin):
                 json.dump(result, file, indent=4)
 
         return result
+
+    def to_image(
+        self, 
+        filepath, 
+        width, 
+        height, 
+        dpi=100, 
+        format='png', 
+        transparent=True, 
+        bgcolor='FFFFFF'
+    ):
+        # TODO: support multiple fields
+        if len(self.fields) > 1:
+            raise ValueError("to_image support only 1 field")
+        else:
+            next(iter(self.fields.values())).to_image(filepath, width, height, dpi, format, transparent, bgcolor)
 
     @classmethod
     @geokube_logging

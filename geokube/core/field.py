@@ -25,6 +25,7 @@ from warnings import warn
 import cartopy.crs as ccrs
 import cartopy.feature as cartf
 import dask.array as da
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -1192,6 +1193,9 @@ class Field(Variable, DomainMixin):
         figsize=None,
         robust=None,
         aspect=None,
+        save_path=None,
+        save_kwargs=None,
+        clean_image=False,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1199,6 +1203,10 @@ class Field(Variable, DomainMixin):
         vert = self.coords.get(axis_names.get(AxisType.VERTICAL))
         lat = self.coords.get(axis_names.get(AxisType.LATITUDE))
         lon = self.coords.get(axis_names.get(AxisType.LONGITUDE))
+
+        # NOTE: The argument `save_kwargs` passes the keyword arguments to the
+        # `savefig` method, see:
+        # https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.savefig.html
 
         # Resolving time series and layers because they do not require most of
         # processing other plot types do:
@@ -1243,6 +1251,13 @@ class Field(Variable, DomainMixin):
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Time Series")
+                if clean_image:
+                    plot.axes.set_axis_off()
+                    plot.axes.set_title('')
+                if save_path:
+                    fig = plot[0].figure
+                    fig.tight_layout()
+                    fig.savefig(save_path, **(save_kwargs or {}))
                 return plot
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
@@ -1263,6 +1278,13 @@ class Field(Variable, DomainMixin):
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Layers")
+                if clean_image:
+                    plot.axes.set_axis_off()
+                    plot.axes.set_title('')
+                if save_path:
+                    fig = plot[0].figure
+                    fig.tight_layout()
+                    fig.savefig(save_path, **(save_kwargs or {}))
                 return plot
 
         # Resolving Cartopy features and gridlines:
@@ -1442,7 +1464,55 @@ class Field(Variable, DomainMixin):
                         ax.set_xticks(x_ticks)
                         ax.set_yticks(y_ticks)
 
+        if clean_image:
+            if isinstance(plot.axes, np.ndarray):
+                for axis in plot.axes.flat:
+                    axis.set_axis_off()
+                    axis.set_title('')
+            else:
+                plot.axes.set_axis_off()
+                plot.axes.set_title('')
+        if save_path:
+            if hasattr(plot, 'fig'):
+                fig = plot.fig
+            elif hasattr(plot, 'figure'):
+                fig = plot.figure
+            else:
+                raise NotImplementedError()
+            fig.tight_layout()
+            # fig.tight_layout(pad=0, h_pad=0, w_pad=0)
+            fig.savefig(save_path, **(save_kwargs or {}))
+
         return plot
+
+    def to_image(
+        self,
+        filepath,
+        width,
+        height,
+        dpi=100,
+        format='png',
+        transparent=True,
+        bgcolor='FFFFFF'
+    ):
+        # NOTE: This method assumes default DPI value.
+        f = self
+        if self.domain.crs != GeogCS(6371229):
+            f = self.to_regular()
+#        dpi = plt.rcParams['figure.dpi']
+        w, h = width / dpi, height / dpi
+        f.plot(
+            figsize=(w, h),
+            add_colorbar=False,
+            save_path=filepath,
+            save_kwargs={
+                'transparent': transparent,
+                'pad_inches': 0,
+                'dpi': dpi,
+                # 'bbox_inches': [[0, 0], [w, h]]
+            },
+            clean_image=True
+        )
 
     def to_geojson(self, target=None):
         self.load()
@@ -1471,7 +1541,12 @@ class Field(Variable, DomainMixin):
         ):
             # HACK: The case `self.domain.type is None` is included to be able
             # to handle undefined domain types temporarily.
-            result = {"data": []}
+            if self.time.size == 1:
+                result = {}
+            else:
+                raise NotImplementedError(
+                    f"multiple times are not supported for geojson"
+                )
             field = (
                 self
                 if isinstance(self.domain.crs, GeogCS)
@@ -1533,7 +1608,7 @@ class Field(Variable, DomainMixin):
                             "properties": {self.name: float(value)},
                         }
                         time_data["features"].append(feature)
-                result["data"].append(time_data)
+                result = time_data
         else:
             raise NotImplementedError(
                 f"'self.domain.type' is {self.domain.type}, which is currently"
