@@ -72,7 +72,7 @@ def points1(geodetic_cs):
     pts = Points(
         coords=[
             ("2001-01-01", 10.5, 42.2, -12.2),
-            ("2001-01-05", 11.2, 56.2, 10.2),
+            ("2001-01-02", 11.2, 56.2, 10.2),
         ],
         coord_system=geodetic_cs,
     )
@@ -86,7 +86,7 @@ def points2(geodetic_cs):
             axis.latitude: [42.2, 56.2],
             axis.longitude: [-12.2, 10.2],
             axis.vertical: [10.5, 11.2],
-            axis.time: ["2001-01-01", "2001-01-05"],
+            axis.time: ["2001-01-01", "2001-01-02"],
         },
         coord_system=geodetic_cs,
     )
@@ -100,7 +100,7 @@ def profiles(geodetic_cs):
             axis.latitude: [42.2, 56.2],
             axis.longitude: [-12.2, 10.2],
             axis.vertical: [[10.5, 11.2, 12.3], [10.7, 11.5, 12.5, 13.5]],
-            axis.time: ["2001-01-01", "2001-01-05"],
+            axis.time: ["2001-01-01", "2001-01-02"],
         },
         coord_system=geodetic_cs,
     )
@@ -114,7 +114,7 @@ def grid(geodetic_cs):
             axis.latitude: [42.2, 56.2],
             axis.longitude: [-12.2, 10.2],
             axis.vertical: [10.5, 11.2, 12.3],
-            axis.time: ["2001-01-01", "2001-01-05"],
+            axis.time: ["2001-01-01", "2001-01-02"],
         },
         coord_system=geodetic_cs,
     )

@@ -144,7 +144,7 @@ def test_latest_points(points1):
 
 
 def test_to_netcdf_points(points1):
-    path = "data/test_points.nc"
+    path = "tests/data/test_points.nc"
     points1.to_netcdf(path)
     dset = xr.load_dataset(path, decode_coords="all")
     pts_dset = points1._dset.rename(**{
@@ -280,18 +280,16 @@ def test_latest_profiles(profiles):
 
 
 def test_to_netcdf_profiles(profiles):
-    # FIXME: This giver a permission denied error.
-    # path = 'data/test_profiles.nc'
-    # profiles.to_netcdf(path)
-    # dset = xr.load_dataset(path, decode_coords='all')
-    # prof_dset = profiles._dset.rename(
-    #     **{
-    #         axis_: coord.attrs.get('standard_name', str(axis_))
-    #         for axis_, coord in profiles._dset.coords.items()
-    #     }
-    # )
-    # assert prof_dset.equals(dset)
-    pass
+    path = 'tests/data/test_profiles.nc'
+    profiles.to_netcdf(path)
+    dset = xr.load_dataset(path, decode_coords='all')
+    prof_dset = profiles._dset.rename(
+        **{
+            axis_: coord.attrs.get('standard_name', str(axis_))
+            for axis_, coord in profiles._dset.coords.items()
+        }
+    )
+    assert prof_dset.equals(dset)
 
 
 #
@@ -343,4 +341,4 @@ def test_latest_grid(grid):
 
 
 def test_to_netcdf_grid(grid):
-    grid.to_netcdf("test_grid.nc")
+    grid.to_netcdf("tests/data/test_grid.nc")
