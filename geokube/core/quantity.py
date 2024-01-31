@@ -8,7 +8,7 @@ import pint
 def create_quantity(
     values: npt.ArrayLike | pint.Quantity,
     default_units: pint.Unit | None,
-    default_dtype: np.dtype
+    default_dtype: np.dtype,
 ) -> pint.Quantity:
     match values:
         # case pint.Quantity() if isinstance(values.magnitude, np.ndarray):
@@ -18,8 +18,8 @@ def create_quantity(
         case pint.Quantity():
             return (
                 values
-                if isinstance(values.magnitude, np.ndarray) else
-                pint.Quantity(np.asarray(values.magnitude), values.units)
+                if isinstance(values.magnitude, np.ndarray)
+                else pint.Quantity(np.asarray(values.magnitude), values.units)
             )
         case np.ndarray():
             # NOTE: The pattern arr * unit does not work when arr has stings.

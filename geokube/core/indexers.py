@@ -20,25 +20,25 @@ import numpy.typing as npt
 
 @unique
 class Metric(Enum):
-    CITY_BLOCK = 'city_block'
-    EUCLIDEAN = 'euclidean'
+    CITY_BLOCK = "city_block"
+    EUCLIDEAN = "euclidean"
 
 
 @unique
 class Accuracy(Enum):
-    EXACT = 'exact'
-    NEAREST = 'nearest'
+    EXACT = "exact"
+    NEAREST = "nearest"
 
 
 @unique
 class ReturnType(Enum):
-    BOOL = 'bool'
-    INT = 'int'
-    DEFAULT = 'default'
+    BOOL = "bool"
+    INT = "int"
+    DEFAULT = "default"
 
 
 _IndexArrayT = TypeVar(
-    '_IndexArrayT', npt.NDArray[np.bool_], npt.NDArray[np.int_]
+    "_IndexArrayT", npt.NDArray[np.bool_], npt.NDArray[np.int_]
 )
 
 
@@ -46,7 +46,7 @@ def get_slice_indexer(
     x_data: Sequence[np.ndarray],
     y_data: Sequence[slice],
     combine_result: bool = False,
-    return_type: str | ReturnType = ReturnType.BOOL
+    return_type: str | ReturnType = ReturnType.BOOL,
 ) -> tuple[_IndexArrayT] | list[_IndexArrayT] | list[tuple[_IndexArrayT]]:
     # Checking if the lengths of `x_data` and `y_data` match. -----------------
     if len(x_data) != len(y_data):
@@ -74,18 +74,16 @@ def get_slice_indexer(
                 mask = true_mask
             else:
                 y_stop_ = np.asarray(y_slice.stop)
-                if (
-                    not np.issubdtype(x_dtype, np.str_)
-                    and np.issubdtype(y_stop_.dtype, np.str_)
+                if not np.issubdtype(x_dtype, np.str_) and np.issubdtype(
+                    y_stop_.dtype, np.str_
                 ):
                     y_stop_ = y_stop_.astype(x_dtype_)
                 mask = x_arr <= y_stop_
         else:
             if y_stop is None:
                 y_start_ = np.asarray(y_slice.start)
-                if (
-                    not np.issubdtype(x_dtype, np.str_)
-                    and np.issubdtype(y_start_.dtype, np.str_)
+                if not np.issubdtype(x_dtype, np.str_) and np.issubdtype(
+                    y_start_.dtype, np.str_
                 ):
                     y_start_ = y_start_.astype(x_dtype_)
                 mask = x_arr >= y_start_
@@ -122,7 +120,7 @@ def get_array_indexer(
     method: str | Accuracy | None = None,
     tolerance: npt.ArrayLike | None = None,
     return_all: bool = True,
-    return_type: str | ReturnType = ReturnType.INT
+    return_type: str | ReturnType = ReturnType.INT,
 ) -> tuple[_IndexArrayT] | list[_IndexArrayT] | list[tuple[_IndexArrayT]]:
     # Checking if the lengths of `x_data` and `y_data` match. -----------------
     if len(x_data) != len(y_data):
@@ -147,9 +145,8 @@ def get_array_indexer(
         # NOTE: The case where `x_data` has integers and `y_data` has floats,
         # seems particularly dangerous.
         y_arr_ = np.array(y_arr, copy=False, ndmin=1)
-        if (
-            not np.issubdtype(x_dtype, np.str_)
-            and np.issubdtype(y_arr_.dtype, np.str_)
+        if not np.issubdtype(x_dtype, np.str_) and np.issubdtype(
+            y_arr_.dtype, np.str_
         ):
             y_arr_ = y_arr_.astype(x_dtype_)
         y_data_.append(y_arr_)
@@ -179,7 +176,7 @@ def get_array_indexer(
     # method is exact. For other data types, it is nearest.
     # NOTE: For Boolean, object, byte-string, and string arrays, the tolerance
     # is 0. The value provided as a function argument is ignored.
-    if x_dtype_ in {'b', 'O', 'S', 'U'}:
+    if x_dtype_ in {"b", "O", "S", "U"}:
         # NOTE: Equal values in any dimension correspond to the difference 0,
         # while different values yield the difference 1.
         diffs = [
@@ -192,7 +189,7 @@ def get_array_indexer(
             method = Accuracy.EXACT
     else:
         diffs = [x_arr - y_arr for x_arr, y_arr in zip(x_data_, y_data_)]
-        if diffs[0].dtype.kind == 'm':
+        if diffs[0].dtype.kind == "m":
             if metric is None:
                 metric = Metric.CITY_BLOCK
             if method is None:
@@ -223,7 +220,7 @@ def get_array_indexer(
     else:
         tol = np.asarray(
             tolerance if Accuracy(method) is Accuracy.NEAREST else 0,
-            dtype=tot_diff.dtype
+            dtype=tot_diff.dtype,
         )
         allow_diff = tot_diff <= tol
 
@@ -276,7 +273,7 @@ def get_indexer(
     method: str | Accuracy | None = None,
     tolerance: npt.ArrayLike | None = None,
     return_all: bool = True,
-    return_type: str | ReturnType = ReturnType.DEFAULT
+    return_type: str | ReturnType = ReturnType.DEFAULT,
 ) -> tuple[_IndexArrayT] | list[_IndexArrayT] | list[tuple[_IndexArrayT]]:
     match list(y_data):
         case [slice(), *_]:
@@ -285,6 +282,11 @@ def get_indexer(
             )
         case _:
             return get_array_indexer(
-                x_data, y_data, metric, method, tolerance, return_all,
-                return_type
+                x_data,
+                y_data,
+                metric,
+                method,
+                tolerance,
+                return_all,
+                return_type,
             )

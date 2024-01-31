@@ -1,6 +1,5 @@
 """API for calling the drivers."""
 
-
 from collections.abc import Sequence, Mapping
 import os
 from types import ModuleType
@@ -15,6 +14,7 @@ from geokube.core.collection import Collection
 from geokube.core.field import Field
 from geokube.core.cube import Cube
 from . import argo, cfnetcdf, sentinel2  # noqa
+
 # from .common import DriverEntrypoint
 
 
@@ -46,7 +46,7 @@ def open_fields(
 
 
 def open_cubes(
-    filename_or_obj: str | os.PathLike[Any], 
+    filename_or_obj: str | os.PathLike[Any],
     ncvars: list[str] | None = None,
     driver: T_Driver = None,
     driver_kwargs: dict[str, Any] | None = None,
@@ -62,7 +62,7 @@ def open_collection(
     driver: T_Driver,
     driver_kwargs: dict[str, Any] | None = None,
     xarray_kwargs: dict[str, Any] | None = None,
-    **kwargs
+    **kwargs,
 ) -> Collection:
     """
     Return a collection of fields from file(s).
@@ -105,7 +105,7 @@ def open_collection(
                 driver_module = globals()[driver]
             case _:
                 raise TypeError(f"'driver' type {type(driver)} not supported")
-        driver_call = getattr(driver_module, 'open')
+        driver_call = getattr(driver_module, "open")
 
     kwa = driver_kwargs or {}
     result = driver_call(pattern_or_obj, **kwa, xarray_kwargs=xarray_kwargs)
@@ -121,8 +121,8 @@ def open_collection(
 
 
 # coll = geokube.open_collection(
-#     '/path/to/files', 
-#     driver='wrf', 
+#     '/path/to/files',
+#     driver='wrf',
 #     driver_kwargs={ 'projection': 'lmabert'},
 #     xarray_kwargs={ 'engine': 'zarr'}
 # )

@@ -98,7 +98,7 @@ class CRS:
     _AUX_AXES_TYPES: tuple[type[axis.Horizontal], ...] = ()
     _PYPROJ_TYPE: type[pyproj_crs.CRS] = pyproj_crs.CRS
 
-    __slots__ = ('__dim_axes', '__aux_axes', '__pyproj_crs')
+    __slots__ = ("__dim_axes", "__aux_axes", "__pyproj_crs")
 
     def __init__(
         self,
@@ -117,14 +117,13 @@ class CRS:
     def _resolve_axes(
         self,
         axes: tuple[axis.Horizontal, ...] | None,
-        default_types: tuple[type[axis.Horizontal], ...]
+        default_types: tuple[type[axis.Horizontal], ...],
     ) -> tuple[axis.Horizontal, ...]:
         if axes is None:
             return tuple(type_() for type_ in default_types)
         types = tuple(type(axis) for axis in axes)
-        if (
-            len(types) != len(default_types)
-            or set(types) != set(default_types)
+        if len(types) != len(default_types) or set(types) != set(
+            default_types
         ):
             raise TypeError("'axes' types do not match the expected types")
         return axes
@@ -134,13 +133,13 @@ class CRS:
         *args,
         crs: pyproj_crs.CRS | None,
         default_type: type[pyproj_crs.CRS] | None,
-        **kwargs
+        **kwargs,
     ) -> pyproj_crs.CRS:
         if crs is None:
             return (
                 default_type(*args, **kwargs)
-                if default_type is not None else
-                None
+                if default_type is not None
+                else None
             )
         if not isinstance(crs, pyproj_crs.CRS):
             raise TypeError(
@@ -214,7 +213,7 @@ class CRS:
         # pylint: disable=unidiomatic-typecheck
         if type(crs) is pyproj_crs.crs.CRS:
             crs_kwa = crs.to_json_dict()
-            crs_type = getattr(pyproj_crs.crs, crs_kwa['type'])
+            crs_type = getattr(pyproj_crs.crs, crs_kwa["type"])
             crs = crs_type.from_json_dict(crs_kwa)
 
         match crs:
@@ -223,7 +222,7 @@ class CRS:
             case pyproj_crs.DerivedGeographicCRS():
                 return RotatedGeodetic(crs=crs)
             case pyproj_crs.ProjectedCRS():
-                proj_gmn = crs.to_cf()['grid_mapping_name']
+                proj_gmn = crs.to_cf()["grid_mapping_name"]
                 if (proj_type := _PROJECTION_GMN.get(proj_gmn)) is not None:
                     proj = object.__new__(proj_type)
                     CRS.__init__(proj, crs=crs)
@@ -264,10 +263,10 @@ class CRS:
 
         """
         grid_mapping_attrs = self.to_cf()
-        grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
-        return xr.DataArray(data=np.byte(1),
-                            name=grid_mapping_name,
-                            attrs=grid_mapping_attrs)
+        grid_mapping_name = grid_mapping_attrs["grid_mapping_name"]
+        return xr.DataArray(
+            data=np.byte(1), name=grid_mapping_name, attrs=grid_mapping_attrs
+        )
 
 
 class Geodetic(CRS):
@@ -400,37 +399,31 @@ class RotatedGeodetic(CRS):
         north_pole_grid_longitude: float = 0.0,
         crs: pyproj_crs.DerivedGeographicCRS | None = None,
         dim_axes: tuple[axis.Horizontal, ...] | None = None,
-        aux_axes: tuple[axis.Horizontal, ...] | None = None
+        aux_axes: tuple[axis.Horizontal, ...] | None = None,
     ) -> None:
         if crs is None:
             conversion = {
-                '$schema':
-                    'https://proj.org/schemas/v0.4/projjson.schema.json',
-                'type': 'Conversion',
-                'name': 'Pole rotation (netCDF CF convention)',
-                'method': {
-                    'name': 'Pole rotation (netCDF CF convention)'
-                },
-                'parameters': [
+                "$schema": "https://proj.org/schemas/v0.4/projjson.schema.json",
+                "type": "Conversion",
+                "name": "Pole rotation (netCDF CF convention)",
+                "method": {"name": "Pole rotation (netCDF CF convention)"},
+                "parameters": [
                     {
-                        'name':
-                            'Grid north pole latitude (netCDF CF convention)',
-                        'value': float(grid_north_pole_latitude),
-                        'unit': 'degree'
+                        "name": "Grid north pole latitude (netCDF CF convention)",
+                        "value": float(grid_north_pole_latitude),
+                        "unit": "degree",
                     },
                     {
-                        'name':
-                            'Grid north pole longitude (netCDF CF convention)',
-                        'value': float(grid_north_pole_longitude),
-                        'unit': 'degree'
+                        "name": "Grid north pole longitude (netCDF CF convention)",
+                        "value": float(grid_north_pole_longitude),
+                        "unit": "degree",
                     },
                     {
-                        'name':
-                            'North pole grid longitude (netCDF CF convention)',
-                        'value': float(north_pole_grid_longitude),
-                        'unit': 'degree'
-                    }
-                ]
+                        "name": "North pole grid longitude (netCDF CF convention)",
+                        "value": float(north_pole_grid_longitude),
+                        "unit": "degree",
+                    },
+                ],
             }
             crs = pyproj_crs.DerivedGeographicCRS(
                 base_crs=pyproj_crs.GeographicCRS(), conversion=conversion
@@ -629,7 +622,7 @@ class TransverseMercatorProjection(Projection):
             longitude_natural_origin=longitude_natural_origin,
             false_easting=false_easting,
             false_northing=false_northing,
-            scale_factor_natural_origin=scale_factor_natural_origin
+            scale_factor_natural_origin=scale_factor_natural_origin,
         )
         crs = self._PYPROJ_TYPE(conversion=oper.to_json_dict())
         super().__init__(dim_axes=dim_axes, aux_axes=aux_axes, crs=crs)
@@ -705,7 +698,7 @@ class LambertConformalConic1SPProjection(Projection):
                 longitude_natural_origin=longitude_natural_origin,
                 false_easting=false_easting,
                 false_northing=false_northing,
-                scale_factor_natural_origin=scale_factor_natural_origin
+                scale_factor_natural_origin=scale_factor_natural_origin,
             )
         )
         crs = self._PYPROJ_TYPE(conversion=oper.to_json_dict())
@@ -713,11 +706,11 @@ class LambertConformalConic1SPProjection(Projection):
 
 
 _PROJECTION_NAMES = {
-    'Lambert Conic Conformal (1SP)': LambertConformalConic1SPProjection,
-    'Transverse Mercator': TransverseMercatorProjection
+    "Lambert Conic Conformal (1SP)": LambertConformalConic1SPProjection,
+    "Transverse Mercator": TransverseMercatorProjection,
 }
 
 _PROJECTION_GMN = {
-    'lambert_conformal_conic': LambertConformalConic1SPProjection,
-    'transverse_mercator': TransverseMercatorProjection
+    "lambert_conformal_conic": LambertConformalConic1SPProjection,
+    "transverse_mercator": TransverseMercatorProjection,
 }

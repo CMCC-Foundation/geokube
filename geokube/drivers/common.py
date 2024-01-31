@@ -43,7 +43,9 @@ class DriverEntrypoint:
 
     def open_cube(
         self,
-        filename_or_obj: str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore,
+        filename_or_obj: (
+            str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore
+        ),
         *,
         drop_variables: str | Iterable[str] | None = None,
         **kwargs: Any,
@@ -53,10 +55,12 @@ class DriverEntrypoint:
         """
 
         raise NotImplementedError
-    
+
     def open_field(
         self,
-        filename_or_obj: str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore,
+        filename_or_obj: (
+            str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore
+        ),
         *,
         drop_variables: str | Iterable[str] | None = None,
         **kwargs: Any,
@@ -69,7 +73,9 @@ class DriverEntrypoint:
 
     def open_collection(
         self,
-        filename_or_obj: str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore,
+        filename_or_obj: (
+            str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore
+        ),
         *,
         drop_variables: str | Iterable[str] | None = None,
         **kwargs: Any,
@@ -82,7 +88,9 @@ class DriverEntrypoint:
 
     def guess_can_open(
         self,
-        filename_or_obj: str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore,
+        filename_or_obj: (
+            str | os.PathLike[Any] | BufferedIOBase | AbstractDataStore
+        ),
     ) -> bool:
         """
         Backend open_dataset method used by Xarray in :py:func:`~xarray.open_dataset`.

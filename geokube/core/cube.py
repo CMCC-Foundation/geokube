@@ -14,7 +14,11 @@ from .field import Field
 class Cube:
 
     __slots__ = (
-        '_dset', '_field_names', '_ancillary', '_coord_system', '_field_cls'
+        "_dset",
+        "_field_names",
+        "_ancillary",
+        "_coord_system",
+        "_field_cls",
     )
 
     # TODO: Check if the slot `_ancillary` is needed.
@@ -24,7 +28,7 @@ class Cube:
     # should we use compose here? use feature as an internal object
     # this will allow us to define only one cube
     # but we need to redefine the feature methods
-    # 
+    #
 
     # TODO: improve the init to allow a mapping of multiple data with names
     # this implies to deal also with ancillary data, cell method and so on
@@ -35,11 +39,13 @@ class Cube:
     def __init__(
         self,
         fields: Sequence[Field],
-        domain: Domain | None = None  # this should be used only in case we extend the init API as described in the TODO
+        domain: (
+            Domain | None
+        ) = None,  # this should be used only in case we extend the init API as described in the TODO
     ) -> None:
 
         # TODO: check if all field are of the same type and defined on the same domain
-        # 
+        #
         # TODO: check if fields have unique names
         #
 
@@ -54,7 +60,7 @@ class Cube:
                     axis_: coord.variable
                     for axis_, coord in field._dset.coords.items()
                 },
-                coord_system=field.coord_system
+                coord_system=field.coord_system,
             )
             if not domains:
                 domains.append(domain_dset)
@@ -78,7 +84,7 @@ class Cube:
 
         # merge fields in a unique xarray CF-compliant dataset
         # using the feature class of one of the field
-        # 
+        #
         data_vars = {}
         field_names = []
         for f in fields:
@@ -89,7 +95,7 @@ class Cube:
             for anc in f.ancillary:
                 data_vars[anc] = f._dset[anc]
 
-        # coords are built considering only 1 field since they are defined 
+        # coords are built considering only 1 field since they are defined
         # on the same domain
         # coords = dict(fields[0]._dset.coords)
         # coord_system = fields[0].coord_system
@@ -98,7 +104,7 @@ class Cube:
                 axis_: coord.variable
                 for axis_, coord in fields[0]._dset.coords.items()
             },
-            coord_system=fields[0].coord_system
+            coord_system=fields[0].coord_system,
         )
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
         dset = dset.assign(variables=data_vars)
@@ -131,7 +137,7 @@ class Cube:
         if isinstance(key, str):
             # return a field
             # check the ancillary data
-            # 
+            #
             # TODO: Include ancillary vars into `needed_vars`.
             needed_vars = {key}
             redundant_vars = self._dset.data_vars.keys() - needed_vars

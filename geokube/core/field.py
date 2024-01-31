@@ -39,7 +39,10 @@ from .coord_system import CoordinateSystem
 from .crs import Geodetic
 from .domain import Domain, Grid, Points, Profiles
 from .feature import (
-    PointsFeature, ProfilesFeature, GridFeature, _as_points_dataset
+    PointsFeature,
+    ProfilesFeature,
+    GridFeature,
+    _as_points_dataset,
 )
 from .quantity import create_quantity
 
@@ -87,15 +90,17 @@ class Field:
         _name: str
         coord_system: CoordinateSystem
 
-    # TODO: Add cell methods
+    # TODO: Add cell methods
     # __slots__ = ('_cell_method_',)
 
     # NOTE: `Domain` and `Field` have exactly the same method.
     @classmethod
     def _from_xarray_dataset(
         cls,
-        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        ds: xr.Dataset,  # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> Self:
         obj = object.__new__(cls)
         # TODO: Make sure that `cls.__mro__[2]` returns the correct `Feature`
@@ -111,19 +116,19 @@ class Field:
     def as_xarray_dataset(
         cls,
         data_vars: Mapping[str, npt.ArrayLike | pint.Quantity | xr.DataArray],
-        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
-        coord_system: CoordinateSystem
+        coords: Mapping[
+            axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray
+        ],
+        coord_system: CoordinateSystem,
     ) -> xr.Dataset:
         da = coord_system.crs.as_xarray()
         r_coords = coords
         r_coords[da.name] = da
-        ds = xr.Dataset(
-            coords=r_coords
-        )
-        ds.attrs['grid_mapping'] = da.name
+        ds = xr.Dataset(coords=r_coords)
+        ds.attrs["grid_mapping"] = da.name
         return ds
 
-    @property # TODO: define setter method
+    @property  # TODO: define setter method
     def domain(self) -> Domain:
         """
         Return the domain construct over which a field is defined.
@@ -149,9 +154,7 @@ class Field:
         coords = {}
         for ax in self.coord_system.axes:
             coords[ax] = self.coords[ax]
-        return self._DOMAIN_CLS_(
-                coords=coords, 
-                coord_system=self.coord_system)    
+        return self._DOMAIN_CLS_(coords=coords, coord_system=self.coord_system)
 
     @property
     def ancillary(self, name: str | None = None) -> dict | pint.Quantity:
@@ -173,12 +176,12 @@ class Field:
                 ancillary_[c] = self._dset[c].data
         return ancillary_
 
-    @property # return field name
+    @property  # return field name
     def name(self) -> str:
         """Return the name of a represented quantity."""
         return self._name
 
-    @property # define data method to return field data
+    @property  # define data method to return field data
     def data(self) -> pint.Quantity:
         """
         Return the values of a single physical variable.
@@ -191,7 +194,7 @@ class Field:
 
         """
         darr = self._dset[self.name]
-        qty = create_quantity(darr.data, darr.attrs.get('units'), darr.dtype)
+        qty = create_quantity(darr.data, darr.attrs.get("units"), darr.dtype)
         return qty
 
     @property
@@ -215,13 +218,15 @@ class Field:
 
         """
         darr = self._dset[self.name]
-        if (cmethod := darr.attrs.get('cell_methods')) is not None:
+        if (cmethod := darr.attrs.get("cell_methods")) is not None:
             return CellMethod.parse(cmethod)
         return None
 
     # return an xarray dataset CF-Compliant
     def to_xarray(self) -> xr.Dataset:
-        ds = self._dset  # we need to copy the ds metadata (and not the data) maybe .copy()
+        ds = (
+            self._dset
+        )  # we need to copy the ds metadata (and not the data) maybe .copy()
         return ds
 
 
@@ -311,7 +316,7 @@ class PointsField(Field, PointsFeature):
 
     """
 
-    __slots__ = ('_name',)
+    __slots__ = ("_name",)
     _DOMAIN_CLS_ = Points
 
     def __init__(
@@ -322,15 +327,15 @@ class PointsField(Field, PointsFeature):
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None,
-        cell_method: str = ''
+        cell_method: str = "",
     ) -> None:
         n_pts = domain.number_of_points
         match data:
             case pint.Quantity():
                 data_ = (
                     data
-                    if isinstance(data.magnitude, _ARRAY_TYPES) else
-                    pint.Quantity(np.asarray(data.magnitude), data.units)
+                    if isinstance(data.magnitude, _ARRAY_TYPES)
+                    else pint.Quantity(np.asarray(data.magnitude), data.units)
                 )
             case np.ndarray() | da.Array():
                 # NOTE: The pattern arr * unit does not work when arr has
@@ -352,12 +357,12 @@ class PointsField(Field, PointsFeature):
         # together with the `_name` field.
         data_vars = {}
         attrs = properties if properties is not None else {}
-        attrs['units'] = str(data_.units)
+        attrs["units"] = str(data_.units)
         # TODO: Check if domain/axis time has intervals when the cell
         # method exists and is different than points.
         # NOTE: Cell methods and intervals go together.
         if cell_method:
-            attrs['cell_methods'] = cell_method
+            attrs["cell_methods"] = cell_method
         data_vars[name] = xr.DataArray(
             data=data_.magnitude, dims=self._DIMS_, attrs=attrs
         )
@@ -508,7 +513,7 @@ class ProfilesField(Field, ProfilesFeature):
 
     """
 
-    __slots__ = ('_name',)
+    __slots__ = ("_name",)
     _DOMAIN_CLS_ = Profiles
 
     def __init__(
@@ -519,7 +524,7 @@ class ProfilesField(Field, ProfilesFeature):
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None,
-        cell_method: str = ''
+        cell_method: str = "",
     ) -> None:
         n_prof, n_lev = domain.number_of_profiles, domain.number_of_levels
         data_shape = (n_prof, n_lev)
@@ -562,8 +567,10 @@ class ProfilesField(Field, ProfilesFeature):
                 case pint.Quantity():
                     data_ = (
                         data
-                        if isinstance(data.magnitude, _ARRAY_TYPES) else
-                        pint.Quantity(np.asarray(data.magnitude), data.units)
+                        if isinstance(data.magnitude, _ARRAY_TYPES)
+                        else pint.Quantity(
+                            np.asarray(data.magnitude), data.units
+                        )
                     )
                 case np.ndarray() | da.Array():
                     data_ = pint.Quantity(data)
@@ -572,7 +579,7 @@ class ProfilesField(Field, ProfilesFeature):
                         np.full(
                             shape=data_shape,
                             fill_value=np.nan,
-                            dtype=np.float32
+                            dtype=np.float32,
                         )
                     )
                 case _:
@@ -587,12 +594,12 @@ class ProfilesField(Field, ProfilesFeature):
         # together with the `_name` field.
         data_vars = {}
         attrs = properties if properties is not None else {}
-        attrs['units'] = str(data_.units)
+        attrs["units"] = str(data_.units)
         # TODO: Check if domain/axis time has intervals when the cell
         # method exists and is different than points.
         # NOTE: Cell methods and intervals go together.
         if cell_method:
-            attrs['cell_methods'] = cell_method
+            attrs["cell_methods"] = cell_method
         data_vars[name] = xr.DataArray(
             data=data_.magnitude, dims=self._DIMS_, attrs=attrs
         )
@@ -600,7 +607,9 @@ class ProfilesField(Field, ProfilesFeature):
 
         if ancillary is not None:
             for anc_name, anc_data in ancillary.items():
-                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=self._DIMS)
+                data_vars[anc_name] = xr.DataArray(
+                    data=anc_data, dims=self._DIMS
+                )
 
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
@@ -748,7 +757,7 @@ class GridField(Field, GridFeature):
 
     """
 
-    __slots__ = ('_name',)
+    __slots__ = ("_name",)
     _DOMAIN_CLS_ = Grid
     # NOTE: The default order of axes is assumed.
 
@@ -760,15 +769,15 @@ class GridField(Field, GridFeature):
         ancillary: Mapping | None = None,
         properties: Mapping | None = None,
         encoding: Mapping | None = None,
-        cell_method: str = ''
+        cell_method: str = "",
     ) -> None:
 
         match data:
             case pint.Quantity():
                 data_ = (
                     data
-                    if isinstance(data.magnitude, _ARRAY_TYPES) else
-                    pint.Quantity(np.asarray(data.magnitude), data.units)
+                    if isinstance(data.magnitude, _ARRAY_TYPES)
+                    else pint.Quantity(np.asarray(data.magnitude), data.units)
                 )
             case np.ndarray() | da.Array():
                 # NOTE: The pattern arr * unit does not work when arr has
@@ -779,38 +788,45 @@ class GridField(Field, GridFeature):
             case _:
                 data_ = pint.Quantity(np.asarray(data))
 
-        #NOTE: THIS CODE CAN BE PUT IN ONE METHOD COMMON FOR ALL FIELDS! (MAYBE!)
+        # NOTE: THIS CODE CAN BE PUT IN ONE METHOD COMMON FOR ALL FIELDS! (MAYBE!)
 
         grid_mapping_attrs = domain.coord_system.spatial.crs.to_cf()
-        grid_mapping_name = grid_mapping_attrs['grid_mapping_name']
+        grid_mapping_name = grid_mapping_attrs["grid_mapping_name"]
 
         # TODO: Move the common part for all field types to `Field.__init__`,
         # together with the `_name` field.
         data_vars = {}
-        field_attrs = properties if properties is not None else {} # TODO: attrs can contain both properties and CF attrs
+        field_attrs = (
+            properties if properties is not None else {}
+        )  # TODO: attrs can contain both properties and CF attrs
         field_attrs |= {
-            'units': str(data_.units), 'grid_mapping': grid_mapping_name
+            "units": str(data_.units),
+            "grid_mapping": grid_mapping_name,
         }
         # TODO: Check if domain/axis time has intervals when the cell
         # method exists and is different than points.
         # NOTE: Cell methods and intervals go together.
         if cell_method:
-            field_attrs['cell_methods'] = cell_method
+            field_attrs["cell_methods"] = cell_method
         data_vars[name] = xr.DataArray(
             data=None if data_ is None else data_.magnitude,
             dims=domain._dset.dims,
-            attrs=field_attrs
+            attrs=field_attrs,
         )
         data_vars[name].encoding = encoding if encoding is not None else {}
 
         if ancillary is not None:
             ancillary_names = []
             for anc_name, anc_data in ancillary.items():
-                data_vars[anc_name] = xr.DataArray(data=anc_data, dims=domain._dset.dims)
-                data_vars[name].attrs['grid_mapping'] = grid_mapping_name
+                data_vars[anc_name] = xr.DataArray(
+                    data=anc_data, dims=domain._dset.dims
+                )
+                data_vars[name].attrs["grid_mapping"] = grid_mapping_name
                 ancillary_names.append(anc_name)
 
-            data_vars[name].attrs['ancillary_variables'] = " ".join(ancillary_names)
+            data_vars[name].attrs["ancillary_variables"] = " ".join(
+                ancillary_names
+            )
 
         dset = domain._dset
         dset = dset.drop_indexes(coord_names=list(dset.xindexes.keys()))
@@ -822,9 +838,7 @@ class GridField(Field, GridFeature):
         self._name = names.pop()
 
     def regrid(
-        self, 
-        target: GridField | Grid,
-        method: str = 'bilinear'
+        self, target: GridField | Grid, method: str = "bilinear"
     ) -> Self:
         """
         Return the new field with the data that correspond to `target`.
@@ -866,11 +880,11 @@ class GridField(Field, GridFeature):
         # TODO: check if they have the same CRS
         # if source CRS and target CRS are different
         # first transform source CRS to target CRS
-        # 
+        #
         # get spatial lat/lon coordinates
         # we should get all horizontal coordinates -> e.g. Projection, RotatedPole ...
-        # 
-        
+        #
+
         # NOTE: Maybe it is better to use `target._dset.coords` instead of
         # `target.coords` because the former keeps the attributes.
         # lat = target.coords[axis.latitude]
@@ -881,7 +895,7 @@ class GridField(Field, GridFeature):
 
         ds_out = xr.Dataset({"lat": (["lat"], lat), "lon": (["lon"], lon)})
 
-        # NOTE: before regridding we need to dequantify  
+        # NOTE: before regridding we need to dequantify
         # ds = self._dset.pint.dequantify()
         #
         # if we have ancillary data how they should be regridded?
@@ -906,7 +920,7 @@ class GridField(Field, GridFeature):
             horizontal=target.coord_system.spatial.crs,
             elevation=self.coord_system.spatial.elevation,
             time=self.coord_system.time,
-            user_axes=self.coord_system.user_axes
+            user_axes=self.coord_system.user_axes,
         )
 
         coords = {}
@@ -922,11 +936,11 @@ class GridField(Field, GridFeature):
             domain=Grid(coords=coords, coord_system=new_cs),
             ancillary=ancillary,
             properties=self.properties,
-            encoding=self.encoding
+            encoding=self.encoding,
         )
 
     def interpolate(
-        self, target: Domain | Field, method: str = 'nearest', **xarray_kwargs
+        self, target: Domain | Field, method: str = "nearest", **xarray_kwargs
     ) -> Field:
         """
         Return the new interpolated field onto the target coordinates.
@@ -971,18 +985,22 @@ class GridField(Field, GridFeature):
                 raise TypeError("'target' must be a domain or field")
 
         if self.crs._crs != target.crs._crs:
-            # we need to transform the target domain to the same crs of the domain to 
+            # we need to transform the target domain to the same crs of the domain to
             # be interpolated and we perform the interpolation on the horizontal axes
             #
             target_x, target_y = target.spatial_transform_to(self.crs)
-            xarray_kwargs.setdefault('fill_value', None)
+            xarray_kwargs.setdefault("fill_value", None)
             dims = (axis.latitude, axis.longitude)
             target_ = xr.Dataset(
                 data_vars={
-                    self.crs.dim_X_axis: xr.DataArray(data=target_x, dims=dims),
-                    self.crs.dim_Y_axis: xr.DataArray(data=target_y, dims=dims)
+                    self.crs.dim_X_axis: xr.DataArray(
+                        data=target_x, dims=dims
+                    ),
+                    self.crs.dim_Y_axis: xr.DataArray(
+                        data=target_y, dims=dims
+                    ),
                 },
-                coords={axis: target.coords[axis] for axis in dims}
+                coords={axis: target.coords[axis] for axis in dims},
             )
             dset = dset.drop(labels=(axis.latitude, axis.longitude))
             ds = dset.interp(
@@ -992,7 +1010,7 @@ class GridField(Field, GridFeature):
             ds = ds.drop(labels=(self.crs.dim_X_axis, self.crs.dim_Y_axis))
         else:
             coords = dict(dset.coords)
-            del coords[dset.attrs['grid_mapping']]
+            del coords[dset.attrs["grid_mapping"]]
             coords = {axis: coord.to_numpy() for axis, coord in coords.items()}
             target_coords = {
                 axis: coord.to_numpy()
@@ -1000,7 +1018,7 @@ class GridField(Field, GridFeature):
                 if axis in target.crs.axes
             }
             target_coords = coords | target_coords
-            xarray_kwargs.setdefault('fill_value', 'extrapolate')
+            xarray_kwargs.setdefault("fill_value", "extrapolate")
             ds = dset.interp(
                 coords=target_coords, method=method, kwargs=xarray_kwargs
             )
@@ -1015,7 +1033,7 @@ class GridField(Field, GridFeature):
             horizontal=target.crs,
             elevation=self.coord_system.spatial.elevation,
             time=self.coord_system.time,
-            user_axes=self.coord_system.user_axes
+            user_axes=self.coord_system.user_axes,
         )
 
         coords = {}
@@ -1031,7 +1049,7 @@ class GridField(Field, GridFeature):
             domain=Grid(coords=coords, coord_system=cs),
             ancillary=ancillary,
             properties=self.properties,
-            encoding=self.encoding
+            encoding=self.encoding,
         )
 
     def is_geodetic(self) -> bool:
@@ -1044,7 +1062,7 @@ class GridField(Field, GridFeature):
             True if a field has a geodetic CRS and False otherwise.
 
         """
-        return isinstance(self.crs, Geodetic) 
+        return isinstance(self.crs, Geodetic)
 
     def as_geodetic(self) -> Field:
         """
@@ -1058,10 +1076,10 @@ class GridField(Field, GridFeature):
         """
         if self.is_geodetic():
             return self
-        
+
         return self.interpolate(
-            target=self.domain.as_geodetic(), # this has a semantic -> domain geodetic grid can be different from the original
-            method="nearest"
+            target=self.domain.as_geodetic(),  # this has a semantic -> domain geodetic grid can be different from the original
+            method="nearest",
         )
 
     def as_points(self) -> PointsField:
@@ -1076,7 +1094,7 @@ class GridField(Field, GridFeature):
         return PointsField._from_xarray_dataset(_as_points_dataset(self))
 
     def resample(
-        self, freq: str, operator: Callable | str = 'nanmean', **kwargs
+        self, freq: str, operator: Callable | str = "nanmean", **kwargs
     ) -> Self:
         """
         Return a field with resampled data and time coordinate.
@@ -1151,17 +1169,17 @@ class GridField(Field, GridFeature):
                 )
 
         left_time_res = time.resample(
-            rule=freq, label='left', origin='start', **kwargs
+            rule=freq, label="left", origin="start", **kwargs
         )
         left_gr = left_time_res.grouper
         # TODO: Try to avoid the second call to `time.resample` and find the
         # right bound another way, e.g. with `time_res.freq.delta.to_numpy()`.
         right_time_res = time.resample(
-            rule=freq, label='right', origin='start', **kwargs
+            rule=freq, label="right", origin="start", **kwargs
         )
         right_gr = right_time_res.grouper
         new_time = pd.IntervalIndex.from_arrays(
-            left=left_gr.binlabels, right=right_gr.binlabels, closed='both'
+            left=left_gr.binlabels, right=right_gr.binlabels, closed="both"
         )
         time_axis_idx = self.dim_axes.index(axis.time)
         new_shape = list(data.shape)
@@ -1169,10 +1187,9 @@ class GridField(Field, GridFeature):
         # NOTE: For NumPy arrays, it is possible to use `numpy.split`, but it
         # seems that Dask does not have such a function.
         bins = left_gr.bins
-        slices = (
-            [slice(bins[0])]
-            + [slice(bins[i], bins[i + 1]) for i in range(bins.size - 1)]
-        )
+        slices = [slice(bins[0])] + [
+            slice(bins[i], bins[i + 1]) for i in range(bins.size - 1)
+        ]
         arr_lib = da if isinstance(data, da.Array) else np
         func = operator if callable(operator) else getattr(arr_lib, operator)
         # FIXME: If `data.dtype` is integral, we want a floating-point result
@@ -1196,8 +1213,8 @@ class GridField(Field, GridFeature):
         return type(self)(
             name=self.name,
             domain=type(domain)(new_coords, domain.coord_system),
-            data=pint.Quantity(new_data, dset[self.name].attrs.get('units')),
+            data=pint.Quantity(new_data, dset[self.name].attrs.get("units")),
             ancillary=self.ancillary,
             properties=self.properties,
-            encoding=self.encoding
+            encoding=self.encoding,
         )

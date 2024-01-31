@@ -1,6 +1,5 @@
 """The driver for CF-compliant NetCDF data."""
 
-
 from collections.abc import Sequence
 import os
 from typing import Any
@@ -10,20 +9,26 @@ import xarray as xr
 import cf_xarray as cfxr  # pylint: disable=unused-import  # noqa: F401
 
 from geokube import (
-    Collection, CoordinateSystem, CRS, Cube, Geodetic, RotatedGeodetic, axis
+    Collection,
+    CoordinateSystem,
+    CRS,
+    Cube,
+    Geodetic,
+    RotatedGeodetic,
+    axis,
 )
 from geokube.core import domain, field
 from geokube.core.cell_method import CellMethod
 
 
 _FEATURE_MAP: dict[str | None, type[field.Field]] = {
-    'point': field.PointsField,
+    "point": field.PointsField,
     # 'timeSeries': ...,
     # 'trajectory': ...,
-    'profile': field.ProfilesField,
+    "profile": field.ProfilesField,
     # 'timeSeriesProfile': ...,
     # 'trajectoryProfile': ...,
-    None: field.GridField
+    None: field.GridField,
 }
 
 
@@ -53,10 +58,7 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
         if (axis_ := axis._from_string(standard_name)) is not None:
             axes[name[0]] = axis_
     for dim in dset.dims:
-        if (
-            dim not in axes
-            and (axis_ := axis._from_string(dim)) is not None
-        ):
+        if dim not in axes and (axis_ := axis._from_string(dim)) is not None:
             axes[dim] = axis_
 
     # Coordinates. ------------------------------------------------------------
@@ -65,20 +67,20 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
         assert len(cf_coord_names) == 1
         cf_coord_name = cf_coord_names[0]
         coord = dset_coords.pop(cf_coord_name)
-        coord.attrs.setdefault('units', 'dimensionless')
+        coord.attrs.setdefault("units", "dimensionless")
         axis_ = axis._from_string(cf_coord)
         coords[axis_] = xr.Variable(
             dims=tuple(axes[dim] for dim in coord.dims),
             data=coord.to_numpy(),
             attrs=coord.attrs,
-            encoding=coord.encoding
+            encoding=coord.encoding,
         )
     for cf_axis, cf_axis_names in dset_cf.axes.items():
         assert len(cf_axis_names) == 1
         cf_axis_name = cf_axis_names[0]
         if cf_axis_name in dset_coords:
             coord = dset_coords.pop(cf_axis_name)
-            coord.attrs.setdefault('units', 'dimensionless')
+            coord.attrs.setdefault("units", "dimensionless")
             axis_ = axis._from_string(cf_axis.lower())
             if isinstance(hor_crs, RotatedGeodetic):
                 if axis_ is axis.x:
@@ -89,30 +91,29 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
                 dims=tuple(axes[dim] for dim in coord.dims),
                 data=coord.to_numpy(),
                 attrs=coord.attrs,
-                encoding=coord.encoding
+                encoding=coord.encoding,
             )
     # Time bounds.
-    if (cm_attr := dset[variable].attrs.get('cell_methods')) is not None:
+    if (cm_attr := dset[variable].attrs.get("cell_methods")) is not None:
         cell_method = CellMethod.parse(cm_attr)
         cm_axis = cell_method.axis
-        cm_time = cm_axis == 'time' or 'time' in cm_axis
+        cm_time = cm_axis == "time" or "time" in cm_axis
     else:
         cm_time = False
-    if (
-        cm_time
-        and (t_bnds := (dset.cf.bounds.get('time') or dset.cf.bounds.get('T')))
+    if cm_time and (
+        t_bnds := (dset.cf.bounds.get("time") or dset.cf.bounds.get("T"))
     ):
         assert len(t_bnds) == 1
         time_vals = dset[t_bnds[0]].to_numpy()
         time_bnds = pd.IntervalIndex.from_arrays(
-            left=time_vals[:, 0], right=time_vals[:, 1], closed='both'
+            left=time_vals[:, 0], right=time_vals[:, 1], closed="both"
         )
         time_coord = coords[axis.time]
         coords[axis.time] = xr.Variable(
             dims=time_coord.dims,
             data=time_bnds,
             attrs=time_coord.attrs,
-            encoding=time_coord.encoding
+            encoding=time_coord.encoding,
         )
 
     # Coordinate system. ------------------------------------------------------
@@ -133,7 +134,7 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
     crs = CoordinateSystem(
         horizontal=hor_crs,
         elevation=elev.pop() if elev else None,
-        time=time.pop() if time else None
+        time=time.pop() if time else None,
     )
 
     # Domain. -----------------------------------------------------------------
@@ -147,16 +148,16 @@ def _create_field(dset: xr.Dataset, variable: str) -> field.Field:
         dims=tuple(axes[dim] for dim in var.dims),
         data=var.data,
         attrs=var.attrs,
-        encoding=var.encoding
+        encoding=var.encoding,
     )
-    data.attrs['grid_mapping'] = result_dset.attrs['grid_mapping']
-    data.attrs.setdefault('units', 'dimensionless')
+    data.attrs["grid_mapping"] = result_dset.attrs["grid_mapping"]
+    data.attrs.setdefault("units", "dimensionless")
     data_vars = {variable: data}
     result_dset = result_dset.assign(data_vars)
     result_dset.attrs.update(dset.attrs)
 
     # Field. ------------------------------------------------------------------
-    field_type = _FEATURE_MAP[dset.attrs.get('featureType')]
+    field_type = _FEATURE_MAP[dset.attrs.get("featureType")]
     result = field_type._from_xarray_dataset(result_dset)
     return result
 
@@ -186,7 +187,7 @@ def _create_all_fields(
 
         # Fixing bounds.
         for coord in new_dset.coords.values():
-            if (bound_name := coord.encoding.get('bounds')) is not None:
+            if (bound_name := coord.encoding.get("bounds")) is not None:
                 bounds = {bound_name: dset[bound_name].variable}
                 new_dset = new_dset.assign_coords(coords=bounds)
 
@@ -218,7 +219,7 @@ def open(
     path: str | Sequence[str | os.PathLike],
     variables: str | Sequence[str] | None = None,
     xarray_kwargs: dict[str, Any] | None = None,
-    **kwargs
+    **kwargs,
 ) -> Collection:
     """
     Return a collection of fields from file(s).
@@ -248,7 +249,7 @@ def open(
 
     """
     kwa = xarray_kwargs or {}
-    kwa.setdefault('decode_coords', 'all')
+    kwa.setdefault("decode_coords", "all")
     # TODO: Reconsider using the context manager.
     # TODO: Consider the attributes and encoding of the return collection.
     with xr.open_mfdataset(path, **kwa) as dset:

@@ -29,6 +29,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
+
 # pylint: disable=unused-import
 import pint_xarray  # noqa: F401
 from pyproj import Transformer
@@ -37,7 +38,10 @@ import xarray as xr
 from . import axis
 from .coord_system import CoordinateSystem
 from .feature import (
-    GridFeature, PointsFeature, ProfilesFeature, _as_points_dataset
+    GridFeature,
+    PointsFeature,
+    ProfilesFeature,
+    _as_points_dataset,
 )
 from .quantity import get_magnitude, create_quantity
 from .crs import CRS, Geodetic
@@ -72,8 +76,10 @@ class Domain:
     @classmethod
     def _from_xarray_dataset(
         cls,
-        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        ds: xr.Dataset,  # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> Self:
         obj = object.__new__(cls)
         # TODO: Make sure that `cls.__mro__[2]` returns the correct `Feature`
@@ -91,8 +97,10 @@ class Domain:
 
     @staticmethod
     def as_xarray_dataset(
-        coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray],
-        coord_system: CoordinateSystem
+        coords: Mapping[
+            axis.Axis, npt.ArrayLike | pint.Quantity | xr.DataArray
+        ],
+        coord_system: CoordinateSystem,
     ) -> xr.Dataset:
         """
         Return xarray dataset representation of the caller.
@@ -116,7 +124,7 @@ class Domain:
         r_coords = dict(coords)
         r_coords[da.name] = da
         ds = xr.Dataset(coords=r_coords)
-        ds.attrs['grid_mapping'] = da.name
+        ds.attrs["grid_mapping"] = da.name
         return ds
 
 
@@ -227,7 +235,7 @@ class Points(Domain, PointsFeature):
             Mapping[axis.Axis, npt.ArrayLike | pint.Quantity]
             | Sequence[Sequence]
         ),
-        coord_system: CoordinateSystem
+        coord_system: CoordinateSystem,
     ) -> None:
         units = coord_system.units
 
@@ -237,9 +245,9 @@ class Points(Domain, PointsFeature):
                 for axis_, coord in coords.items():
                     attrs = axis_.encoding.copy()
                     coord_units = units.get(axis_)
-                    coord_dtype = attrs.pop('dtype', None)
+                    coord_dtype = attrs.pop("dtype", None)
                     coord_ = create_quantity(coord, coord_units, coord_dtype)
-                    attrs['units'] = str(coord_.units)
+                    attrs["units"] = str(coord_.units)
                     result_coords[axis_] = xr.DataArray(
                         data=coord_.magnitude, dims=self._DIMS_, attrs=attrs
                     )
@@ -266,9 +274,9 @@ class Points(Domain, PointsFeature):
                 for axis_, vals in data.items():
                     attrs = axis_.encoding.copy()
                     coord_units = units.get(axis_)
-                    coord_dtype = attrs.pop('dtype', None)
+                    coord_dtype = attrs.pop("dtype", None)
                     coord_ = vals.to_numpy(dtype=coord_dtype)
-                    attrs['units'] = str(coord_units)
+                    attrs["units"] = str(coord_units)
                     result_coords[axis_] = xr.DataArray(
                         data=coord_, dims=self._DIMS_, attrs=attrs
                     )
@@ -380,7 +388,7 @@ class Profiles(Domain, ProfilesFeature):
     def __init__(
         self,
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
-        coord_system: CoordinateSystem
+        coord_system: CoordinateSystem,
     ) -> None:
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
@@ -401,7 +409,7 @@ class Profiles(Domain, ProfilesFeature):
             n_lev_tot = max(n_lev)
             n_prof_tot = len(vert)
             vert_vals = np.empty(
-                shape=(n_prof_tot, n_lev_tot), dtype=vert_attrs.pop('dtype')
+                shape=(n_prof_tot, n_lev_tot), dtype=vert_attrs.pop("dtype")
             )
             for i, (stop_idx, vals) in enumerate(zip(n_lev, vert)):
                 if stop_idx == n_lev_tot:
@@ -414,7 +422,7 @@ class Profiles(Domain, ProfilesFeature):
             vert_qty = create_quantity(
                 vert,
                 coord_system.units.get(vert_axis),
-                vert_attrs.pop('dtype')
+                vert_attrs.pop("dtype"),
             )
             vert_shape = vert_qty.shape
             if len(vert_shape) != 2:
@@ -424,7 +432,7 @@ class Profiles(Domain, ProfilesFeature):
                 )
             n_prof_tot, n_lev_tot = vert_shape
 
-        vert_attrs['units'] = str(vert_qty.units)
+        vert_attrs["units"] = str(vert_qty.units)
         result_coords[vert_axis] = xr.DataArray(
             data=vert_qty.magnitude, dims=self._DIMS_, attrs=vert_attrs
         )
@@ -433,9 +441,9 @@ class Profiles(Domain, ProfilesFeature):
         for axis_, vals in interm_coords.items():
             attrs = axis_.encoding.copy()
             qty = create_quantity(
-                vals, coord_system.units.get(axis_), attrs.pop('dtype')
+                vals, coord_system.units.get(axis_), attrs.pop("dtype")
             )
-            attrs['units'] = str(qty.units)
+            attrs["units"] = str(qty.units)
             if qty.ndim != 1:
                 raise ValueError(
                     f"'coords' have axis {axis_} that does not have "
@@ -577,7 +585,7 @@ class Grid(Domain, GridFeature):
     def __init__(
         self,
         coords: Mapping[axis.Axis, npt.ArrayLike | pint.Quantity],
-        coord_system: CoordinateSystem
+        coord_system: CoordinateSystem,
     ) -> None:
         if not isinstance(coords, Mapping):
             raise TypeError("'coords' must be a mapping")
@@ -588,26 +596,25 @@ class Grid(Domain, GridFeature):
         for axis_, coord in coords.items():
             attrs = axis_.encoding.copy()
             if isinstance(coord, pd.IntervalIndex):
-                if coord.closed != 'both':
+                if coord.closed != "both":
                     raise NotImplementedError(
                         "'coords' contain an open interval index, which is "
                         "currently not supported"
                     )
-                attrs['units'] = 'dimensionless'
-                del attrs['dtype']
+                attrs["units"] = "dimensionless"
+                del attrs["dtype"]
                 coord_vals = coord.to_numpy()
                 dims = (axis_,)
             else:
                 coord_units = coord_system.units.get(axis_)
-                coord_dtype = attrs.pop('dtype', None)
+                coord_dtype = attrs.pop("dtype", None)
                 coord_qty = create_quantity(coord, coord_units, coord_dtype)
-                attrs['units'] = str(coord_qty.units)
+                attrs["units"] = str(coord_qty.units)
                 coord_vals = coord_qty.magnitude
-                if (
-                    coord_vals.dtype is np.dtype(object)
-                    and isinstance(coord_vals[0], pd.Interval)
+                if coord_vals.dtype is np.dtype(object) and isinstance(
+                    coord_vals[0], pd.Interval
                 ):
-                    coord_vals = pd.IntervalIndex(coord_vals, closed='both')
+                    coord_vals = pd.IntervalIndex(coord_vals, closed="both")
 
                 if axis_ in dim_axes:
                     # Dimension coordinates.
@@ -664,16 +671,16 @@ class Grid(Domain, GridFeature):
         """
         coord_system = CoordinateSystem(
             horizontal=Geodetic(),
-            elevation = self.coord_system.elevation,
-            time = self.coord_system.time,
-            user_axes = self.coord_system.user_axes
+            elevation=self.coord_system.elevation,
+            time=self.coord_system.time,
+            user_axes=self.coord_system.user_axes,
         )
 
         # Infering latitude and longitude steps from the x and y coordinates.
         # this works only for Geodetic and Rotated Pole
         # It should be generalized also for projections
         # TODO: once we get the resolution for the horizontal we should transform
-        # in a value in lat/lon 
+        # in a value in lat/lon
         lat_step = self.infer_resolution(self.crs.dim_Y_axis)
         lon_step = self.infer_resolution(self.crs.dim_X_axis)
 
@@ -682,17 +689,17 @@ class Grid(Domain, GridFeature):
         lon_vals = self.coords[axis.longitude]
         south, north = lat_vals.min().magnitude, lat_vals.max().magnitude
         west, east = lon_vals.min().magnitude, lon_vals.max().magnitude
-#        lat = np.arange(south, north + lat_step / 2, lat_step)
-#        lon = np.arange(west, east + lon_step / 2, lon_step)
+        #        lat = np.arange(south, north + lat_step / 2, lat_step)
+        #        lon = np.arange(west, east + lon_step / 2, lon_step)
         lat = np.arange(south, north, lat_step)
         lon = np.arange(west, east, lon_step)
-        
+
         coords = self.coords  # Or `self.coords.copy()`.
         for axis_ in self.crs.axes:
             del coords[axis_]
         hor_coords = {
             coord_system.crs.dim_Y_axis: lat,
-            coord_system.crs.dim_X_axis: lon
+            coord_system.crs.dim_X_axis: lon,
         }
         coords |= hor_coords
 
@@ -716,16 +723,14 @@ class Grid(Domain, GridFeature):
         """
         # TODO: we assume that they have the same datum. We need to change
         # the code when datum are different!!
-        # 
-        lat = get_magnitude(self.coords[axis.latitude], units['degrees_N'])
-        lon = get_magnitude(self.coords[axis.longitude], units['degrees_E'])
+        #
+        lat = get_magnitude(self.coords[axis.latitude], units["degrees_N"])
+        lon = get_magnitude(self.coords[axis.longitude], units["degrees_E"])
         if lat.ndim == lon.ndim == 1:
             lon, lat = np.meshgrid(lon, lat)
 
         transformer = Transformer.from_crs(
-            crs_from=self.crs._crs,
-            crs_to=crs._crs,
-            always_xy=True
+            crs_from=self.crs._crs, crs_to=crs._crs, always_xy=True
         )
         # x, y = transformer.transform(lon, lat)
         return transformer.transform(lon, lat)

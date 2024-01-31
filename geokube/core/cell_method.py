@@ -21,7 +21,7 @@ class _Method(StrEnum):
     # RANGE = auto()
     STANDARD_DEVIATION = auto()
     VARIANCE = auto()
-    UNDEFINED = ''
+    UNDEFINED = ""
 
     @classmethod
     def _missing_(cls, value):
@@ -45,7 +45,7 @@ class CellMethod:
     # TODO: Extend for combined ones and special variables, like
     # `lat: lon: standard_deviation`, `area: mean`, etc.
 
-    __slots__ = ('_method', '_axis', '_interval', '_comment', '_where')
+    __slots__ = ("_method", "_axis", "_interval", "_comment", "_where")
 
     if TYPE_CHECKING:
         _method: _Method
@@ -69,16 +69,16 @@ class CellMethod:
         # _Method.RANGE = _MethodInfo(np.ptp, da.ptp),
         _Method.STANDARD_DEVIATION: _MethodInfo(np.nanstd, da.nanstd),
         _Method.VARIANCE: _MethodInfo(np.nanvar, da.nanvar),
-        _Method.UNDEFINED: None
+        _Method.UNDEFINED: None,
     }
 
     def __init__(
         self,
-        method: str = '',
+        method: str = "",
         axis: str | Sequence[str, ...] | None = None,
-        interval: str = '',
-        comment: str = '',
-        where: str = '',
+        interval: str = "",
+        comment: str = "",
+        where: str = "",
     ) -> None:
         self._method = _Method(method)
         self._axis = axis if isinstance(axis, str) else tuple(axis)
@@ -134,9 +134,9 @@ class CellMethod:
         # * `val = 'lat: lon: standard_deviation (interval: 0.1 degree_N interval: 0.2 degree_E)'`.
         if val is None:
             return None
-        interval_start_idx = (
-            comment_start_idx
-        ) = where_start_idx = par_open_index = par_close_index = np.nan
+        interval_start_idx = comment_start_idx = where_start_idx = (
+            par_open_index
+        ) = par_close_index = np.nan
         if "interval:" in val:
             interval_start_idx = val.find("interval:")
         if "comment:" in val:
@@ -148,7 +148,7 @@ class CellMethod:
         if ")" in val:
             par_close_index = val.find(")")
 
-        where_val = interval_val = comment_val = ''
+        where_val = interval_val = comment_val = ""
         idx_list = [
             interval_start_idx,
             comment_start_idx,
@@ -190,7 +190,7 @@ class CellMethod:
             axis=axis,
             interval=interval_val,
             comment=comment_val,
-            where=where_val
+            where=where_val,
         )
 
     def __str__(self) -> str:
@@ -200,12 +200,10 @@ class CellMethod:
         if self._where:
             res_str = " ".join([res_str, f"where {self._where}"])
         if self._interval and self._comment:
-            res_str = " ".join(
-                [
-                    res_str,
-                    f"(interval: {self._interval} comment: {self._comment})",
-                ]
-            )
+            res_str = " ".join([
+                res_str,
+                f"(interval: {self._interval} comment: {self._comment})",
+            ])
         else:
             if self._interval:
                 res_str = " ".join([res_str, f"(interval: {self._interval})"])

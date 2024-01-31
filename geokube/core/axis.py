@@ -108,25 +108,27 @@ class Axis(str):
     # necessary any more. In that case, `Axis` might inherit from `Hashable`.
 
     _DEFAULT_UNITS_: pint.Unit
-    _DEFAULT_ENCODING_: { 'dtype': np.dtype }
+    _DEFAULT_ENCODING_: {"dtype": np.dtype}
 
-    __slots__ = ('__units', '__encoding')
+    __slots__ = ("__units", "__encoding")
 
     def __new__(
         cls,
         units: pint.Unit | str | None = None,
-        encoding: Mapping[str, Any] | None = None
+        encoding: Mapping[str, Any] | None = None,
     ):
         return str.__new__(cls, cls.__name__)
 
     def __init__(
         self,
         units: pint.Unit | str | None = None,
-        encoding: Mapping[str, Any] | None = None
+        encoding: Mapping[str, Any] | None = None,
     ) -> None:
 
         self.__units = pint.Unit(units or self._DEFAULT_UNITS_)
-        self.__encoding = self._DEFAULT_ENCODING_ if encoding is None else dict(encoding)
+        self.__encoding = (
+            self._DEFAULT_ENCODING_ if encoding is None else dict(encoding)
+        )
 
     def __repr__(self) -> str:
         return (
@@ -144,7 +146,7 @@ class Axis(str):
 
     @property
     def dtype(self) -> np.dtype:
-        return np.dtype(self.__encoding['dtype'])
+        return np.dtype(self.__encoding["dtype"])
 
     @property
     def encoding(self) -> dict[str, Any]:
@@ -175,8 +177,8 @@ class Spatial(Axis):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_DTYPE_ = 'float64'
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_DTYPE_ = "float64"
 
 
 class Horizontal(Spatial):
@@ -230,9 +232,8 @@ class Longitude(Horizontal):
 
     """
 
-    _DEFAULT_UNITS_ = units['degrees_east']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'longitude',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["degrees_east"]
+    _DEFAULT_ENCODING_ = {"standard_name": "longitude", "dtype": "float64"}
 
 
 class Latitude(Horizontal):
@@ -259,9 +260,8 @@ class Latitude(Horizontal):
 
     """
 
-    _DEFAULT_UNITS_ = units['degrees_north']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'latitude',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["degrees_north"]
+    _DEFAULT_ENCODING_ = {"standard_name": "latitude", "dtype": "float64"}
 
 
 class GridLongitude(Horizontal):
@@ -288,9 +288,11 @@ class GridLongitude(Horizontal):
 
     """
 
-    _DEFAULT_UNITS_ = units['degrees']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'grid_longitude',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["degrees"]
+    _DEFAULT_ENCODING_ = {
+        "standard_name": "grid_longitude",
+        "dtype": "float64",
+    }
 
 
 class GridLatitude(Horizontal):
@@ -317,9 +319,8 @@ class GridLatitude(Horizontal):
 
     """
 
-    _DEFAULT_UNITS_ = units['degrees']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'grid_latitude',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["degrees"]
+    _DEFAULT_ENCODING_ = {"standard_name": "grid_latitude", "dtype": "float64"}
 
 
 class X(Horizontal):
@@ -346,9 +347,8 @@ class X(Horizontal):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_ENCODING_ = { 'axis': 'X',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_ENCODING_ = {"axis": "X", "dtype": "float64"}
 
 
 class Y(Horizontal):
@@ -375,9 +375,8 @@ class Y(Horizontal):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_ENCODING_ = { 'axis': 'Y',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_ENCODING_ = {"axis": "Y", "dtype": "float64"}
 
 
 class Elevation(Spatial):
@@ -404,7 +403,7 @@ class Elevation(Spatial):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
+    _DEFAULT_UNITS_ = units["meter"]
 
 
 class Z(Elevation):
@@ -431,9 +430,8 @@ class Z(Elevation):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_ENCODING_ = { 'axis': 'Z',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_ENCODING_ = {"axis": "Z", "dtype": "float64"}
 
 
 class Vertical(Elevation):
@@ -460,10 +458,12 @@ class Vertical(Elevation):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'height',
-                           'positive': 'up',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_ENCODING_ = {
+        "standard_name": "height",
+        "positive": "up",
+        "dtype": "float64",
+    }
 
 
 class Height(Elevation):
@@ -490,10 +490,12 @@ class Height(Elevation):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'height',
-                           'positive': 'up',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_ENCODING_ = {
+        "standard_name": "height",
+        "positive": "up",
+        "dtype": "float64",
+    }
 
 
 class Depth(Elevation):
@@ -520,10 +522,12 @@ class Depth(Elevation):
 
     """
 
-    _DEFAULT_UNITS_ = units['meter']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'depth',
-                           'positive': 'down',
-                           'dtype': 'float64'}
+    _DEFAULT_UNITS_ = units["meter"]
+    _DEFAULT_ENCODING_ = {
+        "standard_name": "depth",
+        "positive": "down",
+        "dtype": "float64",
+    }
 
 
 class Time(Axis):
@@ -550,10 +554,12 @@ class Time(Axis):
 
     """
 
-    _DEFAULT_UNITS_ = units['']
-    _DEFAULT_ENCODING_ = { 'standard_name': 'time',
-                           'axis': 'T',
-                           'dtype': 'datetime64'}
+    _DEFAULT_UNITS_ = units[""]
+    _DEFAULT_ENCODING_ = {
+        "standard_name": "time",
+        "axis": "T",
+        "dtype": "datetime64",
+    }
 
 
 class UserDefined(Axis):
@@ -586,8 +592,8 @@ class UserDefined(Axis):
     """
 
     # FIXME: Hash cannot be the class name -> redefine hash with axis name.
-    _DEFAULT_UNITS_ = units['']
-    _DEFAULT_ENCODING_ = { 'dtype': 'str'}
+    _DEFAULT_UNITS_ = units[""]
+    _DEFAULT_ENCODING_ = {"dtype": "str"}
 
 
 x = X()
@@ -601,29 +607,27 @@ vertical = Vertical()
 height = Height()
 depth = Depth()
 time = Time()
-timedelta = Time(encoding={'dtype': 'timedelta64'})
+timedelta = Time(encoding={"dtype": "timedelta64"})
 
 
-def create(
-    name: str, units: pint.Unit | str, encoding: dict
-) -> None:
+def create(name: str, units: pint.Unit | str, encoding: dict) -> None:
     # TODO: Implement this.
     pass
 
 
 __predefined_axis__ = {
-    'x': x,
-    'y': y,
-    'z': z,
-    'grid_latitude': grid_latitude,
-    'grid_longitude': grid_longitude,
-    'latitude': latitude,
-    'longitude': longitude,
-    'vertical': vertical,
-    'height': height,
-    'depth': depth,
-    'time': time,
-    'timedelta': timedelta
+    "x": x,
+    "y": y,
+    "z": z,
+    "grid_latitude": grid_latitude,
+    "grid_longitude": grid_longitude,
+    "latitude": latitude,
+    "longitude": longitude,
+    "vertical": vertical,
+    "height": height,
+    "depth": depth,
+    "time": time,
+    "timedelta": timedelta,
 }
 
 
@@ -631,9 +635,7 @@ def _from_string(name: str):
     return __predefined_axis__.get(name)
 
 
-UserDefinedT_co = TypeVar(
-    'UserDefinedT_co', bound=UserDefined, covariant=True
-)
+UserDefinedT_co = TypeVar("UserDefinedT_co", bound=UserDefined, covariant=True)
 
 
 def custom(
@@ -682,8 +684,8 @@ def custom(
     name = str(name)
     base = (UserDefined,)
     dict_ = {
-        '_DEFAULT_UNITS_': pint.Unit(units or UserDefined._DEFAULT_UNITS_),
-        '_DEFAULT_ENCODING_': dict(encoding or UserDefined._DEFAULT_ENCODING_),
+        "_DEFAULT_UNITS_": pint.Unit(units or UserDefined._DEFAULT_UNITS_),
+        "_DEFAULT_ENCODING_": dict(encoding or UserDefined._DEFAULT_ENCODING_),
     }
     cls_ = type(name, base, dict_)
     obj = cls_()

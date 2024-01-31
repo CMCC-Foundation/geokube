@@ -57,7 +57,7 @@ class SpatialCoordinateSystem:
 
     """
 
-    __slots__ = ('__crs', '__elevation', '__dim_axes', '__axes')
+    __slots__ = ("__crs", "__elevation", "__dim_axes", "__axes")
 
     if TYPE_CHECKING:
         __crs: CRS
@@ -192,12 +192,12 @@ class CoordinateSystem:
     """
 
     __slots__ = (
-        '__spatial',
-        '__time',
-        '__user_axes',
-        '__all_axes',
-        '__dim_axes',
-        '__units'
+        "__spatial",
+        "__time",
+        "__user_axes",
+        "__all_axes",
+        "__dim_axes",
+        "__units",
     )
 
     if TYPE_CHECKING:
@@ -212,7 +212,7 @@ class CoordinateSystem:
         horizontal: CRS,
         elevation: axis.Elevation | None = None,
         time: axis.Time | None = None,
-        user_axes: Sequence[axis.UserDefined] = ()
+        user_axes: Sequence[axis.UserDefined] = (),
     ) -> None:
         self.__spatial = SpatialCoordinateSystem(horizontal, elevation)
         axes: tuple[axis.Axis, ...]
@@ -318,7 +318,7 @@ class CoordinateSystem:
             horizontal=self.__spatial.crs,
             elevation=self.__spatial.elevation,
             time=self.__time,
-            user_axes=(*self.__user_axes, new_axis)
+            user_axes=(*self.__user_axes, new_axis),
         )
 
     def delete_axis(self, existing_axis: axis.UserDefined) -> Self:
@@ -346,5 +346,5 @@ class CoordinateSystem:
             horizontal=self.__spatial.crs,
             elevation=self.__spatial.elevation,
             time=self.__time,
-            user_axes=tuple(new_axes)
+            user_axes=tuple(new_axes),
         )
