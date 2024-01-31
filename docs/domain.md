@@ -1,0 +1,1 @@
+::: geokube.core.domain
