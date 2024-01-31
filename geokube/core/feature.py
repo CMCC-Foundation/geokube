@@ -986,6 +986,7 @@ class ProfilesFeature(Feature):
         vert = dset[vert_axis]
         vert_mag, vert_units = vert.to_numpy(), vert.attrs['units']
         n_profiles = vert_mag.shape[0]
+        elevation = np.array(elevation, copy=False, ndmin=1)
         shape = (n_profiles, len(elevation))
         new_vert_mag = np.empty(shape=shape, dtype=vert_mag.dtype)
         # TODO: Try to implement this in a more efficient way.
