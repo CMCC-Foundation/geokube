@@ -22,7 +22,7 @@ jobs:
 
       - name: Conda create environemnt
         shell: bash -l {0}
-        run: conda create --name gk -f environment.yaml   
+        run: conda env create --name gk -f environment.yaml   
 
       - name: Conda activate
         shell: bash -l {0}
