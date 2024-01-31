@@ -205,10 +205,10 @@ def test_nearest_horizontal_profiles(profiles):
     assert profiles.number_of_levels == 4
 
 
-def test_nearest_vertical_points(profiles):
+def test_nearest_vertical_profiles(profiles):
     prof = profiles.nearest_vertical(10.7)
     assert prof.number_of_profiles == 2
-    assert prof.number_of_level == 1
+    assert prof.number_of_levels == 1
     assert np.allclose(
         prof.coords[axis.vertical].to_numpy(),
         np.array([[np.nan], [10.7]]),
@@ -227,7 +227,7 @@ def test_nearest_vertical_points(profiles):
 
     prof = profiles.nearest_vertical(-100.0)
     assert prof.number_of_profiles == 2
-    assert prof.number_of_level == 1
+    assert prof.number_of_levels == 1
     assert np.allclose(
         prof.coords[axis.vertical].to_numpy(),
         np.array([[np.nan], [10.7]]),
