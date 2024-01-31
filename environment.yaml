@@ -3,5 +3,6 @@ channels:
 dependencies:
   - python=3.11
   - cf-units
+  - cf_xarray
   - esmpy
   - xesmf
