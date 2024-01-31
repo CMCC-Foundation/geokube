@@ -27,7 +27,7 @@ class OneDimIndex(xr.core.indexes.Index):
         cls,
         variables: Mapping[Any, xr.Variable],
         *,
-        options: Mapping[str, Any]
+        options: Mapping[str, Any],
     ) -> Self:
         if len(variables) != 1:
             raise ValueError("'variables' can contain exactly one item")
@@ -39,8 +39,8 @@ class OneDimIndex(xr.core.indexes.Index):
         data, dims = var.data, var.dims
         data_qty = (
             data
-            if isinstance(data, pint.Quantity) else
-            pint.Quantity(data, var.attrs['units'])
+            if isinstance(data, pint.Quantity)
+            else pint.Quantity(data, var.attrs["units"])
         )
         # if not isinstance(data, pint.Quantity):
         #     raise TypeError("'variables' must contain data of type 'Quantity'")
@@ -53,7 +53,7 @@ class OneDimIndex(xr.core.indexes.Index):
         self,
         labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
         method: str | None = None,
-        tolerance: npt.ArrayLike | None = None
+        tolerance: npt.ArrayLike | None = None,
     ) -> xr.core.indexing.IndexSelResult:
         if len(labels) != 1:
             raise ValueError("'labels' can contain exactly one item")
@@ -70,7 +70,7 @@ class OneDimIndex(xr.core.indexes.Index):
             [get_magnitude(label, data.units)],
             method=method,
             tolerance=tolerance,
-            return_all=False
+            return_all=False,
         )
 
         return xr.core.indexing.IndexSelResult({self.dims[0]: idx[0]})
@@ -87,7 +87,7 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
         cls,
         variables: Mapping[Any, xr.Variable],
         *,
-        options: Mapping[str, Any]
+        options: Mapping[str, Any],
     ) -> Self:
         if len(variables) != 2:
             raise ValueError("'variables' can contain exactly two items")
@@ -103,14 +103,14 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
         lat_data = lat.data
         lat_qty = (
             lat_data
-            if isinstance(lat_data, pint.Quantity) else
-            pint.Quantity(lat_data, lat.attrs['units'])
+            if isinstance(lat_data, pint.Quantity)
+            else pint.Quantity(lat_data, lat.attrs["units"])
         )
         lon_data = lon.data
         lon_qty = (
             lon_data
-            if isinstance(lon_data, pint.Quantity) else
-            pint.Quantity(lon_data, lon.attrs['units'])
+            if isinstance(lon_data, pint.Quantity)
+            else pint.Quantity(lon_data, lon.attrs["units"])
         )
 
         # lat_data, lon_data = lat.data, lon.data
@@ -132,7 +132,7 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
         self,
         labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
         method: str | None = None,
-        tolerance: npt.ArrayLike | None = None
+        tolerance: npt.ArrayLike | None = None,
     ) -> xr.core.indexing.IndexSelResult:
         if len(labels) != 2:
             raise ValueError("'labels' can contain exactly two items")
@@ -153,7 +153,7 @@ class TwoDimHorPointsIndex(xr.core.indexes.Index):
             combine_result=True,
             method=method,
             tolerance=np.inf if tolerance is None else tolerance,
-            return_all=False
+            return_all=False,
         )
 
         return xr.core.indexing.IndexSelResult({self.dims[0]: idx[0]})
@@ -169,7 +169,7 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
         cls,
         variables: Mapping[Any, xr.Variable],
         *,
-        options: Mapping[str, Any]
+        options: Mapping[str, Any],
     ) -> Self:
         if len(variables) != 1:
             raise ValueError("'variables' can contain exactly one item")
@@ -182,11 +182,11 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
             ) from err
 
         vert_data = create_quantity(
-            vert.data, vert.attrs.get('units'), vert.data.dtype
+            vert.data, vert.attrs.get("units"), vert.data.dtype
         )
 
         dims = vert.dims
-        if set(dims) != {'_profiles', '_levels'}:
+        if set(dims) != {"_profiles", "_levels"}:
             raise ValueError(
                 "'variables' and 'options' must contain data with the "
                 "dimensions '_profiles' and '_levels'"
@@ -198,7 +198,7 @@ class TwoDimVertProfileIndex(xr.core.indexes.Index):
         self,
         labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
         method: str | None = None,
-        tolerance: npt.ArrayLike | None = None
+        tolerance: npt.ArrayLike | None = None,
     ) -> xr.core.indexing.IndexSelResult:
         if len(labels) != 1:
             raise ValueError("'labels' can contain exactly one item")
@@ -267,12 +267,10 @@ class OneDimPandasIndex(xr.core.indexes.Index):
             raise ValueError("'variables' can contain exactly one item")
         coord_axis, var = next(iter(variables.items()))
         data = var.data
-        if (
-            data.dtype is np.dtype(object) and isinstance(data[0], pd.Interval)
-        ):
-            vals, units = pd.IntervalIndex(data, closed='both'), pint.Unit('')
+        if data.dtype is np.dtype(object) and isinstance(data[0], pd.Interval):
+            vals, units = pd.IntervalIndex(data, closed="both"), pint.Unit("")
         else:
-            qty = create_quantity(data, var.attrs.get('units'), data.dtype)
+            qty = create_quantity(data, var.attrs.get("units"), data.dtype)
             vals, units = qty.magnitude, qty.units
         idx = xr.core.indexes.PandasIndex.from_variables(
             variables={
@@ -280,10 +278,10 @@ class OneDimPandasIndex(xr.core.indexes.Index):
                     dims=var.dims,
                     data=vals,
                     attrs=var.attrs,
-                    encoding=var.encoding
+                    encoding=var.encoding,
                 )
             },
-            options={}
+            options={},
         )
         return cls(idx, units)
 
@@ -291,7 +289,7 @@ class OneDimPandasIndex(xr.core.indexes.Index):
         self,
         labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
         method=None,
-        tolerance=None
+        tolerance=None,
     ) -> xr.core.indexing.IndexSelResult:
         if len(labels) != 1:
             raise ValueError("'labels' can contain exactly one item")
@@ -299,7 +297,7 @@ class OneDimPandasIndex(xr.core.indexes.Index):
         result = self.index.sel(
             labels={coord_axis: get_magnitude(label, self.units)},
             method=method,
-            tolerance=tolerance
+            tolerance=tolerance,
         )
         return xr.core.indexing.IndexSelResult(result.dim_indexers)
 
@@ -317,7 +315,7 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
         cls,
         variables: Mapping[Any, xr.Variable],
         *,
-        options: Mapping[str, Any]
+        options: Mapping[str, Any],
     ) -> Self:
         if len(variables) != 2:
             raise ValueError("'variables' can contain exactly two items")
@@ -331,10 +329,10 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
             ) from err
 
         lat_qty = create_quantity(
-            lat.data, lat.attrs.get('units'), lat.data.dtype
+            lat.data, lat.attrs.get("units"), lat.data.dtype
         )
         lon_qty = create_quantity(
-            lon.data, lon.attrs.get('units'), lon.data.dtype
+            lon.data, lon.attrs.get("units"), lon.data.dtype
         )
 
         all_dims = {lat.dims, lon.dims}
@@ -350,7 +348,7 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
         self,
         labels: dict[Hashable, slice | npt.ArrayLike | pint.Quantity],
         method: str | None = None,
-        tolerance: npt.ArrayLike | None = None
+        tolerance: npt.ArrayLike | None = None,
     ) -> xr.core.indexing.IndexSelResult:
         if len(labels) != 2:
             raise ValueError("'labels' can contain exactly two items")
@@ -375,7 +373,7 @@ class TwoDimHorGridIndex(xr.core.indexes.Index):
                     # [lat_, lon_],
                     [lat_label, lon_label],
                     combine_result=True,
-                    return_type='int'
+                    return_type="int",
                 )
                 result = {
                     dim: slice(incl_idx.min(), incl_idx.max() + 1)

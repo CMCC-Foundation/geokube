@@ -1,3 +1,5 @@
+"""The driver for Sentinel 2 data."""
+
 from collections.abc import Sequence
 from glob import iglob
 import os
@@ -15,7 +17,7 @@ from geokube.core.crs import CRS, TransverseMercatorProjection
 
 # TODO: Check whether the units of X and Y in the sentinel data correspond to
 # the default units for X and Y axes (meters).
-# TODO: Chenge the name of `open` because it is a name of a built-in function.
+# TODO: Change the name of `open` because it is a name of a built-in function.
 
 
 def open(
@@ -23,34 +25,58 @@ def open(
     resolutions: Sequence[str] | None = None,
     bands: Sequence[str] | None = None,
     xarray_kwargs: dict[str, Any] = None,
-    **kwargs
+    **kwargs,
 ) -> Collection:
+    """
+    Return a collection of fields from file(s).
+
+    Parameters
+    ----------
+    path : str
+        Path to the file(s).
+    resolutions : sequence of str, optional
+        Resolutions.  If omitted, all resolutions are taken.
+    bands : sequence of str, optional
+        Bands.  If omitted, all bands are taken.
+    xarray_kwargs : dict, optional
+        Additional keyword arguments passed to the function
+        xarray.open_mfdataset.
+    **kwargs : dict, optional
+        Additional keyword arguments.  Used for consistency among the
+        drivers.  Ignored.
+
+    Returns
+    -------
+    Collection
+        Collection of fields from file(s).
+
+    """
     # Extract the time from the path.
-    path_time = os.path.splitext(os.path.basename(path))[0].split('_')[-1]
+    path_time = os.path.splitext(os.path.basename(path))[0].split("_")[-1]
     time = pd.to_datetime([path_time]).to_numpy()
 
     # Extract the resolutions, bands, and paths.
     path_like = os.path.join(
-        path, 'GRANULE', '*', 'IMG_DATA', '*', '*_B*_*.jp2'
+        path, "GRANULE", "*", "IMG_DATA", "*", "*_B*_*.jp2"
     )
     tmp_data: list[tuple[str, str, str]] = []
     for i, full_path in enumerate(iglob(path_like)):
         # Resolve the parameters.
         res, file = full_path.split(os.sep)[-2:]
         # time, band = file.split('_')[-3:-1]
-        band = file.split('_')[-2]
+        band = file.split("_")[-2]
         tmp_data.append((res, band, full_path, None))
 
     # Prepare the data frame. The cubes are going to be added later.
     data = pd.DataFrame(
-        data=tmp_data, columns=['resolutions', 'bands', 'paths', 'cubes']
+        data=tmp_data, columns=["resolutions", "bands", "paths", "cubes"]
     )
     mask = False
     if resolutions is not None:
-        data = data[np.isin(data['resolutions'], resolutions)]
+        data = data[np.isin(data["resolutions"], resolutions)]
         mask = True
     if bands is not None:
-        data = data[np.isin(data['bands'], bands)]
+        data = data[np.isin(data["bands"], bands)]
         mask = True
     if mask:
         data.reset_index(inplace=True, drop=True)
@@ -66,7 +92,7 @@ def open(
         # the first dataset is opened.
         if not i:
             attrs = dset.attrs
-            crs = CRS.from_cf(dset['spatial_ref'].attrs)._crs
+            crs = CRS.from_cf(dset["spatial_ref"].attrs)._crs
             proj = object.__new__(TransverseMercatorProjection)
             CRS.__init__(proj, crs=crs)
             coord_system = CoordinateSystem(horizontal=proj, time=axis.time)
@@ -77,7 +103,7 @@ def open(
         # Prepare the coordinates once for each resolution.
         res_coords = coords.get(res)
         if res_coords is None:
-            x_vals, y_vals = dset['x'].to_numpy(), dset['y'].to_numpy()
+            x_vals, y_vals = dset["x"].to_numpy(), dset["y"].to_numpy()
             lon_vals, lat_vals = transformer.transform(
                 *np.meshgrid(x_vals, y_vals)
             )
@@ -86,20 +112,20 @@ def open(
                 axis.y: y_vals,
                 axis.x: x_vals,
                 axis.latitude: lat_vals,
-                axis.longitude: lon_vals
+                axis.longitude: lon_vals,
             }
 
         # Create field.
         field = GridField(
-            name=f'{res}_{band}',
+            name=f"{res}_{band}",
             domain=Grid(coords=res_coords, coord_system=coord_system),
-            data=dset['band_data'].data,
-            properties=attrs
+            data=dset["band_data"].data,
+            properties=attrs,
         )
 
         # Create cube and add it to the data frame.
         data.iat[i, -1] = Cube(fields=[field])
 
     # Creating and returning the collection of cubes.
-    del data['paths']
+    del data["paths"]
     return Collection(data=data)

@@ -10,7 +10,7 @@ from .cube import Cube
 
 
 class Collection:
-    __slots__ = ('__data_frame', '__cube_idx', '__filters')
+    __slots__ = ("__data_frame", "__cube_idx", "__filters")
 
     __CUBE_COL = "cube"
 

@@ -13,20 +13,20 @@ from . import axis
 @unique
 class CopyApproach(Enum):
     # Never allow copying data. Raise error if necessary.
-    NEVER = 'never'
+    NEVER = "never"
     # Allow copying data only if it is necessary to perform an operation.
-    REQUIREMENT = 'requirement'
+    REQUIREMENT = "requirement"
     # Allow copying data only if it is necessary to get a contiguous result.
-    CONTIGUOUS = 'contiguous'
+    CONTIGUOUS = "contiguous"
     # Always force copying data.
-    ALWAYS = 'always'
+    ALWAYS = "always"
 
 
 def to_points_dict(
     name: str,
     dset: xr.Dataset,
-    allow_copy: str | CopyApproach = 'requirement',
-    omit_data: bool = False
+    allow_copy: str | CopyApproach = "requirement",
+    omit_data: bool = False,
 ) -> dict[axis.Axis, pint.Quantity]:
     darr = dset[name]
     dims = dset.dims
@@ -36,7 +36,7 @@ def to_points_dict(
     #     dim: axis_ for axis_ in coords_copy if (dim := f'_{axis_}') in dims_
     # }
     dim_axis_map = {
-        dim: axis_ for axis_ in coords_copy if (dim := f'{axis_}') in dims_
+        dim: axis_ for axis_ in coords_copy if (dim := f"{axis_}") in dims_
     }
 
     n_vals = n_reps = darr.size
@@ -107,10 +107,10 @@ def to_points_dict(
 def to_points_data_frame(
     name: str,
     dset: xr.Dataset,
-    allow_copy: str | CopyApproach = 'requirement',
-    omit_data: bool = False
+    allow_copy: str | CopyApproach = "requirement",
+    omit_data: bool = False,
 ) -> pd.DataFrame:
     # TODO: Check again whether this function makes copies.
     data = to_points_dict(name, dset, allow_copy, omit_data)
-    data = {name: getattr(val, 'magnitude', val) for name, val in data.items()}
+    data = {name: getattr(val, "magnitude", val) for name, val in data.items()}
     return pd.DataFrame(data=data, copy=False)

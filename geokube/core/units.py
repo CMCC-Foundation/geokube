@@ -7,6 +7,7 @@ import numpy as np
 import re
 import pint
 
+
 def maybe_adjust_object_by_unit(
     magnitude, expected_units=None
 ) -> Number | np.ndarray | da.Array:

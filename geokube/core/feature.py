@@ -4,29 +4,24 @@ Feature
 
 A feature construct that serves as a base class for domains and fields.
 
-
 Classes
 -------
-
-:class:`geokube.core.feature.FeatureMixin`
+FeatureMixin
     Mixin class for common domain and field properties and methods.
 
-:class:`geokube.core.feature.Feature`
+Feature
     Base class for feature, domain, and field constructs.
 
-:class:`geokube.core.feature.PointsFeature`
+PointsFeature
     Feature defined on a point domain.
 
-:class:`geokube.core.feature.ProfilesFeature`
+ProfilesFeature
     Feature defined on a profile domain.
 
-:class:`geokube.core.feature.GridFeature`
+GridFeature
     Feature defined on a gridded domain.
 
 """
-
-# NOTE: There is probably no need to use the full path to the class from this
-# module in the docstrings. 
 
 from collections.abc import Mapping
 from datetime import date, datetime
@@ -38,6 +33,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import pint
+
 # pylint: disable=unused-import
 import pint_xarray  # noqa: F401
 import xarray as xr
@@ -51,16 +47,16 @@ from .units import units
 
 
 # NOTE:
-# inherit from xr Dataset do not work since it is not possible to create 
+# inherit from xr Dataset do not work since it is not possible to create
 # a new dataset with our own index!!!
 # let's use compose for the moment
 #
 # class Feature(xr.Dataset):
 #
-# This is a wrapper for an xarray Dataset CF-compliant with indexes 
+# This is a wrapper for an xarray Dataset CF-compliant with indexes
 # which allow to perform spatial operations like bbox, nearest, ...
 # enhanced with the coordinate system class.
-# 
+#
 
 
 class FeatureMixin:
@@ -114,8 +110,7 @@ class FeatureMixin:
 
         The coordinates contain the axes, coordinate values, and
         coordinate units.  They are represented as a `dict` with the
-        :class:`geokube.core.axis.Axis` instance keys and
-        :class:`pint.Quantity` values.
+        axis.Axis instance keys and pint.Quantity values.
 
         """
         return self._coords
@@ -126,10 +121,9 @@ class FeatureMixin:
         Return the coordinate system of a domain.
 
         The coordinate system is an instance of the class
-        :class:`geokube.core.coord_system.CoordinateSystem`.  It
-        contains the information on the spatial, temporal, and other
-        axes and related units, as well as about the horizontal
-        coordinate reference system.
+        coord_system.CoordinateSystem.  It contains the information on
+        the spatial, temporal, and other axes and related units, as well
+        as about the horizontal coordinate reference system.
 
         """
         return self._coord_system
@@ -140,9 +134,8 @@ class FeatureMixin:
         Return the coordinate reference system of a domain.
 
         The horizontal coordinate reference system is an instance of a
-        subclass of the class :class:`geokube.core.crs.CRS`.  It
-        contains dimension and auxiliary horizontal axes, and can be
-        used for transformations.
+        subclass of the class crs.CRS.  It contains dimension and
+        auxiliary horizontal axes, and can be used for transformations.
 
         """
         return self.coord_system.spatial.crs
@@ -153,7 +146,7 @@ class FeatureMixin:
         Return the dimension axes of a domain.
 
         There can be any number of kind of axes.  They are represented
-        as a `tuple` of :class:`geokube.core.axis.Axis` instances.
+        as a tuple of axis.Axis instances.
 
         """
         return self.coord_system.dim_axes
@@ -165,8 +158,7 @@ class FeatureMixin:
 
         The coordinates contain the axes, coordinate values, and
         coordinate units.  They are represented as a dict with the
-        :class:`geokube.core.axis.Axis` instance keys and
-        :class:`pint.Quantity` values.
+        axis.Axis instance keys and pint.Quantity values.
 
         """
         return self._dim_coords
@@ -177,7 +169,7 @@ class FeatureMixin:
         Return the auxiliary axes of a domain.
 
         Auxiliary axes can be only horizontal.  They are represented
-        as a tuple of :class:`geokube.core.axis.Horizontal` instances.
+        as a tuple of axis.Horizontal instances.
 
         """
         return self.coord_system.aux_axes
@@ -189,15 +181,13 @@ class FeatureMixin:
 
         The coordinates contain the axes, coordinate values, and
         coordinate units.  They are represented as a dict with the
-        :class:`geokube.core.axis.Axis` instance keys and
-        :class:`pint.Quantity` values.
+        axis.Axis instance keys and pint.Quantity values.
 
         """
         return self._aux_coords
 
     def sel(
-        self, indexers: Mapping[axis.Axis, Any] | None = None,
-        **xarray_kwargs
+        self, indexers: Mapping[axis.Axis, Any] | None = None, **xarray_kwargs
     ) -> Self:
         """
         Return a new feature, domain, or field selected by labels.
@@ -215,12 +205,12 @@ class FeatureMixin:
             and the values that represent the corresponding labels.
             The values can be scalars, arrays, or slices. They can have
             the units (i.e. can be instances of the class
-            :class:`pint.Quantity`).  If a label does not have a unit,
-            then it is assumed that its unit is the default unit for
-            the corresponding axis (key).
+            pint.Quantity).  If a label does not have a unit, then it is
+            assumed that its unit is the default unit for the
+            corresponding axis (key).
 
         xarray_kwargs : dict, optional
-            Keyword arguments passed to :meth:`xarray.Dataset.sel`.
+            Keyword arguments passed to xarray.Dataset.sel.
 
         Returns
         -------
@@ -234,8 +224,7 @@ class FeatureMixin:
         return out
 
     def isel(
-        self, indexers: Mapping[axis.Axis, Any] | None = None,
-        **xarray_kwargs
+        self, indexers: Mapping[axis.Axis, Any] | None = None, **xarray_kwargs
     ) -> Self:
         """
         Return a new feature, domain, or field selected by indexes.
@@ -252,7 +241,7 @@ class FeatureMixin:
             indexes.
 
         xarray_kwargs : dict, optional
-            Keyword arguments passed to :meth:`xarray.Dataset.isel`.
+            Keyword arguments passed to xarray.Dataset.isel.
 
         Returns
         -------
@@ -274,7 +263,7 @@ class FeatureMixin:
         west: Number | pint.Quantity | None = None,
         east: Number | pint.Quantity | None = None,
         bottom: Number | pint.Quantity | None = None,
-        top: Number | pint.Quantity | None = None
+        top: Number | pint.Quantity | None = None,
     ) -> Self:
         """
         Return a subset defined with a bounding box.
@@ -305,7 +294,7 @@ class FeatureMixin:
         # we need to consider min/max for lat/lon
         h_idx = {
             axis.latitude: slice(south, north),
-            axis.longitude: slice(west, east)
+            axis.longitude: slice(west, east),
         }
         feature = self.sel(h_idx)
         if not (bottom is None and top is None):
@@ -315,7 +304,7 @@ class FeatureMixin:
     def nearest_horizontal(
         self,
         latitude: npt.ArrayLike | pint.Quantity,
-        longitude: npt.ArrayLike | pint.Quantity
+        longitude: npt.ArrayLike | pint.Quantity,
     ) -> Self:
         """
         Return the nearest horizontal locations from the domain.
@@ -333,7 +322,7 @@ class FeatureMixin:
 
         """
         idx = {axis.latitude: latitude, axis.longitude: longitude}
-        return self.sel(idx, method='nearest', tolerance=np.inf)
+        return self.sel(idx, method="nearest", tolerance=np.inf)
 
     def nearest_vertical(
         self, elevation: npt.ArrayLike | pint.Quantity
@@ -360,14 +349,14 @@ class FeatureMixin:
 
         """
         idx = {axis.vertical: elevation}
-        return self.sel(idx, method='nearest', tolerance=np.inf)
+        return self.sel(idx, method="nearest", tolerance=np.inf)
 
     # Temporal subsetting -----------------------------------------------------
 
     def time_range(
         self,
         start: date | datetime | str | None = None,
-        end: date | datetime | str | None = None
+        end: date | datetime | str | None = None,
     ) -> Self:
         """
         Return a subset defined within the time bounds.
@@ -412,7 +401,7 @@ class FeatureMixin:
 
         """
         idx = {axis.time: pd.to_datetime(time).to_numpy().reshape(-1)}
-        return self.sel(idx, method='nearest', tolerance=None)
+        return self.sel(idx, method="nearest", tolerance=None)
 
     def latest(self) -> Self:
         """
@@ -450,7 +439,7 @@ class FeatureMixin:
         path : str
             The path of the target netCDF file.
         **xarray_kwargs : dict, optional
-            Extra arguments to :meth:`xarray.Dataset.to_netcdf`.
+            Extra arguments to xarray.Dataset.to_netcdf.
 
         """
         dset = self._dset
@@ -461,15 +450,15 @@ class FeatureMixin:
         for axis_, coord in coords.items():
             if isinstance(axis_, axis.Axis):
                 axes[axis_] = (
-                    coord.attrs.get('standard_name')
-                    or axis_.encoding['standard_name']
+                    coord.attrs.get("standard_name")
+                    or axis_.encoding["standard_name"]
                 )
         dims = {}
         for dim in dset.dims:
             names = set(dims.values())
             if (
                 isinstance(dim, axis.Axis)
-                and (dim_name := dim.encoding['standard_name']) not in names
+                and (dim_name := dim.encoding["standard_name"]) not in names
             ):
                 dims[dim] = dim_name
         dset = dset.rename_vars(axes).swap_dims(dims)
@@ -477,8 +466,8 @@ class FeatureMixin:
         if (
             (time_coord := coords.get(axis.time)) is not None
             and (
-                (bnds := time_coord.encoding.get('bounds'))
-                in {'time_bnds', 'time_bounds'}
+                (bnds := time_coord.encoding.get("bounds"))
+                in {"time_bnds", "time_bounds"}
             )
             and isinstance(time_coord.data[0], pd.Interval)
         ):
@@ -488,32 +477,32 @@ class FeatureMixin:
             time_vals[:, 0], time_vals[:, 1] = left, right
             dset = dset.assign_coords(
                 coords={
-                    bnds: xr.Variable(dims=('time', 'bnds'), data=time_vals),
-                    'time': xr.Variable(
-                        dims=('time',),
+                    bnds: xr.Variable(dims=("time", "bnds"), data=time_vals),
+                    "time": xr.Variable(
+                        dims=("time",),
                         data=left,
                         attrs=time_coord.attrs,
-                        encoding=time_coord.encoding
-                    )
+                        encoding=time_coord.encoding,
+                    ),
                 }
             )
 
         # TODO: Use `itertools.chain` to create a single loop.
         for coord in dset.coords.values():
             attrs = coord.attrs
-            if 'units' in attrs and units[attrs['units']] == units[None]:
-                del attrs['units']
+            if "units" in attrs and units[attrs["units"]] == units[None]:
+                del attrs["units"]
         for var in dset.data_vars.values():
             attrs = var.attrs
-            if 'units' in attrs and units[attrs['units']] == units[None]:
-                del attrs['units']
+            if "units" in attrs and units[attrs["units"]] == units[None]:
+                del attrs["units"]
 
-        dset.attrs.pop('grid_mapping', None)
+        dset.attrs.pop("grid_mapping", None)
         if gmn := dset.cf.grid_mapping_names:
             crs_var_name = next(iter(gmn.values()))[0]
             for var in dset.data_vars.values():
-                var.attrs.pop('grid_mapping', None)
-                var.encoding.setdefault('grid_mapping', crs_var_name)
+                var.attrs.pop("grid_mapping", None)
+                var.encoding.setdefault("grid_mapping", crs_var_name)
 
         # TODO: Improve squeezing.
         dset = dset.squeeze()
@@ -572,25 +561,31 @@ class Feature(FeatureMixin):
 
     See Also
     --------
-    :class:`geokube.core.feature.PointsFeature` :
+    PointsFeature :
         Feature defined on a point domain.
-    :class:`geokube.core.feature.ProfilesFeature` :
+    ProfilesFeature :
         Feature defined on a profile domain.
-    :class:`geokube.core.feature.GridFeature` :
+    GridFeature :
         Feature defined on a gridded domain.
 
     """
 
     __slots__ = (
-        '_dset', '_coord_system', '_coords', '_aux_coords', '_dim_coords'
+        "_dset",
+        "_coord_system",
+        "_coords",
+        "_aux_coords",
+        "_dim_coords",
     )
 
     def __init__(
         self,
-        ds: xr.Dataset, # This should be CF-compliant or use cf_mapping to be a CF-compliant
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        ds: xr.Dataset,  # This should be CF-compliant or use cf_mapping to be a CF-compliant
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> None:
-        # TODO: check if xarray dataset is CF compliant (otherwise raise an error)       
+        # TODO: check if xarray dataset is CF compliant (otherwise raise an error)
         # Horizontal coordinate system:
         # TODO: manage cf_mappings
 
@@ -612,7 +607,7 @@ class Feature(FeatureMixin):
             coord = ds_coords.pop(cf_coord_name)
             axis_ = axis._from_string(cf_coord)
             coords[axis_] = pint.Quantity(
-                coord.to_numpy(), coord.attrs.get('units')
+                coord.to_numpy(), coord.attrs.get("units")
             )
 
         for cf_axis, cf_axis_names in ds.cf.axes.items():
@@ -627,7 +622,7 @@ class Feature(FeatureMixin):
                     elif axis_ is axis.y:
                         axis_ = axis.grid_latitude
                 coords[axis_] = pint.Quantity(
-                    coord.to_numpy(), coord.attrs.get('units')
+                    coord.to_numpy(), coord.attrs.get("units")
                 )
 
         # Coordinate system.
@@ -647,7 +642,7 @@ class Feature(FeatureMixin):
         coord_system = CoordinateSystem(
             horizontal=hor_crs,
             elevation=elev.pop() if elev else None,
-            time=time.pop() if time else None
+            time=time.pop() if time else None,
         )
 
         self._coord_system = coord_system
@@ -660,7 +655,7 @@ class Feature(FeatureMixin):
         for axis_ in coord_system.axes:
             darr = ds[axis_]
             coords[axis_] = create_quantity(
-                darr, darr.attrs.get('units'), darr.dtype
+                darr, darr.attrs.get("units"), darr.dtype
             )
         self._coords = coords
 
@@ -683,19 +678,21 @@ class Feature(FeatureMixin):
         anc_vars = set()
         for var_name, var in self._dset.data_vars.items():
             all_vars.add(var_name)
-            if (anc_attr := var.attrs.get('ancillary_variables')) is not None:
-                anc_vars |= set(anc_attr.split(' '))
+            if (anc_attr := var.attrs.get("ancillary_variables")) is not None:
+                anc_vars |= set(anc_attr.split(" "))
         return all_vars - anc_vars
 
     @classmethod
     def _from_xarray_dataset(
         cls,
         ds: xr.Dataset,
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> Self:
         return cls(ds, cf_mappings)
 
-    #TODO: Implement __getitem__ ??
+    # TODO: Implement __getitem__ ??
 
 
 class PointsFeature(Feature):
@@ -751,20 +748,22 @@ class PointsFeature(Feature):
 
     See Also
     --------
-    :class:`geokube.core.feature.ProfilesFeature` :
+    ProfilesFeature :
         Feature defined on a profile domain.
-    :class:`geokube.core.feature.GridFeature` :
+    GridFeature :
         Feature defined on a gridded domain.
 
     """
 
-    __slots__ = ('_n_points',)
-    _DIMS_ = ('_points',)
+    __slots__ = ("_n_points",)
+    _DIMS_ = ("_points",)
 
     def __init__(
         self,
-        ds: xr.Dataset, # This dataset should check for _DIMS_ that is points
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        ds: xr.Dataset,  # This dataset should check for _DIMS_ that is points
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> None:
 
         # TODO: check if ds is a Points Features -> _points dim should exist
@@ -782,7 +781,7 @@ class PointsFeature(Feature):
     @property
     def number_of_points(self) -> int:
         """Returns the number of points."""
-        return self._dset['_points'].size
+        return self._dset["_points"].size
 
 
 class ProfilesFeature(Feature):
@@ -842,28 +841,27 @@ class ProfilesFeature(Feature):
 
     See Also
     --------
-    :class:`geokube.core.feature.PointsFeature` :
+    PointsFeature :
         Feature defined on a point domain.
-    :class:`geokube.core.feature.GridFeature` :
+    GridFeature :
         Feature defined on a gridded domain.
 
     """
 
-    __slots__ = ('_n_profiles', '_n_levels')
-    _DIMS_ = ('_profiles', '_levels')
+    __slots__ = ("_n_profiles", "_n_levels")
+    _DIMS_ = ("_profiles", "_levels")
 
     def __init__(
         self,
         ds: xr.Dataset,
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> None:
 
         # TODO: check if it is a profile features (_profiles and _levels dims should exist)
 
-        super().__init__(
-            ds=ds,
-            cf_mappings=cf_mappings
-        )
+        super().__init__(ds=ds, cf_mappings=cf_mappings)
 
         for axis_ in self.coord_system.axes:
             if axis_ not in set(self.coord_system.spatial.axes):
@@ -879,12 +877,12 @@ class ProfilesFeature(Feature):
     @property
     def number_of_profiles(self) -> int:
         """Returns the number of profiles in a domain or field."""
-        return self._dset['_profiles'].size
+        return self._dset["_profiles"].size
 
     @property
     def number_of_levels(self) -> int:
         """Returns the number of levels in a domain or field."""
-        return self._dset['_levels'].size
+        return self._dset["_levels"].size
 
     def bounding_box(
         self,
@@ -893,7 +891,7 @@ class ProfilesFeature(Feature):
         west: Number | None = None,
         east: Number | None = None,
         bottom: Number | None = None,
-        top: Number | None = None
+        top: Number | None = None,
     ) -> Self:
         """
         Return a subset defined with a bounding box.
@@ -922,7 +920,7 @@ class ProfilesFeature(Feature):
         """
         h_idx = {
             axis.latitude: slice(south, north),
-            axis.longitude: slice(west, east)
+            axis.longitude: slice(west, east),
         }
         feature = self.sel(h_idx)
 
@@ -942,7 +940,7 @@ class ProfilesFeature(Feature):
                 coord_names=list(new_data.xindexes.keys())
             )
             vert = new_data[axis.vertical]
-            vert_mag, vert_units = vert.to_numpy(), vert.attrs['units']
+            vert_mag, vert_units = vert.to_numpy(), vert.attrs["units"]
             mask = get_indexer(
                 [vert_mag], [get_magnitude(v_slice, vert_units)]
             )[0]
@@ -994,8 +992,9 @@ class ProfilesFeature(Feature):
                 vert_axis = axis_
                 break
         vert = dset[vert_axis]
-        vert_mag, vert_units = vert.to_numpy(), vert.attrs['units']
+        vert_mag, vert_units = vert.to_numpy(), vert.attrs["units"]
         n_profiles = vert_mag.shape[0]
+        elevation = np.array(elevation, copy=False, ndmin=1)
         shape = (n_profiles, len(elevation))
         new_vert_mag = np.empty(shape=shape, dtype=vert_mag.dtype)
         # TODO: Try to implement this in a more efficient way.
@@ -1005,8 +1004,8 @@ class ProfilesFeature(Feature):
                 [vert_mag[profile_idx, :]],
                 [get_magnitude(elevation, vert_units)],
                 return_all=False,
-                method='nearest',
-                tolerance=np.inf
+                method="nearest",
+                tolerance=np.inf,
             )
             level_indices.append(level_idx)
             new_vert_mag[profile_idx, :] = vert_mag[profile_idx, level_idx]
@@ -1026,7 +1025,7 @@ class ProfilesFeature(Feature):
                 data=new_data_mag,
                 dims=self._DIMS_,
                 coords=new_coords,
-                attrs=darr.attrs
+                attrs=darr.attrs,
             )
 
         new_dset = xr.Dataset(
@@ -1099,26 +1098,30 @@ class GridFeature(Feature):
 
     See Also
     --------
-    :class:`geokube.core.feature.PointsFeature` :
+    PointsFeature :
         Feature defined on a point domain.
-    :class:`geokube.core.feature.ProfilesFeature` :
+    ProfilesFeature :
         Feature defined on a profile domain.
 
     """
 
-    __slots__ = ('_DIMS_',)
+    __slots__ = ("_DIMS_",)
 
     def __init__(
         self,
         ds: xr.Dataset,
-        cf_mappings: Mapping[str, str] | None = None # this could be used to pass CF compliant hints
+        cf_mappings: (
+            Mapping[str, str] | None
+        ) = None,  # this could be used to pass CF compliant hints
     ) -> None:
-        super().__init__(ds=ds, cf_mappings=cf_mappings)        
+        super().__init__(ds=ds, cf_mappings=cf_mappings)
 
         # TODO: Check if it is a Grid Feature ???
 
-        # self._dims = 
-        self._DIMS_ = self.coord_system.dim_axes # this depends on the Coordinate System
+        # self._dims =
+        self._DIMS_ = (
+            self.coord_system.dim_axes
+        )  # this depends on the Coordinate System
 
         # for axis_ in self._DIMS_:
         #     if axis_ not in self._dset.xindexes:
@@ -1139,7 +1142,7 @@ class GridFeature(Feature):
         self,
         latitude: npt.ArrayLike | pint.Quantity,
         longitude: npt.ArrayLike | pint.Quantity,
-        as_points: bool = True
+        as_points: bool = True,
     ) -> Self | PointsFeature:
         """
         Return the nearest horizontal locations from the domain.
@@ -1159,18 +1162,18 @@ class GridFeature(Feature):
         lat, lon = self._dset[axis.latitude], self._dset[axis.longitude]
         lat_vals, lon_vals = lat.to_numpy(), lon.to_numpy()
         if isinstance(self.crs, Geodetic):
-            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing='ij')
+            lat_vals, lon_vals = np.meshgrid(lat_vals, lon_vals, indexing="ij")
         dims = (self.crs.dim_Y_axis, self.crs.dim_X_axis)
 
-        lat_labels = get_magnitude(latitude, lat.attrs['units'])
-        lon_labels = get_magnitude(longitude, lon.attrs['units'])
+        lat_labels = get_magnitude(latitude, lat.attrs["units"])
+        lon_labels = get_magnitude(longitude, lon.attrs["units"])
 
         idx = get_array_indexer(
             [lat_vals, lon_vals],
             [lat_labels, lon_labels],
-            method='nearest',
+            method="nearest",
             tolerance=np.inf,
-            return_all=False
+            return_all=False,
         )
         result_idx = dict(zip(dims, idx))
 
@@ -1204,7 +1207,7 @@ class GridFeature(Feature):
 
 
 def _to_points_dict(feature: Feature) -> dict[axis.Axis, pint.Quantity]:
-    dset = feature._dset.drop_vars(names=[feature._dset.attrs['grid_mapping']])
+    dset = feature._dset.drop_vars(names=[feature._dset.attrs["grid_mapping"]])
     coords_copy = dict(dset.coords)
     internal_dims = set()
 
@@ -1227,7 +1230,7 @@ def _to_points_dict(feature: Feature) -> dict[axis.Axis, pint.Quantity]:
         coord_idx = np.tile(np.repeat(coord_idx, n_reps), n_tiles)
         idx[dim_axis] = coord_idx
         data[dim_axis] = pint.Quantity(
-            coord.data[coord_idx], coord.attrs.get('units')
+            coord.data[coord_idx], coord.attrs.get("units")
         )
     if internal_dims:
         for dim_axis in internal_dims:
@@ -1237,7 +1240,7 @@ def _to_points_dict(feature: Feature) -> dict[axis.Axis, pint.Quantity]:
     for aux_axis, coord in coords_copy.items():
         coord_idx = tuple(idx[dim] for dim in coord.dims)
         data[aux_axis] = pint.Quantity(
-            coord.data[coord_idx], coord.attrs['units']
+            coord.data[coord_idx], coord.attrs["units"]
         )
 
     names = feature._get_var_names()
@@ -1250,7 +1253,7 @@ def _to_points_dict(feature: Feature) -> dict[axis.Axis, pint.Quantity]:
     name = names.pop()
     darr = dset[name]
     vals = darr.to_numpy().reshape(n_vals)
-    data[name] = pint.Quantity(vals, darr.attrs.get('units'))
+    data[name] = pint.Quantity(vals, darr.attrs.get("units"))
 
     return data
 
@@ -1260,8 +1263,8 @@ def _as_points_dataset(feature: Feature) -> xr.Dataset:
     new_coords = {
         axis_: xr.DataArray(
             data=coord.magnitude,
-            dims=('_points',),
-            attrs=feature._dset[axis_].attrs
+            dims=("_points",),
+            attrs=feature._dset[axis_].attrs,
         )
         for axis_, coord in _to_points_dict(feature).items()
     }
