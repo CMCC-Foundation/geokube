@@ -18,26 +18,20 @@ jobs:
         with:
           auto-update-conda: true
           auto-activate-base: true
-          python-version: 3.9
+          python-version: 3.11
 
       - name: Conda create environemnt
         shell: bash -l {0}
-        run: conda create --name gk   
+        run: conda create --name gk -f environment.yaml   
 
       - name: Conda activate
         shell: bash -l {0}
         run: conda activate gk       
-
-      - run: |
-          conda install -c conda-forge --yes --freeze-installed xesmf
-          
-      - run: |
-          conda run pip install geopandas       
-          
+                    
       - run: conda run pip install pytest-github-actions-annotate-failures           
         
       - run: |
-          conda run python setup.py install
+          conda run pip install .
           
       - run: |
           conda run pip install black==22.3.0
