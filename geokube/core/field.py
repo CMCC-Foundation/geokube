@@ -1493,7 +1493,8 @@ class Field(Variable, DomainMixin):
         dpi=100,
         format='png',
         transparent=True,
-        bgcolor='FFFFFF'
+        bgcolor='FFFFFF',
+        cmap='RdBu_r'
     ):
         # NOTE: This method assumes default DPI value.
         f = self
@@ -1503,13 +1504,14 @@ class Field(Variable, DomainMixin):
         w, h = width / dpi, height / dpi
         f.plot(
             figsize=(w, h),
+            cmap=cmap,
             add_colorbar=False,
             save_path=filepath,
             save_kwargs={
                 'transparent': transparent,
                 'pad_inches': 0,
                 'dpi': dpi,
-                # 'bbox_inches': [[0, 0], [w, h]]
+                'bbox_inches': 'tight'
             },
             clean_image=True
         )
