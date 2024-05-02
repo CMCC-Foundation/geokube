@@ -1,4 +1,4 @@
-FROM ubuntu:latest
+FROM ubuntu:focal
 
 RUN apt update && apt install -y build-essential git gfortran python3-pip
 
@@ -15,10 +15,10 @@ RUN make -j4
 ENV ESMFMKFILE=/opt/esmf/lib/libO/Linux.gfortran.64.mpiuni.default/esmf.mk
 
 WORKDIR /opt/esmf/src/addon/ESMPy
-RUN pip install numpy --break-system-packages
+RUN pip install numpy
 RUN python3 setup.py install
 
 RUN pip install git+https://github.com/pangeo-data/xesmf.git@v0.6.3
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt --break-system-packages
+RUN pip install -r /tmp/requirements.txt
