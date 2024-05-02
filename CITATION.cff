@@ -1,0 +1,40 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: geokube
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Marco
+    family-names: Mancini
+    orcid: 'https://orcid.org/0000-0002-9150-943X'
+  - given-names: Mirko
+    family-names: Stojiljković
+  - given-names: Jakub
+    family-names: Walczak
+    orcid: 'https://orcid.org/0000-0002-5632-9484'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.10597965
+repository-code: 'https://github.com/CMCC-Foundation/geokube'
+url: 'https://geokube.github.io'
+abstract: >-
+  geokube is an open source Python package for geoscience
+  data analysis that provides the user with a simple
+  application programming interface (API) for performing
+  geospatial operations (e.g., extracting a bounding box or
+  regridding) and temporal operations (e.g., resampling) on
+  different types of scientific feature types like grids,
+  profiles and points, using xarray data structures and
+  xarray ecosystem frameworks such as xesmf.
+keywords:
+  - python framework
+  - xarray
+  - earth science
+  - data analysis
+license: Apache-2.0
+version: 0.2.6b2
+date-released: '2024-01-30'
