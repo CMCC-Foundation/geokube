@@ -1359,7 +1359,6 @@ class Field(Variable, DomainMixin):
         for name, arg in kwa.items():
             if arg is not None:
                 kwargs[name] = arg
-
         # Creating plot:
         dset = self.to_xarray(encoding=False)
         if "crs" in dset.coords:
@@ -1494,7 +1493,8 @@ class Field(Variable, DomainMixin):
         format='png',
         transparent=True,
         bgcolor='FFFFFF',
-        cmap='RdBu_r'
+        cmap='RdBu_r',
+        projection=None
     ):
         # NOTE: This method assumes default DPI value.
         f = self
@@ -1513,7 +1513,8 @@ class Field(Variable, DomainMixin):
                 'dpi': dpi,
                 'bbox_inches': 'tight'
             },
-            clean_image=True
+            clean_image=True,
+            projection=projection
         )
 
     def to_geojson(self, target=None):
