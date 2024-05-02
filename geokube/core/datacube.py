@@ -463,13 +463,14 @@ class DataCube(DomainMixin):
         format='png', 
         transparent=True, 
         bgcolor='FFFFFF',
-        cmap='RdBu_r'
+        cmap='RdBu_r',
+        projection=None
     ):
         # TODO: support multiple fields
         if len(self.fields) > 1:
             raise ValueError("to_image support only 1 field")
         else:
-            next(iter(self.fields.values())).to_image(filepath, width, height, dpi, format, transparent, bgcolor, cmap)
+            next(iter(self.fields.values())).to_image(filepath, width, height, dpi, format, transparent, bgcolor, cmap, projection)
 
     @classmethod
     @geokube_logging
