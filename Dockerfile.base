@@ -15,10 +15,10 @@ RUN make -j4
 ENV ESMFMKFILE=/opt/esmf/lib/libO/Linux.gfortran.64.mpiuni.default/esmf.mk
 
 WORKDIR /opt/esmf/src/addon/ESMPy
-RUN pip install numpy
+RUN pip install numpy --break-system-packages
 RUN python3 setup.py install
 
-RUN pip install git+https://github.com/pangeo-data/xesmf.git@v0.6.3
+RUN pip install git+https://github.com/pangeo-data/xesmf.git@v0.6.3 --break-system-packages
 
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
