@@ -36,8 +36,8 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        #cache-from: type=gha
+        #cache-to: type=gha,mode=max
         tags: | 
           ${{ vars.GEOKUBE_REGISTRY }}/geokube:${{ env.TAG }}
           ${{ vars.GEOKUBE_REGISTRY }}/geokube:latest
