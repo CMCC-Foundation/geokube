@@ -36,7 +36,6 @@ import xarray as xr
 import hvplot.xarray  # noqa
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
-
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import geokube_logging
 from ..utils.util_methods import convert_cftimes_to_numpy
@@ -44,7 +43,7 @@ from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .errs import EmptyDataError
 from .cell_methods import CellMethod
-from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
+from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS, TransverseMercator
 from .coordinate import Coordinate, CoordinateType
 from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
@@ -1502,6 +1501,12 @@ class Field(Variable, DomainMixin):
             f = self.to_regular()
 #        dpi = plt.rcParams['figure.dpi']
         w, h = width / dpi, height / dpi
+
+        if projection is not None:
+            if projection == '3857':
+                airy1830 = GeogCS(6377563.396, 6356256.909)
+                projection = TransverseMercator(49, -2, 400000, -100000, 0.9996012717, ellipsoid=airy1830)
+
         f.plot(
             figsize=(w, h),
             cmap=cmap,
