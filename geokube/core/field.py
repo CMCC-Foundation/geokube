@@ -1501,11 +1501,11 @@ class Field(Variable, DomainMixin):
             f = self.to_regular()
 #        dpi = plt.rcParams['figure.dpi']
         w, h = width / dpi, height / dpi
-
-        if projection is not None:
-            if projection == '3857':
+        prj = projection
+        if prj is not None:
+            if prj == '3857':
                 airy1830 = GeogCS(6377563.396, 6356256.909)
-                projection = TransverseMercator(49, -2, 400000, -100000, 0.9996012717, ellipsoid=airy1830)
+                prj = TransverseMercator(49, -2, 400000, -100000, 0.9996012717, ellipsoid=airy1830)
 
         f.plot(
             figsize=(w, h),
@@ -1519,7 +1519,7 @@ class Field(Variable, DomainMixin):
                 'bbox_inches': 'tight'
             },
             clean_image=True,
-            projection=projection
+            projection=prj
         )
 
     def to_geojson(self, target=None):
