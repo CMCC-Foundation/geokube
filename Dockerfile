@@ -1,4 +1,4 @@
-FROM rg.fr-par.scw.cloud/geokube/geokube-base:2024.05.02.10.40
+FROM rg.fr-par.scw.cloud/geokube/geokube-base:2024.05.03.08.14
 
 COPY dist/geokube-0.2.6b2-py3-none-any.whl /
 RUN pip install /geokube-0.2.6b2-py3-none-any.whl
