@@ -2,6 +2,9 @@ FROM ubuntu:jammy
 
 RUN apt update && apt install -y build-essential git gfortran python3-pip python3.10
 
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10
+RUN update-alternatives --install /usr/bin/pip pip /ur/bin/pip3.10
+
 WORKDIR /opt
 RUN git clone https://github.com/esmf-org/esmf.git
 
@@ -16,10 +19,10 @@ ENV ESMFMKFILE=/opt/esmf/lib/libO/Linux.gfortran.64.mpiuni.default/esmf.mk
 
 WORKDIR /opt/esmf/src/addon/ESMPy
 
-RUN pip3.10 install numpy setuptools
-RUN python3.10 setup.py install
+RUN pip install numpy setuptools
+RUN python setup.py install
 
-RUN pip3.10 install git+https://github.com/pangeo-data/xesmf.git@v0.6.3
+RUN pip install git+https://github.com/pangeo-data/xesmf.git@v0.6.3
 
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3.10 install -r /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
