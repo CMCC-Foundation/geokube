@@ -605,6 +605,14 @@ class TransverseMercator(CoordSystem):
 #     def as_cartopy_projection(self):
 #         return ccrs.OSGB()
 
+class WebMercator(CoordSystem):
+    """A Specific transverse mercator projection on a specific ellipsoid."""
+
+    def as_cartopy_crs(self):
+        return ccrs.epsg('3857')
+
+    def as_cartopy_projection(self):
+        return ccrs.epsg('3857')
 
 class Orthographic(CoordSystem):
     """

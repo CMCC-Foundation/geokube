@@ -43,7 +43,7 @@ from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .errs import EmptyDataError
 from .cell_methods import CellMethod
-from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS, TransverseMercator
+from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS, TransverseMercator, WebMercator
 from .coordinate import Coordinate, CoordinateType
 from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
@@ -1504,8 +1504,9 @@ class Field(Variable, DomainMixin):
         prj = projection
         if prj is not None:
             if prj == '3857':
-                airy1830 = GeogCS(6377563.396, 6356256.909)
-                prj = TransverseMercator(49, -2, 400000, -100000, 0.9996012717, ellipsoid=airy1830)
+                # airy1830 = GeogCS(6377563.396, 6356256.909)
+                # prj = TransverseMercator(49, -2, 400000, -100000, 0.9996012717, ellipsoid=airy1830)
+                prj = WebMercator()
 
         f.plot(
             figsize=(w, h),
