@@ -2,9 +2,10 @@ name: Build geokube Docker image and push to geokube container registry
 
 on:
   pull_request:
-    paths-ignore:
-      - Dockefile.base
-      - requirements.txt
+    paths:
+      - geokube/**
+      - Dockerfile
+
   workflow_dispatch:
 jobs:
   build:
