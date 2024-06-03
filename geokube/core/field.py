@@ -1195,6 +1195,8 @@ class Field(Variable, DomainMixin):
         save_path=None,
         save_kwargs=None,
         clean_image=False,
+        vmin=None,
+        vmax=None,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1241,12 +1243,18 @@ class Field(Variable, DomainMixin):
             if aspect == "time_series":
                 data = self.to_xarray(encoding=False)[self.name]
                 data = data.assign_coords(points=points)
+
+                if vmin is None:
+                    vmin = data.min()
+                if vmax is None:
+                    vmax = data.max()
+
                 kwargs["x"] = time.name
                 if n_vert > 1 or (vert is not None and vert.name in data.dims):
                     kwargs.setdefault("row", vert.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
-                plot = data.plot.line(**kwargs)
+                plot = data.plot.line(vmin=vmin, vmax=vmax, **kwargs)
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Time Series")
@@ -1261,6 +1269,12 @@ class Field(Variable, DomainMixin):
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
                 data = data.assign_coords(points=points)
+
+                if vmin is None:
+                    vmin = data.min()
+                if vmax is None:
+                    vmax = data.max()
+
                 if vert.attrs.get("positive") == "down":
                     data = data.reindex(
                         indexers={vert.name: data.coords[vert.name][::-1]},
@@ -1273,7 +1287,7 @@ class Field(Variable, DomainMixin):
                     kwargs.setdefault("col", time.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
-                plot = data.plot.line(**kwargs)
+                plot = data.plot.line(vmin=vmin, vmax=vmax, **kwargs)
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Layers")
@@ -1370,7 +1384,17 @@ class Field(Variable, DomainMixin):
             or self._domain._type is None
         ):
             data = dset[self.name]
-            plot = data.plot(**kwargs)
+
+            if vmin is None:
+                vmin = data.min().compute()
+            if vmax is None:
+                vmax = data.max().compute()
+            kwargs['vmin'] = vmin
+            kwargs['vmax'] = vmax
+            #kwargs['levels'] = 10
+            print(f'{vmin} / {vmax}')
+            plot = data.plot.pcolormesh(**kwargs)
+
         elif self._domain._type is DomainType.POINTS:
             data = xr.Dataset(
                 data_vars={
@@ -1382,6 +1406,13 @@ class Field(Variable, DomainMixin):
             kwargs.update(
                 {"x": "lon", "y": "lat", "hue": self.name, "zorder": np.inf}
             )
+
+            if vmin is None:
+                vmin = data.min().compute()
+            if vmax is None:
+                vmax = data.max().compute()
+            kwargs['vmin'] = vmin
+            kwargs['vmax'] = vmax
             plot = data.plot.scatter(**kwargs)
         else:
             raise NotImplementedError(
@@ -1493,7 +1524,9 @@ class Field(Variable, DomainMixin):
         transparent=True,
         bgcolor='FFFFFF',
         cmap='RdBu_r',
-        projection=None
+        projection=None,
+        vmin=None,
+        vmax=None
     ):
         # NOTE: This method assumes default DPI value.
         f = self
@@ -1520,7 +1553,9 @@ class Field(Variable, DomainMixin):
                 'bbox_inches': 'tight'
             },
             clean_image=True,
-            projection=prj
+            projection=prj,
+            vmin=vmin,
+            vmax=vmax
         )
 
     def to_geojson(self, target=None):
