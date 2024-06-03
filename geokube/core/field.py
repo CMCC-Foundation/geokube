@@ -1393,6 +1393,7 @@ class Field(Variable, DomainMixin):
             kwargs['vmax'] = vmax
             #kwargs['levels'] = 10
             print(f'{vmin} / {vmax}')
+            data = (vmax - vmin) * ((data - data.min())/(data.max() - data.min())) + vmin
             plot = data.plot(**kwargs)
 
         elif self._domain._type is DomainType.POINTS:
