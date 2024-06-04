@@ -1197,6 +1197,7 @@ class Field(Variable, DomainMixin):
         clean_image=False,
         vmin=None,
         vmax=None,
+        normalize=False
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1393,7 +1394,8 @@ class Field(Variable, DomainMixin):
             kwargs['vmax'] = vmax
             #kwargs['levels'] = 10
             print(f'{vmin} / {vmax}')
-            data = (vmax - vmin) * ((data - data.min())/(data.max() - data.min())) + vmin
+            if normalize is True:
+                data = (vmax - vmin) * ((data - data.min())/(data.max() - data.min())) + vmin
             plot = data.plot(**kwargs)
 
         elif self._domain._type is DomainType.POINTS:
