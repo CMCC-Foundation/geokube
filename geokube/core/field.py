@@ -1197,7 +1197,7 @@ class Field(Variable, DomainMixin):
         clean_image=False,
         vmin=None,
         vmax=None,
-        normalize=False
+        normalize=False,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
