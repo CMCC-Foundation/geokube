@@ -35,6 +35,9 @@ FREQ_CODES = {
     "D": "day",
     "M": "month",
     "Y": "year",
+    "S": "second",
+    "L": "millisecond",
+    "U": "microsecond",
     "N": "nanosecond",
 }
 
@@ -364,6 +367,7 @@ class Coordinate(Variable, Axis):
                     "L",
                     "U",
                     "N",
+                    "S"
                 }:  # skip mili, micro, and nanoseconds
                     values = values.astype(
                         "datetime64[m]"
