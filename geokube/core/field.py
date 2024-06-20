@@ -1180,6 +1180,10 @@ class Field(Variable, DomainMixin):
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
+    @geokube_logging
+    def to_netcdf(self, path):
+        self.to_xarray().to_netcdf(path=path)
+
     # TO CHECK
     @geokube_logging
     def plot(

@@ -517,6 +517,10 @@ class DataCube(DomainMixin):
     def to_netcdf(self, path, encoding: bool = True):
         self.to_xarray(encoding=encoding).to_netcdf(path=path)
 
+    @geokube_logging
+    def to_csv(self, path, encoding: bool = True):
+        self.to_xarray(encoding=encoding).to_dataframe().drop(columns=['crs_latitude_longitude']).to_csv(path)
+
     def persist(self, path=None) -> str:
         if path is None:
             path = os.path.join(
