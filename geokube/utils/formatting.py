@@ -12,7 +12,7 @@ from pandas.errors import OutOfBoundsDatetime
 from xarray.core.duck_array_ops import array_equiv
 from xarray.core.indexing import MemoryCachedArray
 from xarray.core.options import OPTIONS, _get_boolean_with_default
-from xarray.core.pycompat import array_type #dask_array_type, sparse_array_type
+from xarray.core.pycompat import dask_array_type, sparse_array_type
 #from xarray.namedarray.pycompat import array_type
 from xarray.core.utils import is_duck_array
 
@@ -268,9 +268,9 @@ def inline_variable_array_repr(var, max_width):
         return format_array_flat(var, max_width)
     elif hasattr(var.data, "_repr_inline_"):
         return var.data._repr_inline_(max_width)
-    elif isinstance(var.data, array_type('dask')):
+    elif isinstance(var.data, dask_array_type):
         return inline_dask_repr(var.data)
-    elif isinstance(var.data, array_type('sparse')):
+    elif isinstance(var.data, sparse_array_type):
         return inline_sparse_repr(var.data)
     elif hasattr(var.data, "__array_function__"):
         return maybe_truncate(repr(var.data).replace("\n", " "), max_width)
