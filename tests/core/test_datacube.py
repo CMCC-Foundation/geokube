@@ -45,7 +45,7 @@ def test_to_xarray_regular_lat_lon_with_id_pattern_without_encoding(
     xr_res = dc.to_xarray(encoding=False)
     assert "2_metre_dewpoint_temperature" in xr_res.data_vars
     assert "total_precipitation" in xr_res.data_vars
-    assert "crs" in xr_res.coords
+    assert "crs_latitude_longitude" in xr_res.coords
 
 
 def test_to_xarray_regular_lat_lon_with_id_pattern_with_encoding(era5_netcdf):
@@ -53,7 +53,7 @@ def test_to_xarray_regular_lat_lon_with_id_pattern_with_encoding(era5_netcdf):
     xr_res = dc.to_xarray(encoding=True)
     assert "d2m" in xr_res.data_vars
     assert "tp" in xr_res.data_vars
-    assert "crs" in xr_res.coords
+    assert "crs_latitude_longitude" in xr_res.coords
 
 
 def test_geobbox_regular_latlon(era5_globe_netcdf):
@@ -145,7 +145,7 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert dset.lat.attrs["units"] == "degrees_north"
     assert "lon" in dset
     assert dset.lon.attrs["units"] == "degrees_east"
-    assert "crs" in dset.coords
+    assert "crs_rotated_latitude_longitude" in dset.coords
 
     dset = res.to_xarray(False)
     assert "air_temperature" in dset.data_vars
@@ -154,7 +154,7 @@ def test_geobbox_rotated_pole(era5_rotated_netcdf):
     assert dset.latitude.attrs["units"] == "degrees_north"
     assert "longitude" in dset
     assert dset.longitude.attrs["units"] == "degrees_east"
-    assert "crs" in dset.coords
+    assert "crs_rotated_latitude_longitude" in dset.coords
 
 
 def test_getitem_with_coords_and_fiels(era5_rotated_netcdf):

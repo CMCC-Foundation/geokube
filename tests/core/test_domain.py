@@ -134,8 +134,8 @@ def test_from_xarray_regular_latlon(era5_globe_netcdf):
     assert res["time"].encoding["_FillValue"] is None
     assert res["time"].encoding["name"] == "time"
     assert domain.crs == crs.RegularLatLon()
-    assert "crs" in res
-    assert res["crs"].attrs == {
+    assert "crs_latitude_longitude" in res
+    assert res["crs_latitude_longitude"].attrs == {
         "semi_major_axis": 6371229.0,
         "grid_mapping_name": "latitude_longitude",
     }
@@ -359,6 +359,9 @@ def test_to_dict_store_rotated_crs_with_names_and_attributes(
     assert crs["ellipsoid"] is None
 
 
+@pytest.mark.skip(
+    "Invalidate as in the current version, Domain does not contain data values"
+)
 def test_to_dict_store_coords_reg_crs(era5_globe_netcdf):
     details = Domain.from_xarray(era5_globe_netcdf, ncvar="tp").to_dict()
     coords = details["coordinates"]
@@ -369,7 +372,9 @@ def test_to_dict_store_coords_reg_crs(era5_globe_netcdf):
         assert "values" in k
         assert isinstance(k["values"], list)
 
-
+@pytest.mark.skip(
+    "Invalidate as in the current version, Coordinate does not contain data values"
+)
 def test_to_dict_store_coords_rot_crs(era5_rotated_netcdf):
     details = Domain.from_xarray(era5_rotated_netcdf, ncvar="W_SO").to_dict()
     coords = details["coordinates"]
