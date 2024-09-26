@@ -440,21 +440,24 @@ class Coordinate(Variable, Axis):
             encoding={"name": encoded_ncvar},
         )
         bnds_ncvar = da.encoding.get("bounds", da.attrs.get("bounds"))
-        if bnds_ncvar:
-            bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
-            bounds = {
-                bnds_name: Variable.from_xarray(
-                    ds[bnds_ncvar],
-                    id_pattern=id_pattern,
-                    copy=copy,
-                    mapping=mapping,
-                )
-            }
-            if (
-                "units" not in ds[bnds_ncvar].attrs
-                and "units" not in ds[bnds_ncvar].encoding
-            ):
-                bounds[bnds_name]._units = var.units
+        if bnds_ncvar is not None:
+            try:
+                bnds_name = Variable._get_name(ds[bnds_ncvar], mapping, id_pattern)
+                bounds = {
+                    bnds_name: Variable.from_xarray(
+                        ds[bnds_ncvar],
+                        id_pattern=id_pattern,
+                        copy=copy,
+                        mapping=mapping,
+                    )
+                }
+                if (
+                    "units" not in ds[bnds_ncvar].attrs
+                    and "units" not in ds[bnds_ncvar].encoding
+                ):
+                    bounds[bnds_name]._units = var.units
+            except:
+                bounds = None
         else:
             bounds = None
         return Coordinate(data=var, axis=axis, bounds=bounds)

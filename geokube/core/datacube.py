@@ -507,7 +507,7 @@ class DataCube(DomainMixin):
             f.to_xarray(encoding=encoding) for f in self.fields.values()
         ]
         dset = xr.merge(
-            xarray_fields, join="outer", combine_attrs="no_conflicts"
+            xarray_fields, join="outer", combine_attrs="no_conflicts", compat='override',
         )
         dset.attrs = self.properties
         dset.encoding = self.encoding
@@ -516,6 +516,9 @@ class DataCube(DomainMixin):
     @geokube_logging
     def to_netcdf(self, path, encoding: bool = True):
         self.to_xarray(encoding=encoding).to_netcdf(path=path)
+
+    def to_zarr(self, path, encoding: bool = True, **kwargs):
+        self.to_xarray(encoding=encoding).to_zarr(path,**kwargs)
 
     @geokube_logging
     def to_csv(self, path, encoding: bool = True):

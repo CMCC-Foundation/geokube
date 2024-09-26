@@ -20,13 +20,14 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/CMCC-Foundation/geokube",
     packages=setuptools.find_packages(),
-    install_requires=[
-        "shapely",
-        "metpy",
-        "plotly",
-        "pyarrow",
-        "rioxarray",
-    ],
+    install_requires=[line.strip() for line in open("requirements.txt").readlines()],
+    #install_requires=[
+    #    "shapely",
+    #    "metpy",
+    #    "plotly",
+    #    "pyarrow",
+    #     "rioxarray",
+    #],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Environment :: Web Environment",
@@ -37,7 +38,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Topic :: Scientific/Engineering",
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.7",
     license="Apache License, Version 2.0",
     package_data={"geokube": ["static/css/*.css", "static/html/*.html"]},
 )
