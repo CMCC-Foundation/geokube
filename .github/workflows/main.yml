@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  pytest:
     runs-on: ubuntu-latest
     container:
       image: ${{ vars.GEOKUBE_REGISTRY }}/geokube:latest
