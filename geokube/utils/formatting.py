@@ -12,9 +12,13 @@ from pandas.errors import OutOfBoundsDatetime
 from xarray.core.duck_array_ops import array_equiv
 from xarray.core.indexing import MemoryCachedArray
 from xarray.core.options import OPTIONS, _get_boolean_with_default
-from xarray.core.pycompat import dask_array_type, sparse_array_type
+#from xarray.core.pycompat import array_type
+#from xarray.core.pycompat import dask_array_type, sparse_array_type
 from xarray.core.utils import is_duck_array
+from xarray.namedarray.pycompat import array_type
 
+dask_array_type = array_type('dask')
+sparse_array_type = array_type('sparse')
 
 def pretty_print(x, numchars: int):
     """Given an object `x`, call `str(x)` and format the returned string so

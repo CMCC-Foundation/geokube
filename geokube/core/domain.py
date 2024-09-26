@@ -454,11 +454,13 @@ class Domain(DomainMixin):
     def to_xarray(
         self, encoding=True
     ) -> xr.core.coordinates.DatasetCoordinates:
-        grid = {}
-        grid = xr.Dataset().coords
-        for coord in self._coords.values():
-            grid.update(coord.to_xarray(encoding=encoding))
 
+        grid = {}
+        #grid = xr.Dataset(coords=self._coords.).coords
+        for coord in self._coords.values():
+            var_name = coord.ncvar if encoding else coord.name
+            grid[var_name] = coord.to_xarray(encoding=encoding)[var_name]
+        #grid = xr.Dataset(coords=grid).coords
         if self.crs is not None:
             crs_name = self.grid_mapping_name
             not_none_attrs = self.crs.as_crs_attributes()
@@ -471,7 +473,7 @@ class Domain(DomainMixin):
                     )
                 }
             )
-        return grid
+        return xr.Dataset(coords=grid).coords
 
     def to_dict(self, unique_values=False):
         return {

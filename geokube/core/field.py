@@ -36,7 +36,6 @@ import xarray as xr
 import hvplot.xarray  # noqa
 from dask import is_dask_collection
 from xarray.core.options import OPTIONS
-
 from ..utils import formatting, formatting_html, util_methods
 from ..utils.decorators import geokube_logging
 from ..utils.util_methods import convert_cftimes_to_numpy
@@ -44,7 +43,7 @@ from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .errs import EmptyDataError
 from .cell_methods import CellMethod
-from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS
+from .coord_system import CoordSystem, GeogCS, RegularLatLon, RotatedGeogCS, TransverseMercator, WebMercator
 from .coordinate import Coordinate, CoordinateType
 from .domain import Domain, DomainType, GeodeticPoints, GeodeticGrid
 from .enums import MethodType, RegridMethod
@@ -745,11 +744,11 @@ class Field(Variable, DomainMixin):
             for k, v in indexers.items()
             if k in self.domain
         }
-        indexers = {
-            index_key: index_value
-            for index_key, index_value in indexers.items()
-            if index_key in ds.xindexes
-        }
+        #indexers = {
+        #    index_key: index_value
+        #    for index_key, index_value in indexers.items()
+        #    if index_key in ds.xindexes
+        #}
 
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
@@ -1181,6 +1180,10 @@ class Field(Variable, DomainMixin):
     def to_netcdf(self, path):
         self.to_xarray().to_netcdf(path=path)
 
+    @geokube_logging
+    def to_netcdf(self, path):
+        self.to_xarray().to_netcdf(path=path)
+
     # TO CHECK
     @geokube_logging
     def plot(
@@ -1196,6 +1199,9 @@ class Field(Variable, DomainMixin):
         save_path=None,
         save_kwargs=None,
         clean_image=False,
+        vmin=None,
+        vmax=None,
+        normalize=False,
         **kwargs,
     ):
         axis_names = self.domain._axis_to_name
@@ -1242,12 +1248,18 @@ class Field(Variable, DomainMixin):
             if aspect == "time_series":
                 data = self.to_xarray(encoding=False)[self.name]
                 data = data.assign_coords(points=points)
+
+                if vmin is None:
+                    vmin = data.min()
+                if vmax is None:
+                    vmax = data.max()
+
                 kwargs["x"] = time.name
                 if n_vert > 1 or (vert is not None and vert.name in data.dims):
                     kwargs.setdefault("row", vert.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
-                plot = data.plot.line(**kwargs)
+                plot = data.plot.line(vmin=vmin, vmax=vmax, **kwargs)
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Time Series")
@@ -1262,6 +1274,12 @@ class Field(Variable, DomainMixin):
             if aspect == "profile":
                 data = self.to_xarray(encoding=False)[self.name]
                 data = data.assign_coords(points=points)
+
+                if vmin is None:
+                    vmin = data.min()
+                if vmax is None:
+                    vmax = data.max()
+
                 if vert.attrs.get("positive") == "down":
                     data = data.reindex(
                         indexers={vert.name: data.coords[vert.name][::-1]},
@@ -1274,7 +1292,7 @@ class Field(Variable, DomainMixin):
                     kwargs.setdefault("col", time.name)
                 if "crs" in data.coords:
                     data = data.drop("crs")
-                plot = data.plot.line(**kwargs)
+                plot = data.plot.line(vmin=vmin, vmax=vmax, **kwargs)
                 if "row" not in kwargs and "col" not in kwargs:
                     for line in plot:
                         line.axes.set_title("Point Layers")
@@ -1359,7 +1377,6 @@ class Field(Variable, DomainMixin):
         for name, arg in kwa.items():
             if arg is not None:
                 kwargs[name] = arg
-
         # Creating plot:
         dset = self.to_xarray(encoding=False)
         if "crs" in dset.coords:
@@ -1372,7 +1389,19 @@ class Field(Variable, DomainMixin):
             or self._domain._type is None
         ):
             data = dset[self.name]
+
+            if vmin is None:
+                vmin = data.min().compute()
+            if vmax is None:
+                vmax = data.max().compute()
+            kwargs['vmin'] = vmin
+            kwargs['vmax'] = vmax
+            #kwargs['levels'] = 10
+            print(f'{vmin} / {vmax}')
+            if normalize is True:
+                data = (vmax - vmin) * ((data - data.min())/(data.max() - data.min())) + vmin
             plot = data.plot(**kwargs)
+
         elif self._domain._type is DomainType.POINTS:
             data = xr.Dataset(
                 data_vars={
@@ -1384,6 +1413,13 @@ class Field(Variable, DomainMixin):
             kwargs.update(
                 {"x": "lon", "y": "lat", "hue": self.name, "zorder": np.inf}
             )
+
+            if vmin is None:
+                vmin = data.min().compute()
+            if vmax is None:
+                vmax = data.max().compute()
+            kwargs['vmin'] = vmin
+            kwargs['vmax'] = vmax
             plot = data.plot.scatter(**kwargs)
         else:
             raise NotImplementedError(
@@ -1493,7 +1529,11 @@ class Field(Variable, DomainMixin):
         dpi=100,
         format='png',
         transparent=True,
-        bgcolor='FFFFFF'
+        bgcolor='FFFFFF',
+        cmap='RdBu_r',
+        projection=None,
+        vmin=None,
+        vmax=None
     ):
         # NOTE: This method assumes default DPI value.
         f = self
@@ -1501,17 +1541,28 @@ class Field(Variable, DomainMixin):
             f = self.to_regular()
 #        dpi = plt.rcParams['figure.dpi']
         w, h = width / dpi, height / dpi
+        prj = projection
+        if prj is not None:
+            if prj == '3857':
+                # airy1830 = GeogCS(6377563.396, 6356256.909)
+                # prj = TransverseMercator(49, -2, 400000, -100000, 0.9996012717, ellipsoid=airy1830)
+                prj = WebMercator()
+
         f.plot(
             figsize=(w, h),
+            cmap=cmap,
             add_colorbar=False,
             save_path=filepath,
             save_kwargs={
                 'transparent': transparent,
                 'pad_inches': 0,
                 'dpi': dpi,
-                # 'bbox_inches': [[0, 0], [w, h]]
+                'bbox_inches': 'tight'
             },
-            clean_image=True
+            clean_image=True,
+            projection=prj,
+            vmin=vmin,
+            vmax=vmax
         )
 
     def to_geojson(self, target=None):

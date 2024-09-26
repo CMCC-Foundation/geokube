@@ -1,38 +1,41 @@
-name: Build on release a geokube Docker image and push to the geokube container registry
+name: Build geokube-base Docker image and push to geokube-base container registry
 
 on:
-  push:
-    tags:        
-      - 'v*'
+  pull_request:
   workflow_dispatch:
+
 jobs:
-  build:
+  build-base:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
-    - name: Get release tag
-      run: echo "RELEASE_TAG=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
-    - name: Set up Python
-      uses: actions/setup-python@v4
+    - name: Set Docker image tag name
+      run: echo "TAG=$(date +'%Y.%m.%d.%H.%M')" >> $GITHUB_ENV
+    - name: TAG ECHO
+      run: echo ${{ env.TAG }}
+    - uses: actions/setup-python@v1
       with:
-        python-version: "3.9"
+        python-version: 3.9
     - name: Install WHEEL tool
       run: pip install wheel
     - name: Build WHEEL file
       run: python setup.py bdist_wheel
     - name: Login to Scaleway Container Registry
-      uses: docker/login-action@v2
+      uses: docker/login-action@v3
       with:
         username: nologin
         password: ${{ secrets.SCALEWAY_PASSWORD }}
         registry: ${{ vars.GEOKUBE_REGISTRY }}
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
     - name: Build and push
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./Dockerfile
+        file: ./Dockerfile.base
         push: true
         cache-from: type=gha
         cache-to: type=gha,mode=max
         tags: | 
-          ${{ vars.GEOKUBE_REGISTRY }}/geokube:${{ env.RELEASE_TAG }}
+          ${{ vars.GEOKUBE_REGISTRY }}/geokube-base:${{ env.TAG }}
+          ${{ vars.GEOKUBE_REGISTRY }}/geokube-base:latest

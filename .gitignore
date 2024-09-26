@@ -115,3 +115,9 @@ _old/
 
 # Netcdf files
 *.nc
+development.py
+Dockerfile.dev
+nuts_shape
+*.png
+*.zarr
+.DS_Store

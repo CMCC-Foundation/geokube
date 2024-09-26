@@ -45,6 +45,8 @@ def _get_engine(path: list | str):
         return "netcdf4"
     elif ext == ".jp2":
         return "rasterio"
+    elif ext == ".zarr":
+        return "zarr"
     else:
         raise ValueError(
             f"there is not engine associated with the extension `{ext}`"
@@ -81,6 +83,8 @@ def open_datacube(
             return ds
     engine = kwargs.pop('engine', None) or _get_engine(path)
     if engine == "netcdf4":
+        kwargs.setdefault("decode_coords", "all")
+    if engine == "zarr":
         kwargs.setdefault("decode_coords", "all")
     ds = geokube.core.datacube.DataCube.from_xarray(
         xr.open_mfdataset(path, engine=engine, **kwargs),
