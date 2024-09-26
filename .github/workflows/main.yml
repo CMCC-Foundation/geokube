@@ -12,13 +12,19 @@ jobs:
 
       - uses: actions/setup-python@v1
         with:
-          python-version: 3.9
+          python-version: 3.12
 
       - name: Install WHEEL tool
         run: pip install wheel
 
       - name: Build WHEEL file
         run: python setup.py bdist_wheel
+
+      - name: Installing missing libraries
+        run: apt update && apt install -y build-essential git gfortran python3-pip python3 libudunits2-dev
+
+      - name: Setting up UDUNITS2 env variable
+        run: export UDUNITS2_XML_PATH=/usr/share/xml/udunits/udunits2.xml
 
       - name: Install Geokube
         run: pip install dist/geokube-0.2.7-py3-none-any.whl
