@@ -15,7 +15,7 @@ jobs:
           python-version: 3.12
 
       - name: Install WHEEL tool
-        run: pip install wheel
+        run: pip install wheel setuptools==74.1.2
 
       - name: Build WHEEL file
         run: python setup.py bdist_wheel
