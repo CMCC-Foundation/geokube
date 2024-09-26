@@ -23,11 +23,10 @@ jobs:
       - name: Installing missing libraries
         run: sudo apt update && sudo apt install -y build-essential git gfortran python3-pip python3 libudunits2-dev
 
-      - name: Setting up UDUNITS2 env variable
-        run: export UDUNITS2_XML_PATH=/usr/share/xml/udunits/udunits2.xml
-
       - name: Install Geokube
         run: pip install dist/geokube-0.2.7-py3-none-any.whl
+        env:
+          UDUNITS2_XML_PATH: /usr/share/xml/udunits/udunits2.xml
 
       - name: Run test
         run: pytest tests
