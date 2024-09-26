@@ -1,32 +1,22 @@
 name: Unit Tests
+
 on:
-  pull_request:
-    types: [opened, reopened, edited, assigned, synchronize]
-  workflow_dispatch:
+  workflow_run:
+    workflows: [ 'build' ]
+    types: [ completed ]
+    branches:
+      - *
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ${{ vars.GEOKUBE_REGISTRY }}/geokube:latest
+      credentials:
+        username: nologin
+        password: ${{ secrets.SCALEWAY_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
-
-      - uses: actions/setup-python@v1
-        with:
-          python-version: 3.12
-
-      - name: Install WHEEL tool
-        run: pip install wheel setuptools==74.1.2
-
-      - name: Build WHEEL file
-        run: python setup.py bdist_wheel
-
-      - name: Installing missing libraries
-        run: sudo apt update && sudo apt install -y build-essential git gfortran python3-pip python3 libudunits2-dev
-
-      - name: Install Geokube
-        run: pip install dist/geokube-0.2.7-py3-none-any.whl
-        env:
-          UDUNITS2_XML_PATH: /usr/share/xml/udunits/udunits2.xml
 
       - name: Run test
         run: pytest tests
