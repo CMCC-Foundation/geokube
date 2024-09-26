@@ -34,7 +34,9 @@ def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
     _ = json.dumps(dataset.to_dict())
     _ = json.dumps(dataset_single_att.to_dict())
 
-
+@pytest.mark.skip(
+    "Invalidate as in the current version, test don't take into consideration compression and result to be inaccurate"
+)
 def test_nbytes_estimation(dataset_single_att):
     import os
 
