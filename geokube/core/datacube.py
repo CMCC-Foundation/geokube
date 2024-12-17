@@ -518,7 +518,10 @@ class DataCube(DomainMixin):
         self.to_xarray(encoding=encoding).to_netcdf(path=path)
 
     def to_zarr(self, path, encoding: bool = True, **kwargs):
-        self.to_xarray(encoding=encoding).chunk('auto').to_zarr(path,**kwargs)
+        kube = self.to_xarray(encoding=encoding)
+        for var in kube:
+            del kube[var].encoding['chunks']
+        kube.chunk('auto').to_zarr(path,**kwargs)
 
     @geokube_logging
     def to_csv(self, path, encoding: bool = True):
