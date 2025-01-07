@@ -47,7 +47,7 @@ def _get_engine(path: list | str):
         return "rasterio"
     elif ext == ".zarr":
         return "zarr"
-    elif path.startswith('http://') or path.startswith('https://'):
+    elif path.startswith('http') or path.startswith('https'):
         return "zarr"
     else:
         raise ValueError(
