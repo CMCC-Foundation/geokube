@@ -378,7 +378,7 @@ class Coordinate(Variable, Axis):
                     time_unit = time_offset.name
                     time_step = time_offset.n
                 axis_specific_details = {
-                    "time_unit": FREQ_CODES[time_unit],
+                    "time_unit": FREQ_CODES[time_unit.upper()],
                     "time_step": time_step,
                 }
         elif (
