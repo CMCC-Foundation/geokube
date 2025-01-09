@@ -520,7 +520,8 @@ class DataCube(DomainMixin):
     def to_zarr(self, path, encoding: bool = True, **kwargs):
         kube = self.to_xarray(encoding=encoding)
         for var in kube:
-            del kube[var].encoding['chunks']
+            if 'chunks' in kube[var].encoding.keys():
+                del kube[var].encoding['chunks']
         kube.chunk('auto').to_zarr(path,**kwargs)
 
     @geokube_logging

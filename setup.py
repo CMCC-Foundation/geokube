@@ -38,7 +38,7 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Topic :: Scientific/Engineering",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.10",
     license="Apache License, Version 2.0",
     package_data={"geokube": ["static/css/*.css", "static/html/*.html"]},
 )

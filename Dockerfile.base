@@ -14,14 +14,14 @@ ENV ESMF_DIR=/opt/esmf
 ENV ESMF_F90COMPILEOPTS=-fallow-argument-mismatch
 
 WORKDIR /opt/esmf
-RUN git checkout v8.6.1
+RUN git checkout v8.8.0
 RUN make -j4
 
 ENV ESMFMKFILE=/opt/esmf/lib/libO/Linux.gfortran.64.mpiuni.default/esmf.mk
 
-RUN pip install numpy setuptools==74.1.2 --break-system-packages
+RUN pip install numpy setuptools==75.8.0 --break-system-packages
 
 WORKDIR /opt/esmf/src/addon/esmpy
 RUN pip install . --break-system-packages
 
-RUN pip install git+https://github.com/pangeo-data/xesmf.git --break-system-packages #@v0.6.3
+RUN pip install git+https://github.com/pangeo-data/xesmf.git@v0.8.8 --break-system-packages #@v0.6.3

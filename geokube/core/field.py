@@ -823,8 +823,8 @@ class Field(Variable, DomainMixin):
     def to_regular(self):
         # Infering latitude and longitude steps from the x and y coordinates.
         if isinstance(self.domain.crs, RotatedGeogCS):
-            lat_step = self.y.values.ptp() / (self.y.values.size - 1)
-            lon_step = self.x.values.ptp() / (self.x.values.size - 1)
+            lat_step = np.ptp(self.y.values) / (self.y.values.size - 1)
+            lon_step = np.ptp(self.x.values) / (self.x.values.size - 1)
         else:
             raise NotImplementedError(
                 f"'{type(self.domain.crs).__name__}' is not supported as a "

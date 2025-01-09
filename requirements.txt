@@ -1,11 +1,11 @@
-cf_units==3.2.0
+cf_units==3.3.0
 cartopy
-numpy==1.26.4
-pandas==2.1.4
+numpy==2.0.2
+pandas==2.2.3
 netCDF4
 scipy
-xarray==2024.09.0
-dask==2024.9.0
+xarray==2025.1.0
+dask==2024.12.1
 geopandas
 #esmpy==8.2.0
 #xesmf==0.7.1
@@ -13,7 +13,7 @@ intake==2.0.7
 hvplot
 pytest
 dask[distributed]
-zarr
+zarr==2.18.4
 rioxarray
 plotly
 pyarrow
