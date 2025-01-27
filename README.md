@@ -1,14 +1,15 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.10597965.svg)](https://doi.org/10.5281/zenodo.10597965)
-
 # geokube
 
 ## Description
 
 **geokube** is an open source Python package for geoscience data analysis that provides the user with a simple application programming interface (API) for performing geospatial operations (e.g., extracting a bounding box or regridding) and temporal operations (e.g., resampling) on different types of scientific feature types like grids, profiles and points, using  `xarray` data structures and xarray ecosystem frameworks such as `xesmf`.
 
-## Authors
+## Developers Team
 
-**Lead Developers**:
+- [Valentina Scardigno](https://github.com/vale95-eng)
+- [Gabriele Tramonte](https://github.com/gtramonte)
+
+### Former Developers
 
 - [Marco Mancini](https://github.com/km4rcus)
 - [Jakub Walczak](https://github.com/jamesWalczak)
@@ -17,27 +18,15 @@
 ## Installation 
 
 #### Requirements
-You need to install xesmf and cartopy to use geokube. This can be done during the creation of conda virtual environment, as shown below
+You need to install xesmf and cartopy to use some feature of geokube.
 
-Add or append conda-forge channel
 ```bash
-conda config --add channels conda-forge
-```
-or
-```bash
-conda config --append channels conda-forge
+pip install geokube==v0.2.7.2
 ```
 
-#### Conda Environment
-Create virtual environment with installing xesmf and cartopy package
+#### Docker Image
+Prebuilt Docker images of Geokube are available:
+
 ```bash
-conda create -n geokube python=3.9 xesmf=0.6.2 cartopy -y
-```
-Activate virtual environment
-```bash
-conda activate geokube
-```
-Install geokube framework
-```bash
-python setup.py install
+docker pull rg.fr-par.scw.cloud/geokube/geokube:v0.2.7.2
 ```
