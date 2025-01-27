@@ -526,7 +526,7 @@ class DataCube(DomainMixin):
 
     @geokube_logging
     def to_csv(self, path, encoding: bool = True):
-        self.to_xarray(encoding=encoding).to_dataframe().drop(columns=['crs_latitude_longitude']).to_csv(path)
+        self.to_xarray(encoding=encoding).to_dataframe().drop(columns=['crs_latitude_longitude'], errors='ignore').to_csv(path)
 
     def persist(self, path=None) -> str:
         if path is None:

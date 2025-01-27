@@ -1433,7 +1433,7 @@ class Field(Variable, DomainMixin):
         # Adding gridlines and Cartopy features (borders, coastline, lakes,
         # land, ocean, rivers, or states) to all plot axes:
         if has_cartopy_items:
-            axes = np.array(plot.axes, copy=False, ndmin=1)
+            axes = np.asarray(plot.axes)
             if features:
                 for ax in axes.flat:
                     for feature in features:

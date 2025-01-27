@@ -89,7 +89,7 @@ def open_datacube(
     if engine == "zarr":
         kwargs.setdefault("decode_coords", "all")
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, engine=engine, **kwargs),
+        xr.open_mfdataset(path, engine=engine, **kwargs) if 'http' not in path else xr.open_dataset(path, engine=engine, **kwargs),
         id_pattern=id_pattern,
         mapping=mapping,
     )
