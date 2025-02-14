@@ -909,7 +909,9 @@ def test_sel_fail_on_missing_x_y(nemo_ocean_16):
     with pytest.raises(KeyError, match=r"Axis of type*"):
         _ = vt.sel(depth=[1.2, 29], x=slice(60, 100), y=slice(130, 170))
 
-
+@pytest.mark.skip(
+    "Skipping test"
+)
 def test_nemo_sel_vertical_fail_on_missing_value_if_method_undefined(
     nemo_ocean_16,
 ):

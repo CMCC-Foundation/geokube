@@ -4,8 +4,8 @@ numpy==2.0.2
 pandas==2.2.3
 netCDF4
 scipy
-xarray==2025.1.0
-dask==2024.12.1
+xarray==2025.1.2
+dask==2025.1.0
 geopandas
 #esmpy==8.2.0
 #xesmf==0.7.1

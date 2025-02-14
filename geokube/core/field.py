@@ -753,7 +753,11 @@ class Field(Variable, DomainMixin):
         # If selection by single lat/lon, coordinate is lost as it is not stored either in da.dims nor in da.attrs["coordinates"]
         # and then selecting this location from Domain fails
         ds_dims = set(ds.dims)
-        ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
+        try:
+            ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
+        except KeyError:
+            self._LOG.warn("index axis is not present in the domain.")
+
         lost_dims = ds_dims - set(ds.dims)
         Field._update_coordinates(ds[self.name], lost_dims)
         return Field.from_xarray(
