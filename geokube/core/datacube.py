@@ -522,7 +522,7 @@ class DataCube(DomainMixin):
         for var in kube:
             if 'chunks' in kube[var].encoding.keys():
                 del kube[var].encoding['chunks']
-        kube.chunk('auto').to_zarr(path,**kwargs)
+        kube.unify_chunks().chunk('auto').to_zarr(path,**kwargs)
 
     @geokube_logging
     def to_csv(self, path, encoding: bool = True):
