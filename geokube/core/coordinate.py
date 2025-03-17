@@ -40,6 +40,7 @@ FREQ_CODES = {
     "U": "microsecond",
     "N": "nanosecond",
     "NS": "nanosecond",
+    "MIN": "minute"
 }
 
 
