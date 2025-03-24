@@ -1076,6 +1076,8 @@ class Field(Variable, DomainMixin):
             case _:
                 raise NotImplementedError(f"Operator {operator} not implemented.")
         field = Field.from_xarray(ds, ncvar=self.name)
+        field.domain.crs = self.domain.crs
+        field.domain._type = self.domain._type
         return field
 
     @geokube_logging
