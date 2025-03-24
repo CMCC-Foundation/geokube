@@ -1060,95 +1060,22 @@ class Field(Variable, DomainMixin):
         >>> resulting_field = field.resample("sum", frequency='2M')
 
         """
-        if callable(operator):
-            func = operator
-        else:
-            if isinstance(operator, str):
-                operator_func = MethodType(operator)
-            elif isinstance(operator, MethodType):
-                operator_func = operator
-            else:
-                raise TypeError(
-                    "Operator must be `str`, `MethodType`, or `callable`."
-                    " Provided `{type(operator)}`"
-                )
-            if operator_func is MethodType.UNDEFINED:
-                methods = {
-                    method.value[0]
-                    for method in MethodType.__members__.values()
-                }
-                methods.discard("<undefined>")
-                raise ValueError(
-                    f"Provided operator '{operator}' was not found! Available"
-                    f" operators are: {sorted(methods)}!"
-                )
-            func = (
-                operator_func.dask_operator
-                if is_dask_collection(self)
-                else operator_func.numpy_operator
-            )
-
-        # ################## Temporary solution for time bounds adjustmnent ######################
-
-        # TODO: handle `formula_terms` bounds attribute
-        # http://cfconventions.org/cf-conventions/cf-conventions.html#cell-boundaries
         ds = self.to_xarray(encoding=False)
-        if (time_bnds := self.time.bounds) is None:
-            bnds_name, bnds = f"{self.time.name}_bnds", None
-        else:
-            ((bnds_name, bnds),) = time_bnds.items()
-        if self.cell_methods and bnds is not None:
-            # `closed=right` set by default for {"M", "A", "Q", "BM", "BA", "BQ", "W"} resampling codes ("D" not included!)
-            # https://github.com/pandas-dev/pandas/blob/7c48ff4409c622c582c56a5702373f726de08e96/pandas/core/resample.py#L1383
-            resample_kwargs.update({"closed": "right"})
-            da = ds.resample(
-                indexer={self.time.name: frequency}, **resample_kwargs
-            )
-            new_bnds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
-            )
-            for i, v in enumerate(da.groups.values()):
-                new_bnds[i] = [bnds.values[v].min(), bnds.values[v].max()]
-            # TODO: Check if this is redundant
-            if bnds is None:
-                Field._LOG.warn(
-                    "Time bounds not defined for the cell methods!"
-                )
-                warnings.warn("Time bounds not defined for the cell methods!")
-        else:
-            da = ds.resample(
-                indexer={self.time.name: frequency}, **resample_kwargs
-            )
-            new_bnds = np.empty(
-                shape=(len(da.groups), 2), dtype=np.dtype("datetime64[ns]")
-            )
-            for i, v in enumerate(da.groups.values()):
-                new_bnds[i] = [
-                    self.time.values[v].min(),
-                    self.time.values[v].max(),
-                ]
-
-        # NOTE: `reduce` spans result for all intermediate values
-        # if 1st and 3rd day os selected and 1D freq is used
-        # then `reduce` results in time axis for 1st, 2nd, and 3rd
-        # passing for missing dates `NaN`s
-        da = da.reduce(func=func, dim=self.time.name, keep_attrs=True).dropna(
-            dim=self.time.name, how="all"
-        )
-        # NOTE: `reduce` removes all `encoding` properties
-        da[self.name].encoding = ds[self.name].encoding
-        res = xr.Dataset(
-            da,
-            coords={f"{bnds_name}": ((self.time.name, "bnds"), new_bnds)},
-        )
-        field = Field.from_xarray(res, ncvar=self.name)
-        field.time.bounds = new_bnds
-        field.domain.crs = self.domain.crs
-        field.domain._type = self.domain._type
-
-        # TODO: adjust cell_methods after resampling!
-
-        # #########################################################################################
+        ds = ds.resample(time=frequency)
+        match operator:
+            case "max":
+                ds = ds.max(dim="time")
+            case "min":
+                ds = ds.min(dim="time")
+            case "sum":
+                ds = ds.sum(dim="time")
+            case "mean":
+                ds = ds.mean(dim="time")
+            case "median":
+                ds = ds.median(dim="time")
+            case _:
+                raise NotImplementedError(f"Operator {operator} not implemented.")
+        field = Field.from_xarray(ds, ncvar=self.name)
         return field
 
     @geokube_logging
