@@ -1061,6 +1061,7 @@ class Field(Variable, DomainMixin):
 
         """
         ds = self.to_xarray(encoding=False)
+        encodings = ds.encoding
         ds = ds.resample(time=frequency)
         match operator:
             case "max":
@@ -1075,9 +1076,11 @@ class Field(Variable, DomainMixin):
                 ds = ds.median(dim="time")
             case _:
                 raise NotImplementedError(f"Operator {operator} not implemented.")
+        ds.encoding = encodings
         field = Field.from_xarray(ds, ncvar=self.name)
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
+        field.domain._calculate_missing_lat_and_lon()
         return field
 
     @geokube_logging
