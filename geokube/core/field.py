@@ -1062,7 +1062,10 @@ class Field(Variable, DomainMixin):
         """
         ds = self.to_xarray(encoding=False)
         encodings = ds.encoding
-        ds = ds.resample(time=frequency)
+        if frequency == '1D':
+            ds = ds.coarsen(time=24)
+        else:
+            ds = ds.resample(time=frequency)
         match operator:
             case "max":
                 ds = ds.max(dim="time")
