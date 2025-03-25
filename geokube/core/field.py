@@ -1063,22 +1063,34 @@ class Field(Variable, DomainMixin):
         ds = self.to_xarray(encoding=False)
         encodings = ds.encoding
         if frequency == '1D':
-            ds = ds.coarsen(time=24)
+            match operator:
+                case "max":
+                    ds = ds.coarsen(time=24).max()
+                case "min":
+                    ds = ds.coarsen(time=24).min()
+                case "sum":
+                    ds = ds.coarsen(time=24).sum()
+                case "mean":
+                    ds = ds.coarsen(time=24).mean()
+                case "median":
+                    ds = ds.coarsen(time=24).median()
+                case _:
+                    raise NotImplementedError(f"Operator {operator} not implemented.")
         else:
             ds = ds.resample(time=frequency)
-        match operator:
-            case "max":
-                ds = ds.max(dim="time")
-            case "min":
-                ds = ds.min(dim="time")
-            case "sum":
-                ds = ds.sum(dim="time")
-            case "mean":
-                ds = ds.mean(dim="time")
-            case "median":
-                ds = ds.median(dim="time")
-            case _:
-                raise NotImplementedError(f"Operator {operator} not implemented.")
+            match operator:
+                case "max":
+                    ds = ds.max(dim="time")
+                case "min":
+                    ds = ds.min(dim="time")
+                case "sum":
+                    ds = ds.sum(dim="time")
+                case "mean":
+                    ds = ds.mean(dim="time")
+                case "median":
+                    ds = ds.median(dim="time")
+                case _:
+                    raise NotImplementedError(f"Operator {operator} not implemented.")
         ds.encoding = encodings
         field = Field.from_xarray(ds, ncvar=self.name)
         field.domain.crs = self.domain.crs
