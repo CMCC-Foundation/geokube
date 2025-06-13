@@ -827,8 +827,9 @@ class Field(Variable, DomainMixin):
     def to_regular(self):
         # Infering latitude and longitude steps from the x and y coordinates.
         if isinstance(self.domain.crs, RotatedGeogCS):
-            lat_step = np.ptp(self.y.values) / (self.y.values.size - 1)
-            lon_step = np.ptp(self.x.values) / (self.x.values.size - 1)
+            lat_step = round(np.ptp(self.y.values) / (self.y.values.size - 1), 2)
+            lat_step = round(np.ptp(self.y.values) / (self.y.values.size - 1), 2)
+            lon_step = round(np.ptp(self.x.values) / (self.x.values.size - 1), 2)
         else:
             raise NotImplementedError(
                 f"'{type(self.domain.crs).__name__}' is not supported as a "
@@ -982,10 +983,16 @@ class Field(Variable, DomainMixin):
             coords_out = {"lat_b": lat_b, "lon_b": lon_b}
 
         # Regridding
-        in_ = self.to_xarray(encoding=False).rename(names_in)
+        try:
+            in_ = self.to_xarray(encoding=False).rename(names_in)
+        except:
+            in_ = self.to_xarray(encoding=False)
         if coords_in:
             in_ = in_.assign_coords(coords=coords_in)
-        out = target.to_xarray(encoding=False).to_dataset().rename(names_out)
+        try:
+            out = target.to_xarray(encoding=False).to_dataset().rename(names_out)
+        except:
+            out = target.to_xarray(encoding=False).to_dataset()
         if coords_out:
             out = out.assign_coords(coords=coords_out)
         regrid_kwa = {
@@ -1000,7 +1007,10 @@ class Field(Variable, DomainMixin):
         except PermissionError:
             regridder = xe.Regridder(**regrid_kwa)
         result = regridder(in_, keep_attrs=True, skipna=False)
-        result = result.rename({v: k for k, v in names_in.items()})
+        try:
+            result = result.rename({v: k for k, v in names_in.items()})
+        except:
+            pass
         result[self.name].encoding = in_[self.name].encoding
         if not isinstance(target.crs, GeogCS):
             missing_coords = {
@@ -1062,37 +1072,22 @@ class Field(Variable, DomainMixin):
         """
         ds = self.to_xarray(encoding=False)
         encodings = ds.encoding
-        if frequency == '1D':
-            match operator:
-                case "max":
-                    ds = ds.coarsen(time=24).max()
-                case "min":
-                    ds = ds.coarsen(time=24).min()
-                case "sum":
-                    ds = ds.coarsen(time=24).sum()
-                case "mean":
-                    ds = ds.coarsen(time=24).mean()
-                case "median":
-                    ds = ds.coarsen(time=24).median()
-                case _:
-                    raise NotImplementedError(f"Operator {operator} not implemented.")
-        else:
-            ds = ds.resample(time=frequency)
-            match operator:
-                case "max":
-                    ds = ds.max(dim="time")
-                case "min":
-                    ds = ds.min(dim="time")
-                case "sum":
-                    ds = ds.sum(dim="time")
-                case "mean":
-                    ds = ds.mean(dim="time")
-                case "median":
-                    ds = ds.median(dim="time")
-                case _:
-                    raise NotImplementedError(f"Operator {operator} not implemented.")
+        ds = ds.resample(time=frequency)
+        match operator:
+            case "max":
+                ds = ds.max(dim="time")
+            case "min":
+                ds = ds.min(dim="time")
+            case "sum":
+                ds = ds.sum(dim="time")
+            case "mean":
+                ds = ds.mean(dim="time")
+            case "median":
+                ds = ds.median(dim="time")
+            case _:
+                raise NotImplementedError(f"Operator {operator} not implemented.")
         ds.encoding = encodings
-        field = Field.from_xarray(ds, ncvar=self.name)
+        field = Field.from_xarray(ds, ncvar=self.name, id_pattern=self._id_pattern, mapping=self._mapping, copy=False)
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
         field.domain._calculate_missing_lat_and_lon()
