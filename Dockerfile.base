@@ -19,7 +19,7 @@ RUN make -j4
 
 ENV ESMFMKFILE=/opt/esmf/lib/libO/Linux.gfortran.64.mpiuni.default/esmf.mk
 
-RUN pip install numpy setuptools==75.8.0 --break-system-packages
+RUN pip install numpy setuptools==80.9.0 --break-system-packages
 
 WORKDIR /opt/esmf/src/addon/esmpy
 RUN pip install . --break-system-packages

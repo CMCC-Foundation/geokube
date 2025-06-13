@@ -517,12 +517,21 @@ class DataCube(DomainMixin):
     def to_netcdf(self, path, encoding: bool = True):
         self.to_xarray(encoding=encoding).to_netcdf(path=path)
 
-    def to_zarr(self, path, encoding: bool = True, **kwargs):
+    @geokube_logging
+    def _find_best_chunking(self, ds: xr.Dataset):
+        chunks = {name: 1000 if name.lower() in ['time', 'xtime'] else 100 for name in ds.dims}
+        self._LOG.info(f"Best chunking: {chunks}")
+        return chunks
+
+    @geokube_logging
+    def to_zarr(self, path, encoding: bool = True, chunks: dict = None, **kwargs):
         kube = self.to_xarray(encoding=encoding)
         for var in kube:
             if 'chunks' in kube[var].encoding.keys():
                 del kube[var].encoding['chunks']
-        kube.unify_chunks().chunk('auto').to_zarr(path,**kwargs)
+        if chunks is None:
+            chunks = self._find_best_chunking(kube)
+        kube.chunk(chunks).to_zarr(path,**kwargs)
 
     @geokube_logging
     def to_csv(self, path, encoding: bool = True):

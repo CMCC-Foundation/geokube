@@ -1,9 +1,8 @@
 name: Build on release a geokube Docker image and push to the geokube container registry
 
 on:
-  push:
-    tags:        
-      - 'v*'
+  release:
+    types: [published]
   workflow_dispatch:
 jobs:
   build:
