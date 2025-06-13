@@ -279,7 +279,7 @@ class Domain(DomainMixin):
         val = coord.values
         val_b = np.empty(shape=val.size + 1, dtype=np.float64)
         val_b[1:-1] = 0.5 * (val[:-1] + val[1:])
-        half_step = 0.5 * (val.ptp() / (val.size - 1))
+        half_step = 0.5 * (np.ptp(val) / (val.size - 1))
         # The case `val[0] > val[-1]` represents reversed order of values:
         i, j = (0, -1) if val[0] <= val[-1] else (-1, 0)
         val_b[i] = val[i] - half_step
