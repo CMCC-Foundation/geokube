@@ -614,6 +614,19 @@ class WebMercator(CoordSystem):
     def as_cartopy_projection(self):
         return ccrs.epsg('3857')
 
+class PolarStereographic(CoordSystem):
+
+    grid_mapping_name = "polar_stereographic"
+
+    def __init__(self, **kwargs):
+        self.epsg = kwargs.pop('srid').split(':')[-1] if 'srid' in kwargs else '3412'
+
+    def as_cartopy_crs(self):
+        return ccrs.epsg(self.epsg)
+
+    def as_cartopy_projection(self):
+        return ccrs.epsg(self.epsg)
+
 class Orthographic(CoordSystem):
     """
     An orthographic map projection.
