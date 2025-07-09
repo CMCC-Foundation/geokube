@@ -399,8 +399,8 @@ class Coordinate(Variable, Axis):
             }
         return dict(
             **{
-                "min": maybe_convert_to_json_serializable(np.nanmin(values)),
-                "max": maybe_convert_to_json_serializable(np.nanmax(values)),
+                "min": maybe_convert_to_json_serializable(np.nanmin(values) if values.dtype is np.number else values[0]),
+                "max": maybe_convert_to_json_serializable(np.nanmax(values) if values.dtype is np.number else values[-1]),
                 "units": str(self.units),
                 "axis": self.axis_type.name,
             },
