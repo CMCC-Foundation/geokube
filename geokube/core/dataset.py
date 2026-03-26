@@ -33,6 +33,8 @@ class Dataset:
         "__attrs",
         "__cube_idx",
         "__load_files_on_persistance",
+        "use_zarr_groups_as_pattern",
+        "root_group"
     )
 
     _LOG = HCubeLogger(name="Dataset")
@@ -46,11 +48,15 @@ class Dataset:
         hcubes: Mapping[tuple[str, ...], DataCube] | pd.DataFrame,
         attrs: Sequence[str] = None,
         metadata: Mapping[str, str] | None = None,
+        use_zarr_groups_as_pattern: bool = False,
         load_files_on_persistance: None | bool = True,
+        root_group: str | None = None,
     ) -> None:
         # NOTE: to support Dataset operations
         # for not-netcdf files
+        self.use_zarr_groups_as_pattern = use_zarr_groups_as_pattern
         self.__load_files_on_persistance = load_files_on_persistance
+        self.root_group = root_group
         # TODO: Make `attrs` capable of taking `np.ndarray`.
         if attrs is None:
             attrs = []
@@ -347,6 +353,8 @@ class Dataset:
     @property
     def nbytes(self) -> int:
         if any(isinstance(cube, Delayed) for cube in self.cubes):
+            if self.use_zarr_groups_as_pattern:
+                return sum(sum(os.path.getsize(f"{self.root_group}/{f}") for f in files) for files in self.data[Dataset.FILES_COL])
             return sum(
                 sum(os.path.getsize(f) for f in files)
                 for files in self.__data[Dataset.FILES_COL]

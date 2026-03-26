@@ -9,6 +9,7 @@ import glob
 import logging
 import os
 import pickle
+from pathlib import Path
 from string import Formatter
 from typing import Any, Hashable, Mapping, Optional
 
@@ -22,6 +23,7 @@ import geokube.backend.base
 import geokube.core.datacube
 import geokube.core.dataset
 from geokube.utils.hcube_logger import HCubeLogger
+import zarr
 
 LOG = HCubeLogger(name="netcdf.py")
 
@@ -120,6 +122,36 @@ def _get_df_from_files_list(files, pattern, ds_attr_names):
     df = df.set_index(ds_attr_names)
     return df
 
+def list_groups_matching_pattern(group, pattern_parts=2, prefix=""):
+    paths = []
+    for key, subgroup in group.groups():
+        full_path = f"{prefix}/{key}" if prefix else key
+        if full_path.count("/") + 1 == pattern_parts:
+            paths.append(full_path)
+        paths.extend(list_groups_matching_pattern(subgroup, pattern_parts, full_path))
+    return paths
+
+
+def _get_df_from_groups(zarr_root, pattern, ds_attr_names):
+    root = zarr.open_group(zarr_root, mode="r")
+    paths = list_groups_matching_pattern(root)
+    l = []
+    for p in paths:
+        try:
+            d = reverse_format(pattern, p)
+            d[FILES_COL] = p
+            l.append(d)
+        except Exception as e:
+            # Skip paths that don't match the pattern
+            continue
+
+    if len(l) == 0:
+        raise ValueError(f"No groups matched the pattern: {pattern}")
+
+    df = pd.DataFrame(l)
+    df = df.groupby(ds_attr_names)[FILES_COL].apply(list).reset_index()
+    df = df.set_index(ds_attr_names)
+    return df
 
 def open_dataset(
     path: str,
@@ -140,6 +172,8 @@ def open_dataset(
     # when the number of rows is really high and the number of files per row is low
     # (e.g CMIP, CORDEX, observations). The datacube will be read when trying to accessing it
     load_files_on_persistance: bool = True,
+    use_zarr_groups_as_pattern: bool = False,
+    root_group: str = None,
     **kwargs,  # optional kw args for xr.open_mfdataset
 ) -> geokube.core.dataset.Dataset:
     # incremental metadata caching:
@@ -233,15 +267,24 @@ def open_dataset(
 
     # if cache is not True or cache file is not available proceed with reading files in paths
     files = glob.glob(path)  # all files
-    df = _get_df_from_files_list(files, pattern, ds_attr_names)
+    if use_zarr_groups_as_pattern:
+        df = _get_df_from_groups(files[0], pattern, ds_attr_names)
+    else:
+        df = _get_df_from_files_list(files, pattern, ds_attr_names)
     cubes = []
     if not load_files_on_persistance:
         pass
     elif delay_read_cubes:
         for i in df.index:
+            if use_zarr_groups_as_pattern:
+                kwargs['engine'] = 'zarr'
+                kwargs['group'] = df[FILES_COL][i][0]
+                actual_path = path
+            else:
+                actual_path = df[FILES_COL][i]
             cubes.append(
                 dask.delayed(open_datacube)(
-                    path=df[FILES_COL][i],
+                    path=actual_path,
                     id_pattern=id_pattern,
                     mapping=mapping,
                     **kwargs,
@@ -249,9 +292,15 @@ def open_dataset(
             )
     else:
         for i in df.index:
+            if use_zarr_groups_as_pattern:
+                kwargs['engine'] = 'zarr'
+                kwargs['group'] = df[FILES_COL][i][0]
+                actual_path = path
+            else:
+                actual_path = df[FILES_COL][i]
             cubes.append(
                 open_datacube(
-                    path=df[FILES_COL][i],
+                    path=actual_path,
                     id_pattern=id_pattern,
                     mapping=mapping,
                     **kwargs,
@@ -268,4 +317,6 @@ def open_dataset(
     return geokube.core.dataset.Dataset(
         hcubes=df.reset_index(),
         load_files_on_persistance=load_files_on_persistance,
+        use_zarr_groups_as_pattern=use_zarr_groups_as_pattern,
+        root_group=root_group
     )
