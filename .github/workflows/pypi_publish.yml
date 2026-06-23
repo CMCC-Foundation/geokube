@@ -6,14 +6,23 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Gate: publish only if the test suite passes.
-  test:
+  # Gate: publish only if both test blocks pass.
+  unit-tests:
     uses: ./.github/workflows/_test.yml
+    with:
+      markers: "not integration"
+    secrets: inherit
+
+  integration-tests:
+    needs: unit-tests
+    uses: ./.github/workflows/_test.yml
+    with:
+      markers: "integration"
     secrets: inherit
 
   build-and-publish:
     name: Build geokube package and publish to PyPI
-    needs: test
+    needs: integration-tests
     runs-on: ubuntu-latest
     environment: release
     permissions:

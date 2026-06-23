@@ -49,7 +49,6 @@ dependencies = [
     "cf-xarray==0.10.5",
     "h5netcdf==1.6.1",
     "kerchunk==0.2.7",
-    "intake",
 ]
 
 [project.optional-dependencies]

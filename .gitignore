@@ -48,6 +48,8 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 tests/resources/res.nc
+tests/resources/__res.nc
+tests/resources/__res/
 
 # Translations
 *.mo

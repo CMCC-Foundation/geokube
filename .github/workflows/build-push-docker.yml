@@ -19,13 +19,22 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Gate: the image is built/pushed only if the test suite passes.
-  test:
+  # Gate: the image is built/pushed only if both test blocks pass.
+  unit-tests:
     uses: ./.github/workflows/_test.yml
+    with:
+      markers: "not integration"
+    secrets: inherit
+
+  integration-tests:
+    needs: unit-tests
+    uses: ./.github/workflows/_test.yml
+    with:
+      markers: "integration"
     secrets: inherit
 
   build:
-    needs: test
+    needs: integration-tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

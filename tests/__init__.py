@@ -39,11 +39,11 @@ def compare_dicts(d1, d2, exclude_d1=None, exclude_d2=None):
 
 
 def clear_test_res():
-    for f in [RES_DIR, RES_DIR]:
-        try:
-            shutil.rmtree(f)
-        except:
-            pass
+    shutil.rmtree(RES_DIR, ignore_errors=True)
+    try:
+        os.remove(RES_PATH)
+    except FileNotFoundError:
+        pass
 
 
 class TimeCounter:

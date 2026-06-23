@@ -15,8 +15,9 @@ from typing import Any, Hashable, Mapping, Optional
 import dask
 import pandas as pd
 import xarray as xr
-from intake.source.utils import reverse_format
 import rioxarray
+
+from geokube.utils.format_parsing import reverse_format
 
 import geokube.backend.base
 import geokube.core.datacube
@@ -47,12 +48,17 @@ def _get_engine(path: list | str):
         return "rasterio"
     elif ext == ".zarr":
         return "zarr"
-    elif path.startswith('http') or path.startswith('https'):
-        return "zarr"
     else:
+        valid = sorted(xr.backends.list_engines())
         raise ValueError(
-            f"there is not engine associated with the extension `{ext}`"
+            f"No engine is associated with the path/extension `{ext or path}`."
+            " Pass one explicitly via `engine=...`."
+            f" Installed engines: {valid}"
         )
+
+
+def _is_glob(path) -> bool:
+    return isinstance(path, str) and any(c in path for c in "*?[")
 
 
 def _read_cache(cache_path: str):
@@ -88,8 +94,15 @@ def open_datacube(
         kwargs.setdefault("decode_coords", "all")
     if engine == "zarr":
         kwargs.setdefault("decode_coords", "all")
+    if isinstance(path, (list, tuple)) or _is_glob(path):
+        raw = xr.open_mfdataset(path, engine=engine, **kwargs)
+    else:
+        # Single resource (local file or remote store): open_mfdataset does not
+        # handle a lone store well. Keep it lazy/dask-backed, as open_mfdataset was.
+        kwargs.setdefault("chunks", {})
+        raw = xr.open_dataset(path, engine=engine, **kwargs)
     ds = geokube.core.datacube.DataCube.from_xarray(
-        xr.open_mfdataset(path, engine=engine, **kwargs) if 'http' not in path else xr.open_dataset(path, engine=engine, **kwargs),
+        raw,
         id_pattern=id_pattern,
         mapping=mapping,
     )
