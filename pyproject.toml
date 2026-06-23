@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "geokube"
+dynamic = ["version"]
+description = "a Python package based on xarray for GeoScience Data Analysis"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "geokube Contributors", email = "geokube@googlegroups.com" },
+]
+keywords = ["xarray", "geoscience", "climate", "datacube", "earth-observation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+]
+# NOTE: esmpy and xesmf are intentionally NOT listed here. They require the
+# compiled ESMF (C/Fortran) stack and are provided by the geokube base image
+# (see Dockerfile.base); they are not installable as plain PyPI wheels.
+dependencies = [
+    "cf-units==3.3.0",
+    "cartopy",
+    "numpy==2.0.2",
+    "pandas==2.2.3",
+    "netCDF4==1.7.2",
+    "h5py==3.14.0",
+    "scipy",
+    "xarray==2026.4.0",
+    "dask[distributed]==2026.6.0",
+    "geopandas",
+    "hvplot",
+    "zarr==2.18.4",
+    "rioxarray",
+    "plotly",
+    "pyarrow",
+    "numcodecs==0.15.1",
+    "cf-xarray==0.10.5",
+    "h5netcdf==1.6.1",
+    "kerchunk==0.2.7",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+dev = ["geokube[test]"]
+
+[project.urls]
+Homepage = "https://github.com/CMCC-Foundation/geokube"
+Repository = "https://github.com/CMCC-Foundation/geokube"
+Issues = "https://github.com/CMCC-Foundation/geokube/issues"
+
+[tool.hatch.version]
+# Single source of truth, also consumed by geokube/__init__.py.
+path = "geokube/version.py"
+
+[tool.hatch.build.targets.wheel]
+# Includes the package data (static/css/*.css, static/html/*.html) automatically.
+packages = ["geokube"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/geokube",
+    "/README.md",
+    "/LICENSE",
+]

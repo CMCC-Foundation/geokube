@@ -1,0 +1,26 @@
+name: Reusable unit tests
+
+# Reusable test pipeline: runs the geokube test suite inside the prebuilt base
+# image (which carries the ESMF / esmpy / xesmf stack). Called via `needs:` by
+# the workflows that push artifacts, so nothing is pushed/published if tests fail.
+on:
+  workflow_call:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_REGISTRY }}
+          password: ${{ secrets.DOCKER_ACCESS_KEY }}
+
+      - name: Run tests inside the geokube base image
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/work -w /work \
+            "${{ vars.DOCKER_REGISTRY }}/geokube-base:latest" \
+            bash -c "pip install --no-cache-dir '.[test]' && pytest tests"

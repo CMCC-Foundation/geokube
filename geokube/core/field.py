@@ -755,7 +755,7 @@ class Field(Variable, DomainMixin):
         ds_dims = set(ds.dims)
         try:
             ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
-        except KeyError:
+        except:
             self._LOG.warn("index axis is not present in the domain.")
 
         lost_dims = ds_dims - set(ds.dims)

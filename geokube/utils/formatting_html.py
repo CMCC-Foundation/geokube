@@ -3,7 +3,8 @@ from collections import OrderedDict
 from functools import lru_cache, partial
 from html import escape
 
-import pkg_resources
+from importlib.resources import files
+
 from xarray.core.formatting import inline_variable_array_repr, short_data_repr
 from xarray.core.options import _get_boolean_with_default
 
@@ -16,7 +17,7 @@ STATIC_FILES = ("static/html/icons-svg-inline.html", "static/css/style.css")
 def _load_static_files():
     """Lazily load the resource files into memory the first time they are needed"""
     return [
-        pkg_resources.resource_string("geokube", fname).decode("utf8")
+        files("geokube").joinpath(fname).read_text(encoding="utf-8")
         for fname in STATIC_FILES
     ]
 
