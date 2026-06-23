@@ -36,6 +36,22 @@ class Variable(xr.Variable):
 
     _LOG = HCubeLogger(name="Variable")
 
+    @property
+    def nbytes(self) -> int:
+        # Estimate the *storage* footprint rather than the decoded in-memory
+        # size: when the variable is packed for serialization (e.g.
+        # scale_factor/add_offset -> int16) use the encoded dtype's itemsize,
+        # so the estimate reflects the persisted size (consistent with how
+        # Dataset.nbytes reports on-disk sizes for already-persisted cubes).
+        # Falls back to the in-memory dtype when no packing is declared.
+        enc_dtype = self.encoding.get("dtype")
+        itemsize = (
+            np.dtype(enc_dtype).itemsize
+            if enc_dtype is not None
+            else self.dtype.itemsize
+        )
+        return int(self.size) * itemsize
+
     def __init__(
         self,
         data: Union[np.ndarray, da.Array, xr.Variable, Number, Variable],

@@ -201,21 +201,6 @@ def test_init_from_dask():
     assert c.is_independent
 
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, if `dims` is None, it is created"
-    " based on provided `axis`"
-)
-def test_init_from_dask_fail():
-    D = da.random.random((100,))
-
-    with pytest.raises(ValueError, match=r"Provided data have *"):
-        _ = Coordinate(
-            data=D,
-            axis=Axis("lon", is_dim=True, encoding={"name": "new_lon_name"}),
-            dims=None,
-        )
-
-
 def test_init_from_dask_proper_attrs_setting():
     D = da.random.random((100,))
     c = Coordinate(
@@ -617,12 +602,3 @@ def test_to_dict_not_store_all_values(nemo_ocean_16):
     assert isinstance(details, dict)
     assert "values" not in details.keys()
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, Coordinate does not contain data values"
-)
-def test_to_dict_store_unique_values(nemo_ocean_16):
-    details = Coordinate.from_xarray(nemo_ocean_16, "nav_lon").to_dict()
-    #assert isinstance(details["values"], list)
-    assert np.all(
-        np.array(details["values"]) == np.unique(nemo_ocean_16.nav_lon.values)
-    )

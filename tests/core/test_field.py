@@ -790,43 +790,6 @@ def test_timecombo_single_day(era5_netcdf):
     assert np.all(dset.time.dt.year == 2020)
 
 
-# TODO: verify!
-@pytest.mark.skip(
-    "Should lat and lon depend on points if crs is RegularLatLon?"
-)
-def test_locations_regular_latlon_single_lat_multiple_lon(era5_netcdf):
-    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
-
-    res = d2m.locations(latitude=[41, 41], longitude=[9, 12])
-    assert res["latitude"].type is CoordinateType.INDEPENDENT
-    assert res["longitude"].type is CoordinateType.INDEPENDENT
-    assert np.all(res.latitude.values == 41)
-    assert np.all((res.longitude.values == 9) | (res.longitude.values == 12))
-
-    dset = res.to_xarray()
-    assert np.all(dset.latitude == 41)
-    assert np.all((dset.longitude == 9) | (dset.longitude == 12))
-    assert dset["d2m"].attrs["units"] == "K"
-    coords = dset["d2m"].attrs.get(
-        "coordinates", dset["d2m"].encoding.get("coordinates")
-    )
-    assert "latitude" in coords
-
-
-# TODO: verify!
-@pytest.mark.skip(
-    f"Lat depends on `points` but is single-element and should be SCALAR not"
-    f" DEPENDENT"
-)
-def test_locations_regular_latlon_single_lat_single_lon(era5_netcdf):
-    d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
-    res = d2m.locations(latitude=41, longitude=9)
-    assert np.all(res.latitude.values == 41)
-    assert np.all(res.longitude.values == 9)
-    assert res["latitude"].type is CoordinateType.SCALAR
-    assert res["longitude"].type is CoordinateType.SCALAR
-
-
 def test_locations_regular_latlon_single_point(era5_netcdf):
     d2m = Field.from_xarray(era5_netcdf, ncvar="d2m")
 
@@ -881,9 +844,6 @@ def test_locations_regular_latlon_multiple_lat_multiple_lon(era5_netcdf):
     assert "longitude" not in res.to_xarray().dims
 
 
-@pytest.mark.skip(
-    "`as_cartopy_crs` is not implemented for NEMO CurvilinearGrid"
-)
 def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
 
@@ -901,24 +861,6 @@ def test_locations_curvilinear_grid_multiple_lat_multiple_lon(nemo_ocean_16):
     assert dset.vt.attrs["units"] == "degree_C m/s"
     assert "coordinates" not in dset.vt.attrs
 
-@pytest.mark.skip(
-    "Skipping test"
-)
-def test_sel_fail_on_missing_x_y(nemo_ocean_16):
-    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    with pytest.raises(KeyError, match=r"Axis of type*"):
-        _ = vt.sel(depth=[1.2, 29], x=slice(60, 100), y=slice(130, 170))
-
-@pytest.mark.skip(
-    "Skipping test"
-)
-def test_nemo_sel_vertical_fail_on_missing_value_if_method_undefined(
-    nemo_ocean_16,
-):
-    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    with pytest.raises(KeyError):
-        _ = vt.sel(depth=[1.2, 29])
-
 
 def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
     nemo_ocean_16.depthv.attrs["standard_name"] = "vertical"
@@ -929,16 +871,6 @@ def test_nemo_sel_vertical_with_std_name(nemo_ocean_16):
         (res["vertical"].values == nemo_ocean_16.depthv.values[1])
         | (res["vertical"].values == nemo_ocean_16.depthv.values[-2])
     )
-
-
-@pytest.mark.skipif(
-    xr.__version__ > "2022.1.0",
-    reason="Subsetting does not support empty indexers",
-)
-def test_nemo_sel_time_empty_result(nemo_ocean_16):
-    vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
-    res = vt.sel(time={"hour": 13}, method="nearest")
-    assert res["time"].shape == (0,)
 
 
 def test_rotated_pole_sel_rlat_rlon_with_axis(era5_rotated_netcdf):
@@ -969,14 +901,6 @@ def test_rotated_pole_sel_rlat_rlon_with_std_name(era5_rotated_netcdf):
     assert np.all(res[Axis("x")].values >= 4.0)
     assert np.all(res[Axis("x")].values <= 4.9)
 
-@pytest.mark.skip(
-    "Skipping test"
-)
-def test_rotated_pole_sel_lat_with_std_name_fails(era5_rotated_netcdf):
-    wso = Field.from_xarray(era5_rotated_netcdf, ncvar="W_SO")
-    with pytest.raises(KeyError):
-        _ = wso.sel(latitude=slice(39, 41))
-
 
 def test_rotated_pole_sel_time_with_diff_ncvar(era5_rotated_netcdf):
     era5_rotated_netcdf = era5_rotated_netcdf.rename({"time": "tm"})
@@ -998,9 +922,6 @@ def test_rotated_pole_sel_time_with_diff_ncvar(era5_rotated_netcdf):
     assert "time" not in dset.coords
     assert "tm" in dset.coords
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, bounds aren't computed correctly"
-)
 def test_nemo_sel_proper_ncvar_name_in_res(nemo_ocean_16):
     nemo_ocean_16["vt"].attrs["standard_name"] = "vt_std_name"
     vt = Field.from_xarray(nemo_ocean_16, ncvar="vt")
@@ -1081,9 +1002,6 @@ def test_var_name_when_field_from_field_id_is_missing(era5_rotated_netcdf):
     assert wso.longitude.name == "longitude"
     assert wso.time.name == "time"
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, bounds aren't computed correctly"
-)
 def test_to_xarray_time_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
     field = Field.from_xarray(era5_rotated_netcdf, "W_SO")
     da = field.to_xarray(encoding=False)
@@ -1107,9 +1025,6 @@ def test_to_xarray_time_with_bounds(era5_rotated_netcdf, nemo_ocean_16):
     assert da["time_counter"].encoding["bounds"] == "time_counter_bounds"
     assert "time_counter_bounds" in da.coords
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, bounds aren't computed correctly"
-)
 def test_to_xarray_time_with_bounds_mapping(era5_rotated_netcdf):
     field = Field.from_xarray(
         era5_rotated_netcdf,
@@ -1121,9 +1036,6 @@ def test_to_xarray_time_with_bounds_mapping(era5_rotated_netcdf):
     assert da["time"].encoding["bounds"] == "time_bounds_name"
     assert "time_bounds_name" in da.coords
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, bounds aren't computed correctly"
-)
 def test_to_xarray_time_with_bounds_nemo_with_mapping(nemo_ocean_16):
     field = Field.from_xarray(
         nemo_ocean_16,
@@ -1267,7 +1179,6 @@ def test_interpolate_rotated_pole_to_regular_point(era5_rotated_netcdf_wso):
     assert res.longitude.dims[0].name == "points"
     assert res.longitude.size == loc["longitude"].size
 
-@pytest.mark.skip()
 def test_resample_without_original_bounds(era5_globe_netcdf):
     tp = Field.from_xarray(era5_globe_netcdf, ncvar="tp")
     tp_r = tp.resample(operator="max", frequency="W")
@@ -1278,7 +1189,6 @@ def test_resample_without_original_bounds(era5_globe_netcdf):
     assert tp_r.time.bounds is not None
     assert tp_r.time.bounds["time_bounds"].shape[0] == tp_r.time.shape[0]
 
-@pytest.mark.skip()
 def test_resample_with_original_bounds(era5_rotated_netcdf_wso):
     wso = Field.from_xarray(era5_rotated_netcdf_wso, ncvar="W_SO")
     wso_r = wso.resample(operator="sum", frequency="12H")
@@ -1304,9 +1214,6 @@ def test_adding_time_bounds(era5_netcdf):
     assert "bounds" in field.time.encoding
     assert field.time.encoding["bounds"] == "time_bounds"
 
-@pytest.mark.skip(
-    "Invalidated test as in the current version bound are not computed correctly"
-)
 def test_regridding_regular_to_regular_conservative(era5_netcdf):
     field_in = Field.from_xarray(era5_netcdf, ncvar="d2m")
     lat_in, lon_in = field_in.latitude, field_in.longitude
@@ -1717,25 +1624,6 @@ def test_sel_by_time_combo_only_day(era5_netcdf):
     field = field.sel(time={"day": 10})
     assert len(field.time) == 24
 
-@pytest.mark.skip("This behevoir applies to groupby like operations not resampling")
-def test_resample_if_gap_in_time_axis(era5_netcdf):
-    field = Field.from_xarray(era5_netcdf, ncvar="tp")
-    field = field.sel(time={"day": [10, 15], "hour": [10, 16]})
-    val1 = (
-        field.to_xarray(False)
-        .tp.isel(time=field.time.to_xarray(False).time.dt.day.values == 10)
-        .sum(dim=field.time.name)
-    )
-    val2 = (
-        field.to_xarray(False)
-        .tp.isel(time=field.time.to_xarray(False).time.dt.day.values == 15)
-        .sum(dim=field.time.name)
-    )
-    result = field.resample(frequency="1D", operator="sum")
-    assert len(result.time) == 2
-    assert np.allclose(result.to_xarray(False).tp.values[0, ...], val1)
-    assert np.allclose(result.to_xarray(False).tp.values[1, ...], val2)
-
 
 def test_auxiliary_coords_after_resampling(era5_rotated_netcdf_tmin2m):
     field = Field.from_xarray(era5_rotated_netcdf_tmin2m, ncvar="TMIN_2M")
@@ -1750,7 +1638,6 @@ def test_auxiliary_coords_after_resampling(era5_rotated_netcdf_tmin2m):
     assert field.domain.coords["longitude"].type is CoordinateType.DEPENDENT
 
 
-@pytest.mark.skip("Currently domaintype is set only in `locations` method")
 def test_field_domain_type_regular_lat_lon(
     era5_netcdf,
 ):

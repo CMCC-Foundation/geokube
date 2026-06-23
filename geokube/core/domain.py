@@ -448,7 +448,15 @@ class Domain(DomainMixin):
             return Domain(
                 coords=coords, crs=crs, domaintype=DomainType(domain_type)
             )
-        return Domain(coords=coords, crs=crs)
+        # Infer the domain type when it was not explicitly stashed: a shared
+        # `points` dimension marks a POINTS domain, otherwise the load is a
+        # regular/rotated/curvilinear GRIDDED domain.
+        inferred_type = (
+            DomainType.POINTS
+            if any("points" in coord.dim_names for coord in coords)
+            else DomainType.GRIDDED
+        )
+        return Domain(coords=coords, crs=crs, domaintype=inferred_type)
 
     @geokube_logging
     def to_xarray(
@@ -456,11 +464,16 @@ class Domain(DomainMixin):
     ) -> xr.core.coordinates.DatasetCoordinates:
 
         grid = {}
-        #grid = xr.Dataset(coords=self._coords.).coords
         for coord in self._coords.values():
             var_name = coord.ncvar if encoding else coord.name
-            grid[var_name] = coord.to_xarray(encoding=encoding)[var_name]
-        #grid = xr.Dataset(coords=grid).coords
+            coord_ds = coord.to_xarray(encoding=encoding)
+            grid[var_name] = coord_ds[var_name]
+            # Carry over any bounds variables the coordinate emits; otherwise
+            # the `bounds` encoding set on the coordinate would dangle and the
+            # bounds would be silently dropped from Domain/Field.to_xarray.
+            for bnds_name in coord_ds.coords:
+                if bnds_name != var_name and bnds_name not in grid:
+                    grid[bnds_name] = coord_ds[bnds_name]
         if self.crs is not None:
             crs_name = self.grid_mapping_name
             not_none_attrs = self.crs.as_crs_attributes()
