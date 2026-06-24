@@ -64,6 +64,20 @@ def _is_glob(path) -> bool:
     return isinstance(path, str) and any(c in path for c in "*?[")
 
 
+def _resolve_files(path):
+    """Resolve a single-cube ``path`` to a concrete file list (writer side).
+
+    A glob string is expanded; a plain string is wrapped to a 1-element list
+    (NOT character-split, as ``list(str)`` would do); a list/tuple is returned
+    as a list unchanged.
+    """
+    if _is_glob(path):
+        return sorted(glob.glob(path))
+    if isinstance(path, str):
+        return [path]
+    return list(path)
+
+
 def _open_raw(path, *, engine, multi, **kwargs):
     """Open a resource directly (no caching), lazy/dask-backed."""
     engine = engine or _get_engine(path)
@@ -117,8 +131,8 @@ def open_datacube(
 ) -> geokube.core.datacube.DataCube:
     """Open one :class:`DataCube` from a single resource, a list of files or a glob.
 
-    With ``metadata_caching=True`` (multi-file paths only) this is a **read-only**
-    operation: it loads the kerchunk reference published under the
+    With ``metadata_caching=True`` (single file, list of files or glob) this is a
+    **read-only** operation: it loads the kerchunk reference published under the
     ``metadata_cache_path`` *directory* by the catalog (see
     :func:`build_metadata_cache`) and never writes. If the cache is absent it raises
     :class:`~geokube.core.errs.CacheNotExist`.
@@ -128,7 +142,10 @@ def open_datacube(
     engine = kwargs.pop("engine", None)
     multi = isinstance(path, (list, tuple)) or _is_glob(path)
 
-    if metadata_caching and multi:
+    if metadata_caching:
+        # Read-only cache load applies uniformly to single- and multi-file
+        # paths; _read_datacube_cache ignores `path` and raises CacheNotExist
+        # if the cache is absent.
         return _read_datacube_cache(
             metadata_cache_path, id_pattern=id_pattern, mapping=mapping
         )
@@ -257,6 +274,7 @@ def build_metadata_cache(
     combine: str = "by_coords",
     concat_dim: Optional[str] = None,
     engine: Optional[str] = None,
+    scheduler="auto",
     concat_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     identical_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     **kwargs,
@@ -264,7 +282,7 @@ def build_metadata_cache(
     """Build / refresh the metadata cache (catalog/writer entrypoint).
 
     * ``pattern is None`` -> single combined cube: caches the kerchunk reference for
-      the resolved file list/glob under ``metadata_cache_path``.
+      the resolved single file, file list or glob under ``metadata_cache_path``.
     * ``pattern`` given -> catalog: builds the file-index and a per-group kerchunk
       reference; the cube stores are written first and ``index.json`` last, so a
       concurrent read-only reader never sees an index pointing at missing stores.
@@ -282,13 +300,20 @@ def build_metadata_cache(
     re-read. Groups whose format kerchunk cannot reference (e.g. GeoTIFF) are
     **skipped** (not cached) and reported in the summary.
 
+    The per-file reference build is the parallelizable cost. ``scheduler`` selects
+    how it runs, xarray-style: ``"auto"`` (default) defers to dask, auto-attaching
+    to an active distributed ``Client`` (or a ``dask.config`` scheduler) and falling
+    back to serial in-process when none is active; ``None`` forces serial; any other
+    value (``"processes"`` to dodge the h5py GIL without a cluster, ``"threads"``, a
+    ``Client``, ...) is passed through to :func:`dask.compute`.
+
     Returns ``{"groups": int, "built": int, "skipped": [..]}``.
     """
     if metadata_cache_path is None:
         raise ValueError("`metadata_cache_path` must be provided.")
 
     if pattern is None:
-        files = sorted(glob.glob(path)) if _is_glob(path) else list(path)
+        files = _resolve_files(path)
         if not files:
             raise ValueError("No files found for the provided path!")
         cache_dir = _cache.ensure_cache_dir(metadata_cache_path)
@@ -298,6 +323,7 @@ def build_metadata_cache(
             combine=combine,
             concat_dim=concat_dim,
             engine=engine,
+            scheduler=scheduler,
         )
         return {
             "groups": 1,
@@ -318,6 +344,7 @@ def build_metadata_cache(
             combine=combine,
             concat_dim=concat_dim,
             engine=engine,
+            scheduler=scheduler,
         )
         if ok:
             built += 1
@@ -335,7 +362,7 @@ def build_metadata_cache(
 
 
 def _build_datacube_cache(
-    files, cache_dir, *, combine, concat_dim, engine
+    files, cache_dir, *, combine, concat_dim, engine, scheduler="auto"
 ) -> bool:
     """Build/refresh one cube's kerchunk store under ``cache_dir`` (incremental).
 
@@ -372,6 +399,7 @@ def _build_datacube_cache(
         reuse_keys=reuse,
         combine=combine,
         concat_dim=concat_dim,
+        scheduler=scheduler,
     )
     if payload is None:
         return False

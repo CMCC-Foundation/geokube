@@ -122,6 +122,46 @@ def test_build_is_incremental(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_build_explicit_scheduler_matches_serial(tmp_path):
+    # An explicit dask scheduler must produce byte-identical references (and a
+    # matching cube) to the serial build. "synchronous" exercises the delayed/
+    # compute plumbing deterministically, without real-concurrency h5py races.
+    files = _make_slabs(tmp_path)["nc4"]
+    serial, par = tmp_path / "serial", tmp_path / "par"
+    build_metadata_cache(files, metadata_cache_path=str(serial), scheduler=None)
+    build_metadata_cache(files, metadata_cache_path=str(par), scheduler="synchronous")
+
+    s_store, p_store = _kerchunk.load_store(str(serial)), _kerchunk.load_store(str(par))
+    assert p_store["file_refs"] == s_store["file_refs"]  # same refs, in input order
+    assert p_store["combine"] == s_store["combine"]
+    cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(par))
+    _assert_cube_values_match(cube, open_datacube(files))
+
+
+@pytest.mark.integration
+def test_build_auto_attaches_to_active_scheduler(tmp_path, monkeypatch):
+    # scheduler="auto" (default) defers to dask like xarray: with a scheduler active
+    # it routes the build through dask.compute; with none active it stays serial.
+    import dask
+
+    files = _make_slabs(tmp_path)["nc4"]
+    serial = tmp_path / "serial"
+    build_metadata_cache(files, metadata_cache_path=str(serial), scheduler=None)
+
+    real_compute, calls = dask.compute, []
+    monkeypatch.setattr(
+        dask, "compute", lambda *a, **k: (calls.append(k), real_compute(*a, **k))[1]
+    )
+    with dask.config.set(scheduler="synchronous"):
+        build_metadata_cache(files, metadata_cache_path=str(tmp_path / "auto"))
+    assert calls  # an active scheduler was picked up automatically
+    assert (
+        _kerchunk.load_store(str(tmp_path / "auto"))["file_refs"]
+        == _kerchunk.load_store(str(serial))["file_refs"]
+    )
+
+
+@pytest.mark.integration
 def test_datacube_mixed_format_combine(tmp_path):
     # by_coords recombines at the decoded-array level, so mixed NetCDF3/NetCDF4
     # files combine into one cube without any partitioning.
@@ -188,6 +228,42 @@ def test_legacy_file_path_raises(tmp_path):
     with pytest.raises(_cache.LegacyCacheFileError):
         open_datacube(files, metadata_caching=True,
                       metadata_cache_path=str(legacy), concat_dims=[CDIM])
+
+
+# ---------------------------------------------------------- datacube: single file
+# The cache applies uniformly to a standalone single-file cube (bare string path),
+# not just multi-file lists/globs. The open-time payoff for one file is negligible;
+# the value is a uniform code path and having the mechanism ready if the dataset
+# later grows to many files. Same read-only contract: CacheNotExist if absent.
+
+@pytest.mark.integration
+def test_single_file_datacube_build_and_read_equivalence(tmp_path):
+    cache = tmp_path / "cache"
+    summary = build_metadata_cache(SRC, metadata_cache_path=str(cache))
+    assert summary["built"] == 1 and summary["skipped"] == []
+    assert os.path.isfile(cache / _kerchunk.STORE_FILE)
+    assert len(_kerchunk.load_store(str(cache))["file_refs"]) == 1
+
+    cube = open_datacube(SRC, metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(SRC))
+
+
+@pytest.mark.integration
+def test_single_file_reader_raises_if_absent(tmp_path):
+    with pytest.raises(CacheNotExist):
+        open_datacube(SRC, metadata_caching=True,
+                      metadata_cache_path=str(tmp_path / "nope"))
+
+
+@pytest.mark.integration
+def test_single_file_list_input_still_builds(tmp_path):
+    # A 1-element list must keep working (no regression from the str->[str] fix).
+    cache = tmp_path / "cache"
+    summary = build_metadata_cache([SRC], metadata_cache_path=str(cache))
+    assert summary["built"] == 1
+    cube = open_datacube([SRC], metadata_caching=True,
+                         metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube([SRC]))
 
 
 # -------------------------------------------------------------- dataset: build/read

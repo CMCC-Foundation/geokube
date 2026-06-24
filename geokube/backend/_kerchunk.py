@@ -139,6 +139,48 @@ def reference_one(path: str) -> dict:
     )
 
 
+# Sentinel default: defer scheduler selection to dask, like xarray does.
+SCHEDULER_AUTO = "auto"
+
+
+def _generate_references(
+    files: Sequence[str], *, scheduler=SCHEDULER_AUTO
+) -> List[dict]:
+    """Build the per-file references for ``files``, returned in input order.
+
+    Each :func:`reference_one` reads one file's metadata independently of the
+    others, so this is the embarrassingly-parallel hot spot of a cold build.
+    ``scheduler`` controls how those reads run:
+
+    * ``"auto"`` (default): mirror xarray and defer to dask's resolution. If a
+      scheduler is active (a distributed ``Client`` set as default, or one in
+      ``dask.config``) it is picked up automatically; with nothing active we stay
+      serial in-process rather than spin up dask's threaded default, which is
+      GIL-bound for HDF5 metadata parsing and would only add overhead.
+    * ``None``: force serial in-process (no dask involved).
+    * anything else (``"processes"``, ``"threads"``, ``"synchronous"``, a
+      distributed ``Client``, a get-callable): forwarded verbatim to
+      :func:`dask.compute` as its ``scheduler`` — use ``"processes"`` to dodge the
+      h5py/HDF5 GIL without a cluster.
+
+    ``reference_one`` is resolved on the module at call time, so a monkeypatch (and
+    the in-process schedulers) see the override; with ``"processes"`` the workers
+    re-import this module, re-applying the fill-value shim.
+    """
+    if not files:
+        return []
+    if scheduler is None:
+        return [reference_one(f) for f in files]
+    import dask
+    from dask.base import get_scheduler
+
+    if scheduler == SCHEDULER_AUTO and get_scheduler() is None:
+        return [reference_one(f) for f in files]
+    tasks = [dask.delayed(reference_one)(f) for f in files]
+    compute_kwargs = {} if scheduler == SCHEDULER_AUTO else {"scheduler": scheduler}
+    return list(dask.compute(*tasks, **compute_kwargs))
+
+
 # ------------------------------------------------------------- combine / open
 
 def open_reference(ref: Mapping) -> xr.Dataset:
@@ -186,15 +228,18 @@ def build_store(
     *,
     combine: str = COMBINE_BY_COORDS,
     concat_dim=None,
+    scheduler=SCHEDULER_AUTO,
 ) -> Optional[dict]:
     """In-memory store payload (all per-file refs built fresh).
 
-    Returns ``None`` if any file is not kerchunk-referenceable (caller falls back to
-    ``open_mfdataset``).
+    ``scheduler`` parallelizes the per-file reference build (see
+    :func:`_generate_references`). Returns ``None`` if any file is not
+    kerchunk-referenceable (caller falls back to ``open_mfdataset``).
     """
     if not all(is_referenceable(f) for f in files):
         return None
-    file_refs = [(f, reference_one(f)) for f in files]
+    refs = _generate_references(files, scheduler=scheduler)
+    file_refs = list(zip(files, refs))
     return _assemble_store(file_refs, combine=combine, concat_dim=concat_dim)
 
 
@@ -224,29 +269,45 @@ def cached_build_store(
     reuse_keys: Sequence[str] = (),
     combine: str = COMBINE_BY_COORDS,
     concat_dim=None,
+    scheduler=SCHEDULER_AUTO,
 ) -> Optional[dict]:
     """Incrementally (re)build the on-disk store under ``cache_dir``.
 
     Per-file references whose POSIX path is in ``reuse_keys`` are loaded from disk;
-    the rest are regenerated and persisted. Stale per-file refs are pruned and the
-    combined ``store.json`` is written. Returns the payload, or ``None`` (with no
-    writes) if a file is not referenceable — the caller then falls back to
-    ``open_mfdataset``.
+    the rest (the *stale* set) are regenerated — that build is the parallelizable
+    step and honours ``scheduler`` (see :func:`_generate_references`). Newly built
+    references are persisted, stale per-file refs are pruned and the combined
+    ``store.json`` is written. Returns the payload, or ``None`` (with no writes) if a
+    file is not referenceable — the caller then falls back to ``open_mfdataset``.
     """
     if not all(is_referenceable(f) for f in files):
         return None
     reuse = set(reuse_keys)
+    posix_paths = [_make_path_posix(f) for f in files]
+    # Generate the stale references up front (optionally in parallel); reused ones
+    # are read back from their per-file JSON below. Writes stay on the driver, in
+    # input order, so each ``files/<hash>.json`` has a single, atomic writer.
+    stale_idx = [i for i, p in enumerate(posix_paths) if p not in reuse]
+    fresh = dict(
+        zip(
+            stale_idx,
+            _generate_references([files[i] for i in stale_idx], scheduler=scheduler),
+        )
+    )
     file_refs = []
-    for f in files:
-        posix = _make_path_posix(f)
-        rp = _ref_file(cache_dir, posix)
-        ref = _cache.read_json(rp) if posix in reuse else None
-        if ref is None:
-            ref = reference_one(f)
+    for i, f in enumerate(files):
+        rp = _ref_file(cache_dir, posix_paths[i])
+        if i in fresh:
+            ref = fresh[i]
             _cache.write_json(rp, ref)
+        else:  # reused: load from disk, regenerating on a (rare) cache miss
+            ref = _cache.read_json(rp)
+            if ref is None:
+                ref = reference_one(f)
+                _cache.write_json(rp, ref)
         file_refs.append((f, ref))
     payload = _assemble_store(file_refs, combine=combine, concat_dim=concat_dim)
-    _prune_ref_files(cache_dir, {_make_path_posix(f) for f in files})
+    _prune_ref_files(cache_dir, set(posix_paths))
     _cache.write_json(os.path.join(cache_dir, STORE_FILE), payload)
     return payload
 
