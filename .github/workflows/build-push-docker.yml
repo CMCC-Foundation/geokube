@@ -65,9 +65,15 @@ jobs:
           flavor: |
             latest=${{ github.ref == 'refs/heads/main' }}
           tags: |
-            type=ref,event=pr
+            # PRs -> unique per commit, so Kubernetes always rolls out the new
+            # dev image. A floating pr-<n> tag would keep the same name across
+            # builds and many pods would never re-pull the updated digest.
+            type=sha,prefix=pr-${{ github.event.pull_request.number }}-,enable=${{ github.event_name == 'pull_request' }}
+            # Everything except PRs -> traceable sha tag (also covers workflow_dispatch).
+            type=sha,enable=${{ github.event_name != 'pull_request' }}
+            # Release (published GitHub release) -> image tag == release tag.
             type=ref,event=tag
-            type=sha
+            # main only -> timestamp (+ :latest via flavor above).
             type=raw,value={{date 'YYYY.MM.DD.HH.mm'}},enable=${{ github.ref == 'refs/heads/main' }}
 
       - name: Build and push
@@ -75,8 +81,10 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          # Pull requests are build-only validation; everything else is pushed.
-          push: ${{ github.event_name != 'pull_request' }}
+          # PRs push too now: the image is deployed to the dev environment for
+          # testing before promotion to release. (Build is still gated on the
+          # unit + integration test jobs above, so broken images never push.)
+          push: true
           build-args: |
             BASE_IMAGE=${{ steps.base.outputs.image }}
           tags: ${{ steps.meta.outputs.tags }}
