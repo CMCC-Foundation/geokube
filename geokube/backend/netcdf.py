@@ -254,9 +254,11 @@ def build_metadata_cache(
     metadata_cache_path: str,
     id_pattern: Optional[str] = None,
     mapping: Optional[Mapping[str, Mapping[str, str]]] = None,
-    concat_dims: Optional[Sequence[str]] = None,
-    identical_dims: Optional[Sequence[str]] = None,
+    combine: str = "by_coords",
+    concat_dim: Optional[str] = None,
     engine: Optional[str] = None,
+    concat_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
+    identical_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     **kwargs,
 ) -> dict:
     """Build / refresh the metadata cache (catalog/writer entrypoint).
@@ -267,10 +269,18 @@ def build_metadata_cache(
       reference; the cube stores are written first and ``index.json`` last, so a
       concurrent read-only reader never sees an index pointing at missing stores.
 
+    ``combine`` selects how the per-file references are recombined at open time,
+    mirroring ``open_mfdataset``: ``"by_coords"`` (default; orders by coordinate, so
+    it tolerates out-of-order filenames and mixed NetCDF3/NetCDF4) or ``"nested"``
+    along ``concat_dim`` for a bare index axis lacking a coordinate (e.g. NSIDC
+    ``tdim``). The spec is stored in the cache and replayed by the reader, which
+    therefore needs no combine argument. (``concat_dims``/``identical_dims`` are
+    accepted for backward compatibility but ignored.)
+
     Invalidation is automatic and **incremental** (per-file ``(mtime, size)``
     manifest): unchanged files reuse their cached references; only changed ones are
-    re-read. Groups whose format kerchunk cannot reference (e.g. GeoTIFF) or where it
-    would drop variables are **skipped** (not cached) and reported in the summary.
+    re-read. Groups whose format kerchunk cannot reference (e.g. GeoTIFF) are
+    **skipped** (not cached) and reported in the summary.
 
     Returns ``{"groups": int, "built": int, "skipped": [..]}``.
     """
@@ -285,8 +295,8 @@ def build_metadata_cache(
         ok = _build_datacube_cache(
             files,
             cache_dir,
-            concat_dims=concat_dims,
-            identical_dims=identical_dims,
+            combine=combine,
+            concat_dim=concat_dim,
             engine=engine,
         )
         return {
@@ -305,8 +315,8 @@ def build_metadata_cache(
         ok = _build_datacube_cache(
             df[FILES_COL][i],
             _cube_cache_dir(cubes_dir, i),
-            concat_dims=concat_dims,
-            identical_dims=identical_dims,
+            combine=combine,
+            concat_dim=concat_dim,
             engine=engine,
         )
         if ok:
@@ -325,7 +335,7 @@ def build_metadata_cache(
 
 
 def _build_datacube_cache(
-    files, cache_dir, *, concat_dims, identical_dims, engine
+    files, cache_dir, *, combine, concat_dim, engine
 ) -> bool:
     """Build/refresh one cube's kerchunk store under ``cache_dir`` (incremental).
 
@@ -337,8 +347,8 @@ def _build_datacube_cache(
     cache_dir = _cache.ensure_cache_dir(cache_dir)
     context = {
         "kind": "datacube",
-        "concat_dims": list(concat_dims) if concat_dims else None,
-        "identical_dims": list(identical_dims) if identical_dims else None,
+        "combine": combine,
+        "concat_dim": concat_dim,
         "kerchunk_version": _kerchunk.KERCHUNK_VERSION,
     }
     current = _cache.build_manifest(files, context=context)
@@ -360,8 +370,8 @@ def _build_datacube_cache(
         files,
         cache_dir,
         reuse_keys=reuse,
-        concat_dims=concat_dims,
-        identical_dims=identical_dims,
+        combine=combine,
+        concat_dim=concat_dim,
     )
     if payload is None:
         return False

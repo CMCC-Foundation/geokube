@@ -2,26 +2,29 @@
 
 Opening hundreds/thousands of NetCDF files with ``xr.open_mfdataset`` can take
 hours: the cost is the *open* (per-file metadata read + coordinate alignment), not
-the data processing. This module persists that combined-open result as **kerchunk
+the data processing. This module persists that per-file metadata as **kerchunk
 reference JSON** instead of a pickle, so subsequent opens are cheap and the cache is
 portable, secure and robust across library versions.
 
-Design (validated by the Phase-0 spike):
+Design:
 
 * Each file gets a per-file reference via the maker matching its on-disk format
   (HDF5/NetCDF4 -> :class:`SingleHdf5ToZarr`; NetCDF3-classic ->
-  :class:`NetCDF3ToZarr`), chosen by magic-byte sniffing.
-* Files are **partitioned by encoding signature** (dtype, chunks, compressor,
-  filters per variable). A single Zarr ``.zarray`` cannot describe heterogeneous
-  layouts, so e.g. uncompressed/contiguous NetCDF3 and chunked/compressed NetCDF4
-  fall into different partitions.
-* Each homogeneous partition is concatenated with :class:`MultiZarrToZarr` into one
-  combined reference; the (few) partitions are recombined at open time with
-  :func:`xarray.combine_by_coords` — which infers everything at the decoded-array
-  level, so mixed-format groups Just Work without pickle.
+  :class:`NetCDF3ToZarr`), chosen by magic-byte sniffing. These are persisted under
+  ``files/`` for incremental rebuilds.
+* The combined store (:data:`STORE_FILE`) holds the list of per-file references plus
+  a **combine spec**. At open time the references are opened lazily and recombined
+  with xarray exactly as ``open_mfdataset`` would — ``combine_by_coords`` (the
+  default, infers ordering from coordinates and so handles files named out of
+  coordinate order *and* mixed NetCDF3/NetCDF4 formats), or ``combine_nested`` along
+  an explicit ``concat_dim`` for archives whose concat axis is a bare *index*
+  dimension with no coordinate (e.g. NSIDC ``tdim``, whose timestamps live in a
+  separate ``time(tdim)`` aux coordinate).
 
-The on-disk payload (one JSON per partition, see ``_cache`` layout) is produced by
-:func:`build_store` and reopened by :func:`open_store`.
+Recombining at the decoded-array level (rather than pre-concatenating references)
+keeps the combine identical to the legacy direct open, while still paying the
+per-file metadata read only once. The payload is produced by :func:`build_store` /
+:func:`cached_build_store` and reopened by :func:`open_store`.
 """
 from __future__ import annotations
 
@@ -30,12 +33,6 @@ __all__ = [
     "detect_format",
     "is_referenceable",
     "reference_one",
-    "zarray_signature",
-    "signature_key",
-    "partition",
-    "infer_concat_dims",
-    "infer_identical_dims",
-    "combine_partition",
     "open_reference",
     "build_store",
     "cached_build_store",
@@ -45,9 +42,8 @@ __all__ = [
 
 import hashlib
 import importlib
-import json
 import os
-from typing import Any, List, Mapping, Optional, Sequence, Tuple
+from typing import List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import fsspec
@@ -56,7 +52,6 @@ import xarray as xr
 import kerchunk
 from kerchunk.hdf import SingleHdf5ToZarr
 from kerchunk.netCDF3 import NetCDF3ToZarr
-from kerchunk.combine import MultiZarrToZarr
 
 from geokube.backend import _cache
 from geokube.utils.format_parsing import _make_path_posix
@@ -65,7 +60,11 @@ KERCHUNK_VERSION = kerchunk.__version__
 
 # Cache-directory layout for the per-cube kerchunk store.
 FILES_SUBDIR = "files"      # one per-file reference JSON (enables incremental rebuild)
-STORE_FILE = "store.json"   # the combined per-partition references
+STORE_FILE = "store.json"   # per-file references + combine spec
+
+# Combine strategies persisted in the store and replayed at open time.
+COMBINE_BY_COORDS = "by_coords"
+COMBINE_NESTED = "nested"
 
 
 def _patch_zarr_fill_value() -> None:
@@ -140,109 +139,7 @@ def reference_one(path: str) -> dict:
     )
 
 
-# ------------------------------------------------------------------ signatures
-
-def _refs_dict(ref: Mapping) -> Mapping:
-    return ref.get("refs", ref)
-
-
-def _var_names(ref: Mapping) -> List[str]:
-    return sorted(
-        k[: -len("/.zarray")] for k in _refs_dict(ref) if k.endswith("/.zarray")
-    )
-
-
-def _array_dims(ref: Mapping, var: str) -> List[str]:
-    zattrs = _refs_dict(ref).get(f"{var}/.zattrs")
-    if zattrs is None:
-        return []
-    z = json.loads(zattrs) if isinstance(zattrs, str) else zattrs
-    return list(z.get("_ARRAY_DIMENSIONS", []))
-
-
-def zarray_signature(ref: Mapping) -> dict:
-    """Per-variable encoding signature: ``{var: [dtype, chunks, compressor, filters]}``."""
-    sig = {}
-    for k, v in _refs_dict(ref).items():
-        if k.endswith("/.zarray"):
-            var = k[: -len("/.zarray")]
-            za = json.loads(v) if isinstance(v, str) else v
-            sig[var] = [
-                za.get("dtype"),
-                za.get("chunks"),
-                za.get("compressor"),
-                za.get("filters"),
-            ]
-    return sig
-
-
-def signature_key(ref: Mapping) -> str:
-    """Stable hashable key for a reference's encoding signature."""
-    return json.dumps(zarray_signature(ref), sort_keys=True)
-
-
-def partition(
-    files_refs: Sequence[Tuple[str, dict]]
-) -> List[Tuple[str, List[Tuple[str, dict]]]]:
-    """Group ``(path, ref)`` pairs by identical encoding signature (first-seen order)."""
-    groups: dict = {}
-    order: List[str] = []
-    for path, ref in files_refs:
-        key = signature_key(ref)
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append((path, ref))
-    return [(k, groups[k]) for k in order]
-
-
-# ----------------------------------------------------------------- dim inference
-
-def infer_identical_dims(ref: Mapping, concat_dims: Sequence[str]) -> List[str]:
-    """Variables that do NOT span any concat dim -> identical across files."""
-    cd = set(concat_dims)
-    return [v for v in _var_names(ref) if not (set(_array_dims(ref, v)) & cd)]
-
-
-def infer_concat_dims(refs: Sequence[dict]) -> Optional[List[str]]:
-    """Best-effort concat dims: dimension coords that DIFFER across files.
-
-    Opens the first two references (cheap, metadata only). Returns ``[]`` for a
-    single file, the differing dimension-coord names, or ``None`` when nothing
-    varies (ambiguous -> caller should fall back to ``open_mfdataset``).
-    """
-    if len(refs) < 2:
-        return []
-    ds0 = open_reference(refs[0])
-    ds1 = open_reference(refs[1])
-    diff = []
-    for d in ds0.sizes:
-        if d in ds0.coords and d in ds1.coords:
-            v0 = np.asarray(ds0[d].values)
-            v1 = np.asarray(ds1[d].values)
-            if v0.shape != v1.shape or not np.array_equal(v0, v1):
-                diff.append(d)
-    return diff or None
-
-
 # ------------------------------------------------------------- combine / open
-
-def combine_partition(
-    refs: Sequence[dict],
-    concat_dims: Sequence[str],
-    identical_dims: Optional[Sequence[str]] = None,
-) -> dict:
-    """MultiZarrToZarr a homogeneous partition (or return the lone ref)."""
-    if len(refs) == 1:
-        return refs[0]
-    if identical_dims is None:
-        identical_dims = infer_identical_dims(refs[0], concat_dims)
-    return MultiZarrToZarr(
-        list(refs),
-        concat_dims=list(concat_dims),
-        identical_dims=list(identical_dims),
-    ).translate()
-
 
 def open_reference(ref: Mapping) -> xr.Dataset:
     """Open a kerchunk reference as a lazy, CF-decoded xarray Dataset."""
@@ -253,56 +150,52 @@ def open_reference(ref: Mapping) -> xr.Dataset:
     )
 
 
+def _combine(datasets: Sequence[xr.Dataset], combine: str, concat_dim) -> xr.Dataset:
+    """Recombine per-file datasets the way the legacy direct open would.
+
+    ``by_coords`` orders by coordinate values (robust to file naming and to mixed
+    NetCDF3/NetCDF4 formats); ``nested`` stacks in the given (already coordinate- or
+    filename-sorted) order along ``concat_dim`` for bare index axes without a
+    coordinate.
+    """
+    if len(datasets) == 1:
+        return datasets[0]
+    if combine == COMBINE_NESTED:
+        return xr.combine_nested(
+            list(datasets), concat_dim=concat_dim, combine_attrs="override"
+        )
+    return xr.combine_by_coords(list(datasets), combine_attrs="override")
+
+
 # --------------------------------------------------------------- store payloads
 
 def _assemble_store(
-    file_refs: Sequence[Tuple[str, dict]],
-    concat_dims: Optional[Sequence[str]],
-    identical_dims: Optional[Sequence[str]],
-) -> Optional[dict]:
-    """Partition + concatenate per-file refs into the combined store payload.
-
-    Returns ``None`` if ``concat_dims`` is not given and cannot be inferred.
-    """
-    if concat_dims is None:
-        concat_dims = infer_concat_dims([r for _, r in file_refs])
-        if concat_dims is None:
-            return None
-    partitions = []
-    for sig_key, items in partition(file_refs):
-        combined = combine_partition(
-            [r for _, r in items], concat_dims, identical_dims
-        )
-        partitions.append(
-            {
-                "signature": sig_key,
-                "files": [p for p, _ in items],
-                "ref": combined,
-            }
-        )
+    file_refs: Sequence[Tuple[str, dict]], *, combine: str, concat_dim
+) -> dict:
+    """Package per-file refs + combine spec into the combined store payload."""
     return {
         "kerchunk_version": KERCHUNK_VERSION,
-        "concat_dims": list(concat_dims),
-        "identical_dims": list(identical_dims) if identical_dims else None,
-        "partitions": partitions,
+        "combine": combine,
+        "concat_dim": concat_dim,
+        "file_refs": [r for _, r in file_refs],
     }
 
 
 def build_store(
     files: Sequence[str],
     *,
-    concat_dims: Optional[Sequence[str]] = None,
-    identical_dims: Optional[Sequence[str]] = None,
+    combine: str = COMBINE_BY_COORDS,
+    concat_dim=None,
 ) -> Optional[dict]:
     """In-memory store payload (all per-file refs built fresh).
 
-    Returns ``None`` if any file is not kerchunk-referenceable, or if concat dims
-    cannot be determined (caller falls back to ``open_mfdataset``).
+    Returns ``None`` if any file is not kerchunk-referenceable (caller falls back to
+    ``open_mfdataset``).
     """
     if not all(is_referenceable(f) for f in files):
         return None
     file_refs = [(f, reference_one(f)) for f in files]
-    return _assemble_store(file_refs, concat_dims, identical_dims)
+    return _assemble_store(file_refs, combine=combine, concat_dim=concat_dim)
 
 
 def _ref_file(cache_dir: str, posix_path: str) -> str:
@@ -329,16 +222,16 @@ def cached_build_store(
     cache_dir: str,
     *,
     reuse_keys: Sequence[str] = (),
-    concat_dims: Optional[Sequence[str]] = None,
-    identical_dims: Optional[Sequence[str]] = None,
+    combine: str = COMBINE_BY_COORDS,
+    concat_dim=None,
 ) -> Optional[dict]:
     """Incrementally (re)build the on-disk store under ``cache_dir``.
 
     Per-file references whose POSIX path is in ``reuse_keys`` are loaded from disk;
     the rest are regenerated and persisted. Stale per-file refs are pruned and the
     combined ``store.json`` is written. Returns the payload, or ``None`` (with no
-    writes) if a file is not referenceable / concat dims are indeterminate — the
-    caller then falls back to ``open_mfdataset``.
+    writes) if a file is not referenceable — the caller then falls back to
+    ``open_mfdataset``.
     """
     if not all(is_referenceable(f) for f in files):
         return None
@@ -352,9 +245,7 @@ def cached_build_store(
             ref = reference_one(f)
             _cache.write_json(rp, ref)
         file_refs.append((f, ref))
-    payload = _assemble_store(file_refs, concat_dims, identical_dims)
-    if payload is None:
-        return None
+    payload = _assemble_store(file_refs, combine=combine, concat_dim=concat_dim)
     _prune_ref_files(cache_dir, {_make_path_posix(f) for f in files})
     _cache.write_json(os.path.join(cache_dir, STORE_FILE), payload)
     return payload
@@ -367,7 +258,9 @@ def load_store(cache_dir: str) -> Optional[dict]:
 
 def open_store(payload: Mapping) -> xr.Dataset:
     """Reopen the combined lazy dataset from a :func:`build_store` payload."""
-    datasets = [open_reference(p["ref"]) for p in payload["partitions"]]
-    if len(datasets) == 1:
-        return datasets[0]
-    return xr.combine_by_coords(datasets, combine_attrs="override")
+    datasets = [open_reference(r) for r in payload["file_refs"]]
+    return _combine(
+        datasets,
+        payload.get("combine", COMBINE_BY_COORDS),
+        payload.get("concat_dim"),
+    )

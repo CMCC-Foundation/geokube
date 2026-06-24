@@ -122,25 +122,42 @@ def test_build_is_incremental(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
-def test_datacube_mixed_partition_combine(tmp_path):
+def test_datacube_mixed_format_combine(tmp_path):
+    # by_coords recombines at the decoded-array level, so mixed NetCDF3/NetCDF4
+    # files combine into one cube without any partitioning.
     slabs = _make_slabs(tmp_path, formats=("nc4", "nc3"))
     mixed = slabs["nc4"][:2] + slabs["nc3"][2:]
     cache = tmp_path / "cache"
-    build_metadata_cache(mixed, metadata_cache_path=str(cache), concat_dims=[CDIM])
-    assert len(_kerchunk.load_store(str(cache))["partitions"]) == 2
-    cube = open_datacube(mixed, metadata_caching=True,
-                         metadata_cache_path=str(cache), concat_dims=[CDIM])
-    _assert_cube_values_match(cube, open_datacube(mixed, concat_dims=[CDIM]))
+    build_metadata_cache(mixed, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    assert len(store["file_refs"]) == len(mixed)
+    assert store["combine"] == "by_coords"
+    cube = open_datacube(mixed, metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(mixed))
 
 
 @pytest.mark.integration
-def test_datacube_inferred_concat_dims(tmp_path):
+def test_datacube_default_combine_by_coords(tmp_path):
     files = _make_slabs(tmp_path)["nc4"]
     cache = tmp_path / "cache"
-    build_metadata_cache(files, metadata_cache_path=str(cache))  # infer concat dims
-    assert _kerchunk.load_store(str(cache))["concat_dims"] == [CDIM]
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    assert _kerchunk.load_store(str(cache))["combine"] == "by_coords"
     cube = open_datacube(files, metadata_caching=True,
                          metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(files))
+
+
+@pytest.mark.integration
+def test_datacube_nested_combine(tmp_path):
+    # `nested` stacks in file order along an explicit concat_dim (for bare index
+    # axes without a coordinate); the spec is persisted and replayed by the reader.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache),
+                         combine="nested", concat_dim=CDIM)
+    store = _kerchunk.load_store(str(cache))
+    assert store["combine"] == "nested" and store["concat_dim"] == CDIM
+    cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
     _assert_cube_values_match(cube, open_datacube(files))
 
 
