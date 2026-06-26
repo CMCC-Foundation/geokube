@@ -138,27 +138,38 @@ def open_datacube(
     :class:`~geokube.core.errs.CacheNotExist`.
 
     Without caching it opens the data directly (lazy/dask-backed).
+
+    ``preprocess`` (optional, ``Callable[[xr.Dataset], xr.Dataset]``) is applied to
+    the *combined* raw dataset immediately before building the cube — on every path
+    (cached/non-cached, single/multi). NOTE: it runs once on the combined dataset
+    (after ``open_mfdataset`` concatenation / after the kerchunk store is opened),
+    not per file as ``xr.open_mfdataset(preprocess=...)`` does. Equivalent for
+    transforms on a static grid (e.g. WRF coord/dim normalization); flag any consumer
+    whose ``preprocess`` relies on per-file application.
     """
     engine = kwargs.pop("engine", None)
+    # `preprocess` is a geokube-level transform applied to the *combined* dataset
+    # right before building the cube, NOT an xarray-opener kwarg. Handling it here
+    # makes it work identically on the cached and non-cached paths and avoids
+    # passing it to xr.open_dataset (which would raise TypeError).
+    preprocess = kwargs.pop("preprocess", None)
     multi = isinstance(path, (list, tuple)) or _is_glob(path)
 
     if metadata_caching:
-        # Read-only cache load applies uniformly to single- and multi-file
-        # paths; _read_datacube_cache ignores `path` and raises CacheNotExist
-        # if the cache is absent.
-        return _read_datacube_cache(
-            metadata_cache_path, id_pattern=id_pattern, mapping=mapping
-        )
+        raw = _read_raw_cache(metadata_cache_path)
+    else:
+        raw = _open_raw(path, engine=engine, multi=multi, **kwargs)
 
-    raw = _open_raw(path, engine=engine, multi=multi, **kwargs)
+    if preprocess is not None:
+        raw = preprocess(raw)
+
     return geokube.core.datacube.DataCube.from_xarray(
         raw, id_pattern=id_pattern, mapping=mapping
     )
 
 
-def _read_datacube_cache(
-    metadata_cache_path, *, id_pattern, mapping
-) -> geokube.core.datacube.DataCube:
+def _read_raw_cache(metadata_cache_path) -> "xr.Dataset":
+    """Load the kerchunk-referenced raw dataset for a single cached cube."""
     from geokube.backend import _kerchunk
 
     if metadata_cache_path is None:
@@ -172,10 +183,7 @@ def _read_datacube_cache(
             f"No metadata cache found at `{metadata_cache_path}`. It must be built"
             " by the catalog via build_metadata_cache() before read-only access."
         )
-    raw = _kerchunk.open_store(payload)
-    return geokube.core.datacube.DataCube.from_xarray(
-        raw, id_pattern=id_pattern, mapping=mapping
-    )
+    return _kerchunk.open_store(payload)
 
 
 def open_dataset(

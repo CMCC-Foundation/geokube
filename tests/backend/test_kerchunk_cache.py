@@ -323,3 +323,87 @@ def test_open_dataset_requires_cache_path():
     with pytest.raises(ValueError):
         open_dataset(glob_path, pattern, metadata_caching=True,
                      metadata_cache_path=None)
+
+
+# ------------------------------------------------------ datacube: preprocess hook
+# `preprocess` (xr.Dataset -> xr.Dataset) must apply UNIFORMLY: single-file & multi,
+# cached & non-cached. It runs on the *combined* raw dataset right before the cube is
+# built (not per-file). We use a CF-preserving rename of the data variable so the cube
+# still opens, and the rename is observable in `.to_xarray().data_vars`.
+
+DVAR = "TMIN_2M"          # the lone data var in rlat-rlon-tmin2m.nc
+DVAR_PP = "TMIN_2M_PP"    # preprocess renames it to this
+
+
+def _rename_dvar(ds):
+    # CF-preserving: only the data variable is renamed; coords / grid_mapping /
+    # standard_name on coords are untouched, so DataCube.from_xarray still succeeds.
+    return ds.rename({DVAR: DVAR_PP})
+
+
+@pytest.mark.integration
+def test_single_file_noncached_applies_preprocess():
+    # Pre-fix this raised TypeError (preprocess forwarded to xr.open_dataset on the
+    # single-file path). Post-fix it is popped and applied to the combined dataset.
+    cube = open_datacube(SRC, preprocess=_rename_dvar)
+    dv = set(cube.to_xarray().data_vars)
+    assert DVAR_PP in dv and DVAR not in dv
+
+
+@pytest.mark.integration
+def test_single_file_cached_preprocess_transparency(tmp_path):
+    # The exact production WRF scenario: single file, metadata_caching=True. The cache
+    # must be transparent -> cached+preprocess == non-cached+preprocess.
+    cache = tmp_path / "cache"
+    build_metadata_cache(SRC, metadata_cache_path=str(cache))
+    cached_pp = open_datacube(SRC, metadata_caching=True,
+                              metadata_cache_path=str(cache), preprocess=_rename_dvar)
+    assert DVAR_PP in set(cached_pp.to_xarray().data_vars)
+    _assert_cube_values_match(cached_pp, open_datacube(SRC, preprocess=_rename_dvar))
+
+
+@pytest.mark.integration
+def test_datacube_cache_preprocess_transparency(tmp_path):
+    # Multi-file: cached+preprocess == non-cached+preprocess, AND both differ from the
+    # no-preprocess result (proves preprocess ran on the cache read path, which silently
+    # dropped it pre-fix).
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache), concat_dims=[CDIM])
+
+    cached_pp = open_datacube(
+        files, metadata_caching=True, metadata_cache_path=str(cache),
+        concat_dims=[CDIM], preprocess=_rename_dvar,
+    )
+    noncached_pp = open_datacube(files, concat_dims=[CDIM], preprocess=_rename_dvar)
+
+    for c in (cached_pp, noncached_pp):
+        dv = set(c.to_xarray().data_vars)
+        assert DVAR_PP in dv and DVAR not in dv
+    _assert_cube_values_match(cached_pp, noncached_pp)
+    assert DVAR in set(open_datacube(files, concat_dims=[CDIM]).to_xarray().data_vars)
+
+
+@pytest.mark.integration
+def test_open_dataset_cached_applies_preprocess(tmp_path):
+    # The pattern/multi-group opener routes every group through open_datacube, so
+    # preprocess must flow open_dataset -> _attach_datacubes -> open_datacube on the
+    # cached path too. Tag via ds.attrs (DataCube.from_xarray copies attrs -> properties).
+    glob_path = os.path.join("tests", "resources",
+                             "era5-single-levels-reanalysis_*.nc")
+    pattern = os.path.join("tests", "resources",
+                           "era5-single-levels-reanalysis_{var}.nc")
+    cache = tmp_path / "ds_cache"
+    build_metadata_cache(glob_path, pattern, metadata_cache_path=str(cache))
+
+    def _tag(ds):
+        ds = ds.copy()
+        ds.attrs["preprocess_ran"] = "yes"
+        return ds
+
+    dset = open_dataset(glob_path, pattern, metadata_caching=True,
+                        metadata_cache_path=str(cache), preprocess=_tag)
+    cubes = dset.cubes  # public accessor (Dataset.cubes); eager by default
+    assert len(cubes) >= 1
+    for cube in cubes:
+        assert cube.properties.get("preprocess_ran") == "yes"
