@@ -385,6 +385,7 @@ def _build_datacube_cache(
         "combine": combine,
         "concat_dim": concat_dim,
         "kerchunk_version": _kerchunk.KERCHUNK_VERSION,
+        "store_schema": _kerchunk.STORE_SCHEMA_VERSION,
     }
     current = _cache.build_manifest(files, context=context)
     manifest_path = os.path.join(cache_dir, _cache.MANIFEST_FILE)
@@ -411,9 +412,19 @@ def _build_datacube_cache(
     )
     if payload is None:
         return False
-    raw = _kerchunk.open_store(payload)
-    if not _kerchunk_covers(raw, files[0], engine):
-        return False
+    # Coverage check: open ONE reference per store entry (a consolidated partition
+    # ref, or a per-file ref for nested/legacy) and verify kerchunk did not silently
+    # drop a data variable. O(#partitions) and build-time only — never the O(#files)
+    # combine of the whole store (which is what hung the build before).
+    parts = payload.get("partitions")
+    samples = (
+        [(p["ref"], p["files"][0]) for p in parts]
+        if parts is not None
+        else [(payload["file_refs"][0], files[0])]
+    )
+    for ref, sample_file in samples:
+        if not _kerchunk_covers(_kerchunk.open_reference(ref), sample_file, engine):
+            return False
     # Manifest written last (after store.json): marks the store as valid.
     _cache.write_json(manifest_path, current)
     return True

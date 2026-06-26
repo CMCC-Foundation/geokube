@@ -132,7 +132,7 @@ def test_build_explicit_scheduler_matches_serial(tmp_path):
     build_metadata_cache(files, metadata_cache_path=str(par), scheduler="synchronous")
 
     s_store, p_store = _kerchunk.load_store(str(serial)), _kerchunk.load_store(str(par))
-    assert p_store["file_refs"] == s_store["file_refs"]  # same refs, in input order
+    assert p_store["partitions"] == s_store["partitions"]  # same consolidated refs
     assert p_store["combine"] == s_store["combine"]
     cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(par))
     _assert_cube_values_match(cube, open_datacube(files))
@@ -156,21 +156,23 @@ def test_build_auto_attaches_to_active_scheduler(tmp_path, monkeypatch):
         build_metadata_cache(files, metadata_cache_path=str(tmp_path / "auto"))
     assert calls  # an active scheduler was picked up automatically
     assert (
-        _kerchunk.load_store(str(tmp_path / "auto"))["file_refs"]
-        == _kerchunk.load_store(str(serial))["file_refs"]
+        _kerchunk.load_store(str(tmp_path / "auto"))["partitions"]
+        == _kerchunk.load_store(str(serial))["partitions"]
     )
 
 
 @pytest.mark.integration
 def test_datacube_mixed_format_combine(tmp_path):
-    # by_coords recombines at the decoded-array level, so mixed NetCDF3/NetCDF4
-    # files combine into one cube without any partitioning.
+    # Mixed NetCDF3/NetCDF4: files whose encoding signatures differ fall into separate
+    # partitions (a single .zarray can't describe both layouts); each partition is
+    # consolidated and the partitions are recombined at open with combine_by_coords.
+    # The value-equivalence check below is the real guard.
     slabs = _make_slabs(tmp_path, formats=("nc4", "nc3"))
     mixed = slabs["nc4"][:2] + slabs["nc3"][2:]
     cache = tmp_path / "cache"
     build_metadata_cache(mixed, metadata_cache_path=str(cache))
     store = _kerchunk.load_store(str(cache))
-    assert len(store["file_refs"]) == len(mixed)
+    assert len(store["partitions"]) >= 1
     assert store["combine"] == "by_coords"
     cube = open_datacube(mixed, metadata_caching=True, metadata_cache_path=str(cache))
     _assert_cube_values_match(cube, open_datacube(mixed))
@@ -198,6 +200,29 @@ def test_datacube_nested_combine(tmp_path):
     store = _kerchunk.load_store(str(cache))
     assert store["combine"] == "nested" and store["concat_dim"] == CDIM
     cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(files))
+
+
+@pytest.mark.integration
+def test_datacube_single_timestep_files_consolidate(tmp_path):
+    # Daily-style files with ONE timestep each: xarray re-bases the time `units` per
+    # file (raw value 0 in every file), so MZZ must combine the concat coordinate via
+    # its CF-*decoded* values, not the raw ones — else the time axis collapses to a
+    # single step. Regression guard for the `cf:` coo_map selector in combine_partition.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    n = src.sizes[CDIM]
+    files = []
+    for i in range(n):
+        p = tmp_path / f"day{i:03d}.nc"
+        src.isel({CDIM: slice(i, i + 1)}).to_netcdf(p, engine="netcdf4", format="NETCDF4")
+        files.append(str(p))
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    assert len(store["partitions"]) == 1  # one signature -> consolidated into one ref
+    cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
+    assert cube.to_xarray().sizes[CDIM] == n  # full time axis preserved (not collapsed)
     _assert_cube_values_match(cube, open_datacube(files))
 
 
@@ -242,7 +267,7 @@ def test_single_file_datacube_build_and_read_equivalence(tmp_path):
     summary = build_metadata_cache(SRC, metadata_cache_path=str(cache))
     assert summary["built"] == 1 and summary["skipped"] == []
     assert os.path.isfile(cache / _kerchunk.STORE_FILE)
-    assert len(_kerchunk.load_store(str(cache))["file_refs"]) == 1
+    assert len(_kerchunk.load_store(str(cache))["partitions"]) == 1
 
     cube = open_datacube(SRC, metadata_caching=True, metadata_cache_path=str(cache))
     _assert_cube_values_match(cube, open_datacube(SRC))
