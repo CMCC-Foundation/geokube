@@ -46,6 +46,30 @@ def _make_slabs(tmp_path, n=4, formats=("nc4",)):
     return out
 
 
+def _write_nc4_slab(sl, path, *, zlib=None):
+    """Write a time-slice ``sl`` of the source as one NETCDF4 file.
+
+    ``chunksizes``/``contiguous`` are dropped (avoid clashes with the slab shape). Pass
+    ``zlib=True/False`` to set the data variables' compression IN PLACE (not via the
+    ``encoding=`` kwarg, which would drop the grid_mapping link) — two slabs that differ
+    only in compression get distinct encoding signatures and so partition apart. Used to
+    construct deterministic partition layouts.
+    """
+    out = sl.copy()
+    for v in list(out.variables):
+        for enc in ("chunksizes", "contiguous"):
+            out[v].encoding.pop(enc, None)
+    if zlib is not None:
+        for v in out.data_vars:
+            out[v].encoding["zlib"] = bool(zlib)
+            if zlib:
+                out[v].encoding["complevel"] = 4
+            else:
+                out[v].encoding.pop("complevel", None)
+    out.to_netcdf(path, engine="netcdf4", format="NETCDF4")
+    return str(path)
+
+
 def _assert_cube_values_match(c1, c2):
     a, b = c1.to_xarray(), c2.to_xarray()
     assert set(a.data_vars) == set(b.data_vars)
@@ -708,12 +732,23 @@ def test_sortby_skipped_when_record_coord_monotonic(tmp_path, monkeypatch):
 
 @pytest.mark.integration
 def test_sortby_runs_when_record_coord_out_of_order(tmp_path, monkeypatch):
-    # Reversed input order -> inline coord decreasing -> sortby must run and sort.
-    files = _make_slabs(tmp_path)["nc4"]
+    # WITHIN a single partition (same encoding signature) files supplied out of order are
+    # consolidated in input order, so the inline record coordinate is non-monotonic and the
+    # reader's sortby fallback must run. Build-time partition ordering fixes ACROSS-partition
+    # disorder, not within a partition (a ManifestArray can't be reordered at build) -- so
+    # this within-partition case still exercises the read-time sort.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    half = src.sizes[CDIM] // 2
+    assert half >= 1
+    # Two EQUAL-LENGTH nc4 slabs, same encoding -> identical signature -> ONE partition.
+    lo = _write_nc4_slab(src.isel({CDIM: slice(0, half)}), tmp_path / "lo.nc")
+    hi = _write_nc4_slab(src.isel({CDIM: slice(half, 2 * half)}), tmp_path / "hi.nc")
     cache = tmp_path / "cache"
-    # cached_build_store consolidates in input order (build_metadata_cache preserves it).
-    _kerchunk.cached_build_store(list(reversed(files)), str(cache))
+    # Late slab first -> within-partition reversed -> inline coord non-monotonic.
+    _kerchunk.cached_build_store([hi, lo], str(cache))
     store = _kerchunk.load_store(str(cache))
+    assert len(store["partitions"]) == 1
 
     calls = []
     real_sortby = xr.Dataset.sortby
@@ -725,6 +760,53 @@ def test_sortby_runs_when_record_coord_out_of_order(tmp_path, monkeypatch):
     assert calls, "sortby must run on a non-monotonic record coordinate"
     t = np.asarray(ds[CDIM].values)
     assert np.all(t[1:] >= t[:-1])  # result ordered ascending
+
+
+@pytest.mark.integration
+def test_build_orders_partitions_so_reader_skips_sortby(tmp_path, monkeypatch):
+    # The era5-hourly OOM shape: heterogeneous encoding splits a cube into SEVERAL
+    # partitions covering DISJOINT, contiguous record ranges; supplied out of chronological
+    # order, the reader's xr.concat would be non-monotonic and the open-time sortby (an
+    # O(#chunks) fancy-index over the record axis -- multi-GB graph, the ~2h hang + OOM in
+    # production) would fire. The build now persists partitions in record order, so the
+    # concat is already chronological at block boundaries -> sortby is skipped, zero shuffle.
+    # Here two contiguous halves differ only in compression (-> two signatures/partitions);
+    # unlike test_datacube_interleaved_partitions_combine their ranges are DISJOINT, so
+    # ordering the partition LIST fully sorts the union (no element-level sort needed).
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    L = src.sizes[CDIM]
+    half = L // 2
+    assert half >= 1 and L - half >= 1  # two non-empty disjoint halves
+    late = _write_nc4_slab(src.isel({CDIM: slice(half, L)}), tmp_path / "late.nc", zlib=True)
+    early = _write_nc4_slab(src.isel({CDIM: slice(0, half)}), tmp_path / "early.nc", zlib=False)
+
+    cache = tmp_path / "cache"
+    # Supplied LATE-first (non-chronological): first-seen partition order would interleave.
+    build_metadata_cache([late, early], metadata_cache_path=str(cache))
+
+    store = _kerchunk.load_store(str(cache))
+    assert store["combine"] == "by_coords"
+    assert len(store["partitions"]) == 2  # compressed vs uncompressed -> distinct signatures
+    # Persisted in record order despite the late-first input: the early half (t0) is first.
+    assert store["partitions"][0]["files"] == [early]
+    assert store["partitions"][1]["files"] == [late]
+
+    calls = []
+    real_sortby = xr.Dataset.sortby
+    monkeypatch.setattr(
+        xr.Dataset, "sortby",
+        lambda self, *a, **k: (calls.append(1), real_sortby(self, *a, **k))[1],
+    )
+    ds = _kerchunk.open_store(store)
+    assert calls == []  # ordered at build -> concat already monotonic -> no sortby
+    t = np.asarray(ds[CDIM].values)
+    assert np.all(t[1:] >= t[:-1]) and t.size == L  # full, sorted record axis
+    assert dask.is_dask_collection(ds[_record_var(ds)].data)  # data stays lazy
+
+    cube = open_datacube([late, early], metadata_caching=True,
+                         metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube([late, early]))
 
 
 @pytest.mark.integration

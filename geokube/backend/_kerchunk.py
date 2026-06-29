@@ -326,6 +326,20 @@ def _record_coord(ds: xr.Dataset, dim: str) -> Optional[str]:
     return cands[0] if len(cands) == 1 else None
 
 
+def _record_start(ds: xr.Dataset, dim: Optional[str]):
+    """Smallest value of the record coordinate ordering ``dim`` (read from the inline
+    coordinate, never the data), or ``None`` if there is no unambiguous 1-D coordinate
+    to order by. Used at build time to persist partitions in record order so the reader
+    concatenates them chronologically and skips the open-time ``sortby``."""
+    if dim is None:
+        return None
+    rc = _record_coord(ds, dim)
+    if rc is None:
+        return None
+    vals = np.asarray(ds[rc].values).ravel()
+    return vals.min() if vals.size else None
+
+
 def open_reference(ref, *, open_kwargs: Optional[Mapping] = None) -> xr.Dataset:
     """Open a manifest as a lazy, CF-decoded xarray Dataset.
 
@@ -524,6 +538,14 @@ def _assemble_store(
     fast. Scalars are sidecar'd (:func:`_extract_scalars`). ``store.json`` records the
     partition index (relative manifest paths, file list, signature, scalar sidecar) plus
     the combine spec and the resolved concat dim (used for the lazy open-time sort).
+
+    For ``by_coords`` the partition index is persisted in **record order** (each partition
+    keyed by the smallest value of its inline record coordinate), so the reader's
+    :func:`xr.concat` is already chronological at block boundaries and the expensive
+    open-time ``sortby`` is skipped for disjoint-range partitions (the common case — e.g.
+    contiguous NetCDF3 where each file is its own partition). The ``sortby`` in
+    :func:`open_store` remains the correctness fallback for genuinely interleaved
+    (sub-block) ranges.
     """
     parts_dir = os.path.join(cache_dir, PARTS_SUBDIR)
     if os.path.isdir(parts_dir):
@@ -532,7 +554,9 @@ def _assemble_store(
 
     ext = ".json" if _COMBINED_FORMAT == "json" else ""
     resolved_dim = str(concat_dim) if concat_dim else None
-    partitions: List[dict] = []
+    # (record-start, partition) pairs; reordered below so the store lists partitions
+    # in record order (the reader concatenates in this order — see persistence note).
+    entries: List[Tuple[object, dict]] = []
     for i, (sig_key, items) in enumerate(_partition(file_vds)):
         vds_list = [v for _, v in items]
         paths = [p for p, _ in items]
@@ -540,6 +564,7 @@ def _assemble_store(
         resolved_dim = resolved_dim or dim
         combined = _consolidate(vds_list, dim)
         combined = _inline_coords(combined, paths, dim, open_kwargs=open_kwargs)
+        start = _record_start(combined, dim)
         combined, scalars, gridmap = _extract_scalars(
             combined, paths[0], open_kwargs=open_kwargs
         )
@@ -547,10 +572,25 @@ def _assemble_store(
         rel = os.path.join(PARTS_SUBDIR, f"p{i:04d}{ext}")
         _write_manifest(combined, os.path.join(cache_dir, rel))
 
-        partitions.append({
+        entries.append((start, {
             "signature": sig_key, "files": paths, "parquet": rel,
             "scalars": scalars, "gridmap": gridmap,
-        })
+        }))
+
+    # Persist the partitions in record order so the reader's ``xr.concat`` is already
+    # chronological at block boundaries and the open-time ``sortby`` is skipped (a
+    # ManifestArray cannot be fancy-indexed at build, so ordering is a list reorder
+    # here, not a data shuffle). Only the list ORDER matters — the parquet paths
+    # (``parts/pNNNN``) stay as written. ``by_coords`` only: ``nested`` preserves input
+    # order by contract; and only when every partition has a comparable record start
+    # (else keep first-seen order, and the reader's ``sortby`` fallback still applies).
+    if (
+        combine == COMBINE_BY_COORDS
+        and len(entries) > 1
+        and all(start is not None for start, _ in entries)
+    ):
+        entries.sort(key=lambda e: e[0])
+    partitions: List[dict] = [p for _, p in entries]
 
     payload = {
         "vz_version": VZ_VERSION,
