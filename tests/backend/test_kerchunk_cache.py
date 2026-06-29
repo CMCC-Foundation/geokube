@@ -5,8 +5,10 @@ consumes it via ``open_datacube`` / ``open_dataset`` with ``metadata_caching=Tru
 which never write and raise ``CacheNotExist`` if the cache is absent. Marked
 ``integration`` (needs the kerchunk/netCDF stack of the base image; real I/O).
 """
+import math
 import os
 
+import dask
 import numpy as np
 import pytest
 import xarray as xr
@@ -616,3 +618,123 @@ def test_open_dataset_cached_applies_preprocess(tmp_path):
     assert len(cubes) >= 1
     for cube in cubes:
         assert cube.properties.get("preprocess_ran") == "yes"
+
+
+# ------------------------------------- opener kwargs: lazy / graph / symmetry / sortby
+
+def _record_var(ds):
+    """A data variable that spans the record axis (the field), widest one."""
+    cands = [v for v in ds.data_vars if CDIM in ds[v].dims]
+    assert cands, "no data variable spans the record axis"
+    return max(cands, key=lambda v: ds[v].ndim)
+
+
+def _record_nblocks(ds, var):
+    """Number of dask blocks along CDIM for ``var`` (asserts it is dask-backed)."""
+    da = ds[var]
+    assert da.chunks is not None, f"{var} is not dask-backed (eagerly loaded)"
+    return len(da.chunks[da.dims.index(CDIM)])
+
+
+@pytest.mark.integration
+def test_cached_open_keeps_data_lazy(tmp_path):
+    # The reader must NOT materialize data variables: they stay dask-backed after open.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
+    xds = cube.to_xarray()
+    assert xds.data_vars
+    for v in xds.data_vars:
+        assert dask.is_dask_collection(xds[v].data), f"{v} was eagerly loaded"
+
+
+@pytest.mark.integration
+def test_read_chunks_override_controls_graph(tmp_path):
+    # `chunks` passed at read time reaches open_reference and controls the dask block
+    # count along the record axis — the lever that bounds the task graph at scale.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    base = _kerchunk.open_store(store)
+    var, nt = _record_var(base), base.sizes[CDIM]
+    assert nt > 1
+
+    fine = _kerchunk.open_store(store, open_kwargs={"chunks": {CDIM: 1}})
+    coarse = _kerchunk.open_store(store, open_kwargs={"chunks": {CDIM: -1}})
+    assert _record_nblocks(fine, var) == nt   # one dask block per timestep
+    assert _record_nblocks(coarse, var) == 1  # whole record axis in a single block
+
+
+@pytest.mark.integration
+def test_build_persists_open_kwargs_and_reader_replays(tmp_path):
+    # `chunks` given at BUILD is persisted in store.json and replayed by the reader with
+    # no read-time kwargs; a read-time override wins.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache), chunks={CDIM: 2})
+    store = _kerchunk.load_store(str(cache))
+    assert store["open_kwargs"] == {"chunks": {CDIM: 2}}
+
+    base = _kerchunk.open_store(store, open_kwargs={"chunks": {CDIM: 1}})
+    var, nt = _record_var(base), base.sizes[CDIM]
+
+    replayed = _kerchunk.open_store(store)  # no override -> replay persisted {CDIM: 2}
+    assert _record_nblocks(replayed, var) == math.ceil(nt / 2)
+    overridden = _kerchunk.open_store(store, open_kwargs={"chunks": {CDIM: 1}})
+    assert _record_nblocks(overridden, var) == nt
+
+
+@pytest.mark.integration
+def test_sortby_skipped_when_record_coord_monotonic(tmp_path, monkeypatch):
+    # In-order files -> inline record coordinate already monotonic -> no sortby graph.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+
+    calls = []
+    real_sortby = xr.Dataset.sortby
+    monkeypatch.setattr(
+        xr.Dataset, "sortby",
+        lambda self, *a, **k: (calls.append(1), real_sortby(self, *a, **k))[1],
+    )
+    ds = _kerchunk.open_store(store)
+    assert calls == []  # monotonic -> sortby skipped
+    t = np.asarray(ds[CDIM].values)
+    assert np.all(t[1:] >= t[:-1])
+
+
+@pytest.mark.integration
+def test_sortby_runs_when_record_coord_out_of_order(tmp_path, monkeypatch):
+    # Reversed input order -> inline coord decreasing -> sortby must run and sort.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    # cached_build_store consolidates in input order (build_metadata_cache preserves it).
+    _kerchunk.cached_build_store(list(reversed(files)), str(cache))
+    store = _kerchunk.load_store(str(cache))
+
+    calls = []
+    real_sortby = xr.Dataset.sortby
+    monkeypatch.setattr(
+        xr.Dataset, "sortby",
+        lambda self, *a, **k: (calls.append(1), real_sortby(self, *a, **k))[1],
+    )
+    ds = _kerchunk.open_store(store)
+    assert calls, "sortby must run on a non-monotonic record coordinate"
+    t = np.asarray(ds[CDIM].values)
+    assert np.all(t[1:] >= t[:-1])  # result ordered ascending
+
+
+@pytest.mark.integration
+def test_decode_kwarg_symmetry_cached_vs_direct(tmp_path):
+    # A non-default decode kwarg flows to BOTH build (persisted) and read; the cached
+    # cube matches a direct open with the same kwarg (cache transparency preserved).
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache), mask_and_scale=False)
+    cached = open_datacube(files, metadata_caching=True,
+                           metadata_cache_path=str(cache), mask_and_scale=False)
+    direct = open_datacube(files, mask_and_scale=False)
+    _assert_cube_values_match(cached, direct)

@@ -96,6 +96,37 @@ _COMBINED_FORMAT = "parquet"
 # Sentinel default: defer scheduler selection to dask, like xarray does.
 SCHEDULER_AUTO = "auto"
 
+# xarray opener kwargs honored on the cached read path. They are forwarded to
+# ``xr.open_dataset(mapper, engine="zarr", ...)`` in :func:`open_reference`, persisted
+# in the store at build time (:func:`_assemble_store`) and replayed by the reader, so
+# the cache stays transparent w.r.t. how the data is opened. ``combine``/``concat_dim``/
+# ``engine``/``scheduler`` are NOT here: they are build/combine params, not read options
+# (``engine`` is fixed to ``zarr`` for the reference store). ``chunks`` is the lever that
+# bounds the dask task graph at scale (O(#blocks) instead of O(#on-disk-chunks)).
+_FORWARDED_OPEN_KWARGS = frozenset({
+    "chunks", "decode_cf", "decode_times", "decode_timedelta", "decode_coords",
+    "mask_and_scale", "concat_characters", "use_cftime", "drop_variables",
+})
+
+# Hardcoded defaults applied when an option is neither persisted nor passed at read time.
+_OPEN_DEFAULTS = {"decode_coords": "all", "chunks": {}}
+
+
+def _filter_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
+    """Keep only the xarray opener kwargs safe to forward to the zarr-reference open."""
+    return {
+        k: v for k, v in (open_kwargs or {}).items() if k in _FORWARDED_OPEN_KWARGS
+    }
+
+
+def _decode_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
+    """Decode-only subset (drop ``chunks``) for the build-time coordinate/scalar reads,
+    which immediately materialize small 1-D/2-D arrays and so always open with ``chunks={}``."""
+    return {
+        k: v for k, v in _filter_open_kwargs(open_kwargs).items() if k != "chunks"
+    }
+
+
 _HDF5_MAGIC = b"\x89HDF"
 _NETCDF3_MAGICS = (b"CDF\x01", b"CDF\x02", b"CDF\x05")
 
@@ -295,18 +326,26 @@ def _record_coord(ds: xr.Dataset, dim: str) -> Optional[str]:
     return cands[0] if len(cands) == 1 else None
 
 
-def open_reference(ref) -> xr.Dataset:
+def open_reference(ref, *, open_kwargs: Optional[Mapping] = None) -> xr.Dataset:
     """Open a manifest as a lazy, CF-decoded xarray Dataset.
 
     ``ref`` is a path to a parquet manifest directory (consolidated partition) or to a
     kerchunk JSON file (per-file manifest). Parquet manifests are loaded lazily via
     pyarrow, so only array metadata + inline coordinates are read here — never data.
+
+    ``open_kwargs`` (xarray opener options: ``chunks`` and decode flags) override the
+    hardcoded defaults ``{decode_coords: "all", chunks: {}}``. ``chunks`` is the lever
+    that bounds the dask task graph: ``chunks={}`` mirrors the on-disk chunking (one task
+    per chunk, O(#chunks) at open), whereas e.g. ``chunks={"time": 1000}`` coalesces the
+    record axis into far fewer blocks while keeping reads lazy.
     """
+    opts = {**_OPEN_DEFAULTS, **_filter_open_kwargs(open_kwargs)}
     is_parquet = isinstance(ref, str) and os.path.isdir(ref)
-    fs = fsspec.filesystem("reference", fo=ref, remote_protocol="file", lazy=is_parquet)
+    # Lazy parquet refs are auto-detected from the directory layout (LazyReferenceMapper);
+    # fsspec has no ``lazy=`` kwarg here (it would be silently ignored), so we don't pass one.
+    fs = fsspec.filesystem("reference", fo=ref, remote_protocol="file")
     return xr.open_dataset(
-        fs.get_mapper(""), engine="zarr", consolidated=False,
-        decode_coords="all", chunks={},
+        fs.get_mapper(""), engine="zarr", consolidated=False, **opts,
     )
 
 
@@ -361,7 +400,9 @@ def _decode_bytes(obj):
     return obj
 
 
-def _extract_scalars(ds: xr.Dataset, src_file: str) -> Tuple[xr.Dataset, dict, dict]:
+def _extract_scalars(
+    ds: xr.Dataset, src_file: str, *, open_kwargs: Optional[Mapping] = None
+) -> Tuple[xr.Dataset, dict, dict]:
     """Pull 0-dim variables out of ``ds`` into a JSON sidecar, reading their values
     directly from ``src_file``; also capture each data var's grid_mapping link.
 
@@ -376,7 +417,8 @@ def _extract_scalars(ds: xr.Dataset, src_file: str) -> Tuple[xr.Dataset, dict, d
     (``{data_var: grid_mapping_var}``) and restore it at open.
     """
     sidecar, gridmap = {}, {}
-    with xr.open_dataset(src_file, decode_coords="all") as src:
+    decode = {"decode_coords": "all", **_decode_open_kwargs(open_kwargs)}
+    with xr.open_dataset(src_file, **decode) as src:
         names = [str(v) for v in src.variables if src[v].ndim == 0]
         for v in src.data_vars:
             gm = src[v].encoding.get("grid_mapping") or src[v].attrs.get("grid_mapping")
@@ -420,7 +462,8 @@ def _write_manifest(ds: xr.Dataset, abs_path: str) -> None:
 
 
 def _inline_coords(
-    combined: xr.Dataset, paths: Sequence[str], dim: Optional[str]
+    combined: xr.Dataset, paths: Sequence[str], dim: Optional[str],
+    *, open_kwargs: Optional[Mapping] = None,
 ) -> xr.Dataset:
     """Materialize the consolidated dataset's non-scalar coordinates as inline numpy.
 
@@ -433,8 +476,9 @@ def _inline_coords(
     instant (no per-record coordinate reads). Reads are small 1-D coordinate slices, not
     the data, so the incremental win (skipping the per-file manifest build) holds.
     """
+    decode = {"decode_coords": "all", **_decode_open_kwargs(open_kwargs), "chunks": {}}
     # First file gives the coordinate set, dims, attrs, and the non-spanning values.
-    with xr.open_dataset(paths[0], decode_coords="all", chunks={}) as s0:
+    with xr.open_dataset(paths[0], **decode) as s0:
         spanning, nonspan = {}, {}
         for c in s0.coords:
             cn = str(c)
@@ -453,7 +497,7 @@ def _inline_coords(
         # that file's own units, so per-file unit rebasing does not collide.
         seg = {cn: [] for cn in spanning}
         for pth in paths:
-            with xr.open_dataset(pth, decode_coords="all", chunks={}) as s:
+            with xr.open_dataset(pth, **decode) as s:
                 for cn in spanning:
                     seg[cn].append(np.asarray(s[cn].values))
         for cn, (dims, attrs) in spanning.items():
@@ -468,6 +512,7 @@ def _assemble_store(
     *,
     combine: str,
     concat_dim,
+    open_kwargs: Optional[Mapping] = None,
 ) -> dict:
     """Partition the per-file virtual datasets, consolidate each, write a manifest + index.
 
@@ -494,8 +539,10 @@ def _assemble_store(
         dim = _resolve_concat_dim(vds_list[0], concat_dim)
         resolved_dim = resolved_dim or dim
         combined = _consolidate(vds_list, dim)
-        combined = _inline_coords(combined, paths, dim)
-        combined, scalars, gridmap = _extract_scalars(combined, paths[0])
+        combined = _inline_coords(combined, paths, dim, open_kwargs=open_kwargs)
+        combined, scalars, gridmap = _extract_scalars(
+            combined, paths[0], open_kwargs=open_kwargs
+        )
 
         rel = os.path.join(PARTS_SUBDIR, f"p{i:04d}{ext}")
         _write_manifest(combined, os.path.join(cache_dir, rel))
@@ -510,6 +557,9 @@ def _assemble_store(
         "store_schema": STORE_SCHEMA_VERSION,
         "combine": combine,
         "concat_dim": resolved_dim if combine == COMBINE_BY_COORDS else concat_dim,
+        # Persisted opener kwargs replayed by the reader (overridable at read time).
+        # Additive field: stores written before this read as {} -> reader uses defaults.
+        "open_kwargs": _filter_open_kwargs(open_kwargs),
         "partitions": partitions,
     }
     _cache.write_json(os.path.join(cache_dir, STORE_FILE), payload)
@@ -547,6 +597,7 @@ def cached_build_store(
     combine: str = COMBINE_BY_COORDS,
     concat_dim=None,
     scheduler=SCHEDULER_AUTO,
+    open_kwargs: Optional[Mapping] = None,
 ) -> Optional[dict]:
     """Incrementally (re)build the on-disk store under ``cache_dir``.
 
@@ -588,7 +639,10 @@ def cached_build_store(
         vds_by_idx[i] = vds
 
     file_vds = [(files[i], vds_by_idx[i]) for i in range(len(files))]
-    payload = _assemble_store(file_vds, cache_dir, combine=combine, concat_dim=concat_dim)
+    payload = _assemble_store(
+        file_vds, cache_dir, combine=combine, concat_dim=concat_dim,
+        open_kwargs=open_kwargs,
+    )
     _prune_ref_files(cache_dir, set(posix_paths))
     return payload
 
@@ -605,7 +659,18 @@ def load_store(cache_dir: str) -> Optional[dict]:
     return payload
 
 
-def open_store(payload: Mapping) -> xr.Dataset:
+def _is_monotonic_nondecreasing(out: xr.Dataset, rc: str) -> bool:
+    """True if the 1-D record coordinate ``rc`` is already sorted non-decreasing.
+
+    Uses the eagerly-materialized pandas index when ``rc`` is a dimension coordinate;
+    otherwise reads the (small, inline) 1-D coordinate values. Never touches data."""
+    if rc in out.indexes:
+        return bool(out.indexes[rc].is_monotonic_increasing)
+    vals = np.asarray(out[rc].values).ravel()
+    return vals.size <= 1 or bool(np.all(vals[1:] >= vals[:-1]))
+
+
+def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr.Dataset:
     """Reopen the combined lazy dataset from a store payload.
 
     With one partition (the common case) this is a single lazy reference open — no
@@ -615,14 +680,22 @@ def open_store(payload: Mapping) -> xr.Dataset:
     interleave (which ``combine_by_coords`` cannot linearize); ``nested`` replays the
     recorded combine in input/file order. Either way only the inline coordinates are
     touched (concatenated + argsorted) — the data variables stay lazy.
+
+    ``open_kwargs`` (xarray opener options) override the kwargs persisted at build time;
+    both are forwarded to :func:`open_reference`. ``chunks`` is the lever that keeps the
+    dask graph bounded at scale.
     """
     cache_dir = payload.get("_cache_dir", "")
     parts = payload["partitions"]
     combine = payload.get("combine", COMBINE_BY_COORDS)
     concat_dim = payload.get("concat_dim")
+    # Persisted build-time kwargs are the defaults; read-time kwargs win.
+    merged_open_kwargs = {**payload.get("open_kwargs", {}), **(open_kwargs or {})}
     datasets = [
         _reattach_scalars(
-            open_reference(os.path.join(cache_dir, p["parquet"])),
+            open_reference(
+                os.path.join(cache_dir, p["parquet"]), open_kwargs=merged_open_kwargs
+            ),
             p.get("scalars", {}), p.get("gridmap", {}),
         )
         for p in parts
@@ -653,6 +726,11 @@ def open_store(payload: Mapping) -> xr.Dataset:
     # ``sortby(concat_dim)`` would otherwise raise on the missing ``tdim`` coordinate.
     if combine == COMBINE_BY_COORDS and concat_dim and concat_dim in out.dims:
         rc = _record_coord(out, concat_dim)
-        if rc is not None:
+        # Skip the sort when the coordinate is already non-decreasing (the common case:
+        # one partition, files in chronological order). ``sortby`` always builds an
+        # ``np.lexsort`` + fancy-index ``isel`` graph — O(#chunks) along the record axis,
+        # which at ~hundreds of thousands of chunks is a needless multi-GB graph. The
+        # check runs on the small 1-D coordinate only; data stays lazy either way.
+        if rc is not None and not _is_monotonic_nondecreasing(out, rc):
             out = out.sortby(rc)
     return out

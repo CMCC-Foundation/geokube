@@ -139,6 +139,11 @@ def open_datacube(
 
     Without caching it opens the data directly (lazy/dask-backed).
 
+    Extra ``**kwargs`` are xarray opener options (``chunks`` and decode flags). On the
+    cached path they override the kwargs the catalog persisted at build time and are
+    replayed on the reference open (the data stays lazy either way); pass ``chunks``
+    (e.g. ``{"time": 1000}``) to bound the dask task graph for very-many-chunk datasets.
+
     ``preprocess`` (optional, ``Callable[[xr.Dataset], xr.Dataset]``) is applied to
     the *combined* raw dataset immediately before building the cube — on every path
     (cached/non-cached, single/multi). NOTE: it runs once on the combined dataset
@@ -156,7 +161,11 @@ def open_datacube(
     multi = isinstance(path, (list, tuple)) or _is_glob(path)
 
     if metadata_caching:
-        raw = _read_raw_cache(metadata_cache_path)
+        # The remaining kwargs are xarray opener options (`chunks`, decode flags). On the
+        # cached path they are forwarded to the reference open (overriding the kwargs the
+        # catalog persisted at build time), so the cache stays transparent and `chunks`
+        # can be tuned at read to bound the dask graph.
+        raw = _read_raw_cache(metadata_cache_path, open_kwargs=kwargs)
     else:
         raw = _open_raw(path, engine=engine, multi=multi, **kwargs)
 
@@ -168,8 +177,12 @@ def open_datacube(
     )
 
 
-def _read_raw_cache(metadata_cache_path) -> "xr.Dataset":
-    """Load the kerchunk-referenced raw dataset for a single cached cube."""
+def _read_raw_cache(metadata_cache_path, *, open_kwargs=None) -> "xr.Dataset":
+    """Load the kerchunk-referenced raw dataset for a single cached cube.
+
+    ``open_kwargs`` (xarray opener options) override the kwargs persisted in the store at
+    build time; both are replayed on the reference open by :func:`_kerchunk.open_store`.
+    """
     from geokube.backend import _kerchunk
 
     if metadata_cache_path is None:
@@ -183,7 +196,7 @@ def _read_raw_cache(metadata_cache_path) -> "xr.Dataset":
             f"No metadata cache found at `{metadata_cache_path}`. It must be built"
             " by the catalog via build_metadata_cache() before read-only access."
         )
-    return _kerchunk.open_store(payload)
+    return _kerchunk.open_store(payload, open_kwargs=open_kwargs)
 
 
 def open_dataset(
@@ -315,6 +328,15 @@ def build_metadata_cache(
     value (``"processes"`` to dodge the h5py GIL without a cluster, ``"threads"``, a
     ``Client``, ...) is passed through to :func:`dask.compute`.
 
+    Extra ``**kwargs`` are xarray opener options (``chunks`` and decode flags such as
+    ``decode_coords``/``mask_and_scale``/``decode_times``). They are **persisted in the
+    store and replayed by the reader** (overridable at read time), so the cache stays
+    transparent w.r.t. how the data is opened — and the cache is rebuilt if they change
+    (they are part of the manifest context). ``chunks`` in particular is the lever that
+    bounds the dask task graph at scale: pass e.g. ``chunks={"time": 1000}`` to coalesce
+    the record axis instead of one dask block per on-disk chunk. (``combine``/
+    ``concat_dim``/``engine``/``scheduler`` are build/combine params, not opener kwargs.)
+
     Returns ``{"groups": int, "built": int, "skipped": [..]}``.
     """
     if metadata_cache_path is None:
@@ -332,6 +354,7 @@ def build_metadata_cache(
             concat_dim=concat_dim,
             engine=engine,
             scheduler=scheduler,
+            open_kwargs=kwargs,
         )
         return {
             "groups": 1,
@@ -353,6 +376,7 @@ def build_metadata_cache(
             concat_dim=concat_dim,
             engine=engine,
             scheduler=scheduler,
+            open_kwargs=kwargs,
         )
         if ok:
             built += 1
@@ -370,12 +394,16 @@ def build_metadata_cache(
 
 
 def _build_datacube_cache(
-    files, cache_dir, *, combine, concat_dim, engine, scheduler="auto"
+    files, cache_dir, *, combine, concat_dim, engine, scheduler="auto", open_kwargs=None
 ) -> bool:
     """Build/refresh one cube's kerchunk store under ``cache_dir`` (incremental).
 
     Returns ``True`` if a valid store is cached, ``False`` if the files are not
     kerchunk-referenceable or kerchunk would drop variables (nothing is published).
+
+    ``open_kwargs`` (xarray opener options) are persisted in the store and replayed by
+    the reader. They are part of the manifest context, so changing them invalidates and
+    rebuilds the cache (keeping the cached content consistent with the requested kwargs).
     """
     from geokube.backend import _kerchunk
 
@@ -384,6 +412,7 @@ def _build_datacube_cache(
         "kind": "datacube",
         "combine": combine,
         "concat_dim": concat_dim,
+        "open_kwargs": _kerchunk._filter_open_kwargs(open_kwargs),
         "vz_version": _kerchunk.VZ_VERSION,
         "store_schema": _kerchunk.STORE_SCHEMA_VERSION,
     }
@@ -409,6 +438,7 @@ def _build_datacube_cache(
         combine=combine,
         concat_dim=concat_dim,
         scheduler=scheduler,
+        open_kwargs=open_kwargs,
     )
     if payload is None:
         return False
@@ -419,7 +449,8 @@ def _build_datacube_cache(
     # marked valid.
     for p in payload["partitions"]:
         ref = os.path.join(cache_dir, p["parquet"])
-        if not _kerchunk_covers(_kerchunk.open_reference(ref), p["files"][0], engine):
+        opened = _kerchunk.open_reference(ref, open_kwargs=open_kwargs)
+        if not _kerchunk_covers(opened, p["files"][0], engine):
             return False
     # Manifest written last (after store.json): marks the store as valid.
     _cache.write_json(manifest_path, current)
