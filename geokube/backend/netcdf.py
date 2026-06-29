@@ -384,7 +384,7 @@ def _build_datacube_cache(
         "kind": "datacube",
         "combine": combine,
         "concat_dim": concat_dim,
-        "kerchunk_version": _kerchunk.KERCHUNK_VERSION,
+        "vz_version": _kerchunk.VZ_VERSION,
         "store_schema": _kerchunk.STORE_SCHEMA_VERSION,
     }
     current = _cache.build_manifest(files, context=context)
@@ -412,18 +412,14 @@ def _build_datacube_cache(
     )
     if payload is None:
         return False
-    # Coverage check: open ONE reference per store entry (a consolidated partition
-    # ref, or a per-file ref for nested/legacy) and verify kerchunk did not silently
-    # drop a data variable. O(#partitions) and build-time only — never the O(#files)
-    # combine of the whole store (which is what hung the build before).
-    parts = payload.get("partitions")
-    samples = (
-        [(p["ref"], p["files"][0]) for p in parts]
-        if parts is not None
-        else [(payload["file_refs"][0], files[0])]
-    )
-    for ref, sample_file in samples:
-        if not _kerchunk_covers(_kerchunk.open_reference(ref), sample_file, engine):
+    # Coverage check: open the consolidated parquet manifest of each partition and
+    # verify VirtualiZarr did not silently drop a data variable. O(#partitions) and
+    # build-time only — never the O(#files) combine of the whole store. This also
+    # exercises that the parquet manifests open correctly before the manifest is
+    # marked valid.
+    for p in payload["partitions"]:
+        ref = os.path.join(cache_dir, p["parquet"])
+        if not _kerchunk_covers(_kerchunk.open_reference(ref), p["files"][0], engine):
             return False
     # Manifest written last (after store.json): marks the store as valid.
     _cache.write_json(manifest_path, current)

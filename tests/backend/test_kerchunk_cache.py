@@ -179,6 +179,93 @@ def test_datacube_mixed_format_combine(tmp_path):
 
 
 @pytest.mark.integration
+def test_datacube_mixed_format_unordered_combine(tmp_path):
+    # Regression: mixed NetCDF3/NetCDF4 where a partition's files are supplied OUT of
+    # coordinate order. Each partition is consolidated in input/file order, so its inlined
+    # time axis is non-monotonic; the reader must sort EACH partition by the concat
+    # coordinate before combine_by_coords -- which otherwise raises "Coordinate variable
+    # time is neither monotonically increasing nor decreasing on all datasets". by_coords
+    # must tolerate any file order (the prior test happened to pass files in time order).
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    n = src.sizes[CDIM]
+    q = n // 4
+    assert q >= 1  # SRC must have >=4 timesteps to form three equal-length slabs
+    # Three EQUAL-LENGTH NetCDF4 slabs -> identical encoding signature -> ONE partition.
+    nc4 = []
+    for i in range(3):
+        p = tmp_path / f"q{i}.nc"
+        src.isel({CDIM: slice(i * q, (i + 1) * q)}).to_netcdf(
+            p, engine="netcdf4", format="NETCDF4"
+        )
+        nc4.append(str(p))
+    # One NetCDF3 slab (uncompressed/contiguous) -> different signature -> second partition.
+    sl3 = src.isel({CDIM: slice(3 * q, n)}).copy()
+    for v in list(sl3.variables):
+        if sl3[v].dtype == np.int64:
+            sl3[v] = sl3[v].astype(np.int32)
+        for k in ("zlib", "complevel", "chunksizes"):
+            sl3[v].encoding.pop(k, None)
+    p3 = tmp_path / "q3_n3.nc"
+    sl3.to_netcdf(p3, format="NETCDF3_CLASSIC")
+
+    # nc4 partition supplied non-monotonically (down then up -> neither inc nor dec).
+    mixed = [nc4[1], nc4[0], nc4[2], str(p3)]
+    cache = tmp_path / "cache"
+    build_metadata_cache(mixed, metadata_cache_path=str(cache))
+
+    store = _kerchunk.load_store(str(cache))
+    assert store["combine"] == "by_coords"
+    assert len(store["partitions"]) >= 2  # nc4 vs nc3 signatures -> separate partitions
+
+    cube = open_datacube(mixed, metadata_caching=True, metadata_cache_path=str(cache))
+    t = cube.to_xarray()[CDIM].to_index()
+    assert t.is_monotonic_increasing and len(t) == n  # full, sorted time axis
+    _assert_cube_values_match(cube, open_datacube(mixed))
+
+
+@pytest.mark.integration
+def test_datacube_interleaved_partitions_combine(tmp_path):
+    # Real-world failure: a heterogeneous archive yields SEVERAL encoding partitions whose
+    # record ranges INTERLEAVE (the file encoding alternates across years). Even with each
+    # partition internally monotonic, combine_by_coords cannot linearize interleaved tiles
+    # ("Resulting object does not have monotonic global indexes along dimension time"); the
+    # reader must concat all partitions along the record dim and sort the union. Here even
+    # timesteps are zlib-compressed and odd ones uncompressed -> two distinct signatures ->
+    # two partitions with interleaved times A=[t0,t2,t4], B=[t1,t3,t5]. Lazy: no data read.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    m = min(src.sizes[CDIM], 6)
+    assert m >= 4
+    files = []
+    for i in range(m):
+        sl = src.isel({CDIM: slice(i, i + 1)}).copy()
+        for v in list(sl.variables):
+            for k in ("chunksizes", "contiguous"):  # avoid clashes with the 1-step shape
+                sl[v].encoding.pop(k, None)
+        # Differentiate two encoding signatures (compressed vs not) by editing the data
+        # var's encoding IN PLACE -- not via the encoding= kwarg, which would replace the
+        # whole dict and drop grid_mapping (then rotated_pole would not be promoted to a
+        # coordinate and would no longer match a direct open).
+        sl[DVAR].encoding["zlib"] = (i % 2 == 0)
+        if i % 2 == 0:
+            sl[DVAR].encoding["complevel"] = 4
+        else:
+            sl[DVAR].encoding.pop("complevel", None)
+        p = tmp_path / f"t{i}.nc"
+        sl.to_netcdf(p, engine="netcdf4", format="NETCDF4")
+        files.append(str(p))
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    assert len(store["partitions"]) >= 2  # compressed vs uncompressed -> interleaved parts
+    cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
+    t = cube.to_xarray()[CDIM].to_index()
+    assert t.is_monotonic_increasing and len(t) == m  # interleaved union sorted & complete
+    _assert_cube_values_match(cube, open_datacube(files))
+
+
+@pytest.mark.integration
 def test_datacube_default_combine_by_coords(tmp_path):
     files = _make_slabs(tmp_path)["nc4"]
     cache = tmp_path / "cache"
@@ -206,9 +293,10 @@ def test_datacube_nested_combine(tmp_path):
 @pytest.mark.integration
 def test_datacube_single_timestep_files_consolidate(tmp_path):
     # Daily-style files with ONE timestep each: xarray re-bases the time `units` per
-    # file (raw value 0 in every file), so MZZ must combine the concat coordinate via
-    # its CF-*decoded* values, not the raw ones — else the time axis collapses to a
-    # single step. Regression guard for the `cf:` coo_map selector in combine_partition.
+    # file (raw value 0 in every file), so the concat coordinate must be rebuilt from
+    # each file's CF-*decoded* time (not the raw manifest values) — else the time axis
+    # collapses to a single step. Regression guard for the per-file decoded-time concat
+    # in `_kerchunk._inline_coords`.
     src = xr.open_dataset(SRC, decode_coords="all")
     src.load()
     n = src.sizes[CDIM]
@@ -224,6 +312,102 @@ def test_datacube_single_timestep_files_consolidate(tmp_path):
     cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
     assert cube.to_xarray().sizes[CDIM] == n  # full time axis preserved (not collapsed)
     _assert_cube_values_match(cube, open_datacube(files))
+
+
+# -------------------------------------------------- byte-scalar CRS / bare record axis
+# Regression for the NSIDC sea-ice CDR layout. Two traps, both reproduced here on
+# synthesized files (so the suite stays independent of the large, out-of-tree
+# data/NSIDC_SIC_v4 dataset):
+#   1. a |S1 scalar grid-mapping container ``projection`` (value b'') -> its value is a
+#      Python ``bytes`` that the store.json writer could not serialize
+#      (TypeError: Object of type bytes is not JSON serializable);
+#   2. a *bare* record axis ``tdim`` (the record coordinate is ``time(tdim)``, there is
+#      NO ``tdim`` coordinate) -> the default by_coords open ran ``sortby("tdim")``,
+#      which raises on the missing coordinate.
+# The driver consumes the raw store via ``_kerchunk.open_store`` (its ``_open_main``),
+# then does its own ``tdim``->``time`` swap, so these assert at the store level.
+
+_NSIDC_CRS_ATTRS = {
+    "grid_mapping_name": "polar_stereographic",
+    "straight_vertical_longitude_from_pole": 135.0,
+    "latitude_of_projection_origin": 90.0,
+    "standard_parallel": 70.0,
+    "proj4text": "+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 "
+                 "+a=6378273 +b=6356889.449 +units=m +no_defs",
+    "srid": "urn:ogc:def:crs:EPSG::3411",
+}
+
+
+def _make_nsidc_like(tmp_path, times, ny=3, nx=4):
+    """One single-``tdim`` NetCDF4 file per timestamp, NSIDC-style: ``siconc(tdim, y,
+    x)`` with ``grid_mapping='projection'``, a non-dimension record coordinate
+    ``time(tdim)``, ``xgrid(x)``/``ygrid(y)``, and a scalar |S1 ``projection``
+    grid-mapping container (value b'') carrying the CRS attrs. ``siconc[i] == i``."""
+    files = []
+    for i, t in enumerate(times):
+        ds = xr.Dataset(
+            {"siconc": (("tdim", "y", "x"), np.full((1, ny, nx), float(i), "float32"))},
+            coords={
+                "time": ("tdim", np.array([t], dtype="datetime64[ns]")),
+                "xgrid": ("x", np.arange(nx, dtype="float32")),
+                "ygrid": ("y", np.arange(ny, dtype="float32")),
+                "projection": np.array(b"", dtype="|S1"),
+            },
+        )
+        ds["projection"].attrs.update(_NSIDC_CRS_ATTRS)
+        ds["siconc"].attrs["grid_mapping"] = "projection"
+        p = tmp_path / f"nsidc_{i:03d}.nc"
+        ds.to_netcdf(p, engine="netcdf4", format="NETCDF4")
+        files.append(str(p))
+    return files
+
+
+@pytest.mark.integration
+def test_datacube_bytes_grid_mapping_scalar_roundtrips(tmp_path):
+    files = _make_nsidc_like(
+        tmp_path, ["1979-01-01", "1979-02-01", "1979-03-01", "1979-04-01"]
+    )
+    cache = tmp_path / "cache"
+    # Pre-fix this raised TypeError(bytes not JSON serializable) writing store.json.
+    summary = build_metadata_cache(
+        files, metadata_cache_path=str(cache), combine="nested", concat_dim="tdim"
+    )
+    assert summary["built"] == 1 and summary["skipped"] == []
+    assert os.path.isfile(cache / _kerchunk.STORE_FILE)
+    store = _kerchunk.load_store(str(cache))
+    assert len(store["partitions"]) == 1
+
+    ds = _kerchunk.open_store(store)  # exactly what the driver's _open_main consumes
+    # The |S1 grid-mapping container round-tripped through the JSON sidecar...
+    assert "projection" in ds.coords
+    assert ds["projection"].dtype.kind == "S"
+    assert ds["projection"].attrs.get("grid_mapping_name") == "polar_stereographic"
+    assert ds["projection"].attrs.get("srid") == _NSIDC_CRS_ATTRS["srid"]
+    # ...and the data var's grid_mapping link was restored.
+    assert ds["siconc"].encoding.get("grid_mapping") == "projection"
+    # Full record axis preserved (not collapsed) and values intact / in order.
+    assert ds.sizes["tdim"] == len(files)
+    ref = xr.open_mfdataset(
+        files, combine="nested", concat_dim="tdim", decode_coords="all"
+    )
+    xr.testing.assert_allclose(ds["siconc"], ref["siconc"])
+
+
+@pytest.mark.integration
+def test_datacube_by_coords_bare_record_dim(tmp_path):
+    # Default by_coords on a bare record axis: the open-time sort must order by the
+    # spanning ``time`` coordinate (not the missing ``tdim`` coordinate). Files are
+    # supplied OUT of time order, so the open has to sort them.
+    files = _make_nsidc_like(
+        tmp_path, ["1979-03-01", "1979-01-01", "1979-04-01", "1979-02-01"]
+    )
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))  # default by_coords
+    store = _kerchunk.load_store(str(cache))
+    assert store["combine"] == "by_coords"
+    ds = _kerchunk.open_store(store)  # pre-fix: raised on sortby("tdim")
+    t = ds["time"].to_index()
+    assert t.is_monotonic_increasing and len(t) == len(files)
 
 
 @pytest.mark.integration

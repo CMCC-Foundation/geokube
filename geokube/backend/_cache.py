@@ -49,9 +49,9 @@ import xarray as xr
 from geokube.version import __version__ as GEOKUBE_VERSION
 from geokube.utils.format_parsing import _make_path_posix
 
-# Bump when the on-disk schema changes; old caches then read as a miss. v2 =
-# per-partition consolidated kerchunk store (was a flat per-file ``file_refs`` list).
-CACHE_FORMAT_VERSION = 2
+# Bump when the on-disk schema changes; old caches then read as a miss. v3 =
+# VirtualiZarr per-partition parquet manifests (was kerchunk MZZ inline refs).
+CACHE_FORMAT_VERSION = 3
 
 # Cache-directory layout (relative to ``metadata_cache_path``).
 MANIFEST_FILE = "manifest.json"
