@@ -70,6 +70,23 @@ def _write_nc4_slab(sl, path, *, zlib=None):
     return str(path)
 
 
+def _two_var_src():
+    """Source with TWO data variables sharing dims/coords (DVAR + a derived second var),
+    to exercise the single-variable-per-file -> per-variable-partition case."""
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    src = src.assign({"VAR2": src[DVAR] + 1.0})
+    gm = src[DVAR].encoding.get("grid_mapping") or src[DVAR].attrs.get("grid_mapping")
+    if gm:
+        src["VAR2"].encoding["grid_mapping"] = gm
+    return src
+
+
+def _write_var_file(src, var, tsl, path, *, zlib=None):
+    """Write a single-variable NETCDF4 file: only ``var`` (+ its coords) over time ``tsl``."""
+    return _write_nc4_slab(src[[var]].isel({CDIM: tsl}), path, zlib=zlib)
+
+
 def _assert_cube_values_match(c1, c2):
     a, b = c1.to_xarray(), c2.to_xarray()
     assert set(a.data_vars) == set(b.data_vars)
@@ -788,9 +805,12 @@ def test_build_orders_partitions_so_reader_skips_sortby(tmp_path, monkeypatch):
     store = _kerchunk.load_store(str(cache))
     assert store["combine"] == "by_coords"
     assert len(store["partitions"]) == 2  # compressed vs uncompressed -> distinct signatures
-    # Persisted in record order despite the late-first input: the early half (t0) is first.
-    assert store["partitions"][0]["files"] == [early]
-    assert store["partitions"][1]["files"] == [late]
+    # Partitions keep first-seen (input) order: late-first -> p0=late, p1=early.
+    assert store["partitions"][0]["files"] == [late]
+    assert store["partitions"][1]["files"] == [early]
+    # Distinct record axes -> two singleton merge groups, ordered by record start despite
+    # the late-first input (early half=p1 listed first) -> reader concats chronologically.
+    assert store["combine_plan"] == [[1], [0]]
 
     calls = []
     real_sortby = xr.Dataset.sortby
@@ -807,6 +827,68 @@ def test_build_orders_partitions_so_reader_skips_sortby(tmp_path, monkeypatch):
     cube = open_datacube([late, early], metadata_caching=True,
                          metadata_cache_path=str(cache))
     _assert_cube_values_match(cube, open_datacube([late, early]))
+
+
+@pytest.mark.integration
+def test_single_variable_files_merge_not_concat(tmp_path):
+    # The era5-hourly bug: SINGLE-variable files -> one encoding partition PER VARIABLE,
+    # all sharing the same record axis. A blind xr.concat along time would STACK them ->
+    # time axis inflated N-fold with each variable on only its slice (wrong + the OOM
+    # driver). The combine_plan groups same-axis partitions into ONE merge group, so the
+    # reader MERGES the variables onto the single shared time axis instead.
+    src = _two_var_src()
+    L = src.sizes[CDIM]
+    f1 = _write_var_file(src, DVAR, slice(None), tmp_path / "v1.nc")
+    f2 = _write_var_file(src, "VAR2", slice(None), tmp_path / "v2.nc")
+
+    cache = tmp_path / "cache"
+    build_metadata_cache([f1, f2], metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    assert len(store["partitions"]) == 2          # one partition per variable
+    assert store["combine_plan"] == [[0, 1]]       # same record axis -> one merge group
+
+    ds = _kerchunk.open_store(store)
+    assert int(ds.sizes[CDIM]) == L                # MERGED: time NOT inflated to 2*L
+    assert set(ds.data_vars) >= {DVAR, "VAR2"}     # both variables present on one axis
+    assert dask.is_dask_collection(ds[DVAR].data)  # lazy
+
+    cube = open_datacube([f1, f2], metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube([f1, f2]))
+
+
+@pytest.mark.integration
+def test_single_variable_two_tiles_merge_and_concat(tmp_path):
+    # Full era5 shape: 2 variables x 2 disjoint time tiles, each (var,tile) a single-variable
+    # file whose tiles differ in compression (-> 4 distinct signatures/partitions). The plan
+    # must MERGE the two variables within each tile (same axis) and CONCAT the two tiles
+    # (distinct axes) along time -> 2 vars over the full, un-inflated record axis.
+    src = _two_var_src()
+    L = src.sizes[CDIM]
+    h = L // 2
+    assert h >= 1 and L - h >= 1
+    # tile A (t0..h-1) compressed, tile B (h..L-1) uncompressed; supplied tile-B first.
+    bv1 = _write_var_file(src, DVAR, slice(h, L), tmp_path / "b_v1.nc", zlib=False)
+    bv2 = _write_var_file(src, "VAR2", slice(h, L), tmp_path / "b_v2.nc", zlib=False)
+    av1 = _write_var_file(src, DVAR, slice(0, h), tmp_path / "a_v1.nc", zlib=True)
+    av2 = _write_var_file(src, "VAR2", slice(0, h), tmp_path / "a_v2.nc", zlib=True)
+    files = [bv1, bv2, av1, av2]
+
+    cache = tmp_path / "cache"
+    build_metadata_cache(files, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    assert len(store["partitions"]) == 4
+    plan = store["combine_plan"]
+    assert len(plan) == 2 and all(len(g) == 2 for g in plan)  # 2 tiles, 2 vars merged each
+
+    ds = _kerchunk.open_store(store)
+    assert int(ds.sizes[CDIM]) == L                # full axis: tiles concatenated, not stacked
+    assert set(ds.data_vars) >= {DVAR, "VAR2"}     # both variables merged across tiles
+    t = np.asarray(ds[CDIM].values)
+    assert np.all(t[1:] >= t[:-1])                 # chronological
+    assert dask.is_dask_collection(ds[DVAR].data)
+
+    cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(files))
 
 
 @pytest.mark.integration

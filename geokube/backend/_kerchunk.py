@@ -76,8 +76,10 @@ from geokube.utils.format_parsing import _make_path_posix
 VZ_VERSION = virtualizarr.__version__
 
 # Bump when the on-disk store shape changes; old stores then read as a miss (the
-# catalog rebuilds them). Schema 3 = VirtualiZarr per-partition parquet manifests.
-STORE_SCHEMA_VERSION = 3
+# catalog rebuilds them). Schema 3 = VirtualiZarr per-partition parquet manifests;
+# schema 4 adds the `combine_plan` (merge-aware recombination: partitions sharing a
+# record axis are merged, distinct-axis groups concatenated).
+STORE_SCHEMA_VERSION = 4
 
 # Cache-directory layout for the per-cube store.
 FILES_SUBDIR = "files"      # one per-file kerchunk JSON manifest (incremental rebuild)
@@ -326,18 +328,35 @@ def _record_coord(ds: xr.Dataset, dim: str) -> Optional[str]:
     return cands[0] if len(cands) == 1 else None
 
 
-def _record_start(ds: xr.Dataset, dim: Optional[str]):
-    """Smallest value of the record coordinate ordering ``dim`` (read from the inline
-    coordinate, never the data), or ``None`` if there is no unambiguous 1-D coordinate
-    to order by. Used at build time to persist partitions in record order so the reader
-    concatenates them chronologically and skips the open-time ``sortby``."""
+def _record_values(ds: xr.Dataset, dim: Optional[str]) -> Optional[np.ndarray]:
+    """The 1-D record-coordinate values ordering ``dim`` (read from the inline
+    coordinate, never the data), or ``None`` if there is no unambiguous coordinate."""
     if dim is None:
         return None
     rc = _record_coord(ds, dim)
     if rc is None:
         return None
-    vals = np.asarray(ds[rc].values).ravel()
-    return vals.min() if vals.size else None
+    return np.asarray(ds[rc].values).ravel()
+
+
+def _record_start(ds: xr.Dataset, dim: Optional[str]):
+    """Smallest value of the record coordinate ordering ``dim``, or ``None``.
+
+    Used at build time to order partition groups by record so the reader concatenates
+    them chronologically and skips the open-time ``sortby``."""
+    vals = _record_values(ds, dim)
+    return vals.min() if vals is not None and vals.size else None
+
+
+def _axis_key(ds: xr.Dataset, dim: Optional[str]) -> Optional[str]:
+    """A stable hash of the record-coordinate *values*, identifying partitions that
+    share the **same record axis** (different variables of one cube, each in its own
+    single-variable file -> its own encoding partition). Such partitions must be
+    *merged* at open (not concatenated). ``None`` if there is no orderable coordinate."""
+    vals = _record_values(ds, dim)
+    if vals is None or not vals.size:
+        return None
+    return hashlib.sha1(np.ascontiguousarray(vals).tobytes()).hexdigest()
 
 
 def open_reference(ref, *, open_kwargs: Optional[Mapping] = None) -> xr.Dataset:
@@ -520,6 +539,32 @@ def _inline_coords(
     return combined.assign_coords(coord_vals) if coord_vals else combined
 
 
+def _combine_plan(
+    metas: Sequence[Tuple[object, Optional[str]]]
+) -> Optional[List[List[int]]]:
+    """Build the recombination plan from per-partition ``(record_start, axis_key)``.
+
+    Partitions sharing an ``axis_key`` (identical record coordinate) are different
+    variables over the same axis -> one **merge group**. Groups are ordered by their
+    record start, giving the concat order; the reader merges within a group and
+    concatenates across groups. Returns ``None`` (reader falls back to the plain concat
+    path) for a single partition or when any partition lacks a start/axis_key (no
+    unambiguous record coordinate — e.g. a bare index axis)."""
+    if len(metas) <= 1 or any(s is None or a is None for s, a in metas):
+        return None
+    groups: dict = {}
+    start_of: dict = {}
+    order: List[str] = []
+    for idx, (start, axis) in enumerate(metas):
+        if axis not in groups:
+            groups[axis] = []
+            start_of[axis] = start
+            order.append(axis)
+        groups[axis].append(idx)
+    order.sort(key=lambda a: start_of[a])  # concat order: groups by record start
+    return [groups[a] for a in order]
+
+
 def _assemble_store(
     file_vds: Sequence[Tuple[str, xr.Dataset]],
     cache_dir: str,
@@ -539,13 +584,14 @@ def _assemble_store(
     partition index (relative manifest paths, file list, signature, scalar sidecar) plus
     the combine spec and the resolved concat dim (used for the lazy open-time sort).
 
-    For ``by_coords`` the partition index is persisted in **record order** (each partition
-    keyed by the smallest value of its inline record coordinate), so the reader's
-    :func:`xr.concat` is already chronological at block boundaries and the expensive
-    open-time ``sortby`` is skipped for disjoint-range partitions (the common case — e.g.
-    contiguous NetCDF3 where each file is its own partition). The ``sortby`` in
-    :func:`open_store` remains the correctness fallback for genuinely interleaved
-    (sub-block) ranges.
+    For ``by_coords`` it also persists a ``combine_plan`` (:func:`_combine_plan`): partitions
+    are grouped by **record-axis identity** (:func:`_axis_key`) — partitions sharing the
+    same record coordinate are different variables of one cube (each single-variable file is
+    its own encoding partition) and must be *merged* at open; groups with distinct axes are
+    *concatenated* along the record dim, ordered by start so the reader skips ``sortby`` for
+    disjoint ranges (the ``sortby`` in :func:`open_store` stays the fallback for interleaved
+    ranges). This replays ``open_mfdataset(by_coords)`` semantics (merge + concat) instead of
+    a blind ``xr.concat`` that would stack per-variable partitions and inflate the record axis.
     """
     parts_dir = os.path.join(cache_dir, PARTS_SUBDIR)
     if os.path.isdir(parts_dir):
@@ -554,9 +600,11 @@ def _assemble_store(
 
     ext = ".json" if _COMBINED_FORMAT == "json" else ""
     resolved_dim = str(concat_dim) if concat_dim else None
-    # (record-start, partition) pairs; reordered below so the store lists partitions
-    # in record order (the reader concatenates in this order — see persistence note).
-    entries: List[Tuple[object, dict]] = []
+    partitions: List[dict] = []
+    # Per-partition (record-start, axis-key) in natural (first-seen) order; feeds the
+    # combine plan below. The partition list itself is NOT reordered — the plan refers
+    # to partitions by index and carries both the merge grouping and the concat order.
+    metas: List[Tuple[object, Optional[str]]] = []
     for i, (sig_key, items) in enumerate(_partition(file_vds)):
         vds_list = [v for _, v in items]
         paths = [p for p, _ in items]
@@ -564,7 +612,7 @@ def _assemble_store(
         resolved_dim = resolved_dim or dim
         combined = _consolidate(vds_list, dim)
         combined = _inline_coords(combined, paths, dim, open_kwargs=open_kwargs)
-        start = _record_start(combined, dim)
+        start, axis = _record_start(combined, dim), _axis_key(combined, dim)
         combined, scalars, gridmap = _extract_scalars(
             combined, paths[0], open_kwargs=open_kwargs
         )
@@ -572,25 +620,13 @@ def _assemble_store(
         rel = os.path.join(PARTS_SUBDIR, f"p{i:04d}{ext}")
         _write_manifest(combined, os.path.join(cache_dir, rel))
 
-        entries.append((start, {
+        partitions.append({
             "signature": sig_key, "files": paths, "parquet": rel,
             "scalars": scalars, "gridmap": gridmap,
-        }))
+        })
+        metas.append((start, axis))
 
-    # Persist the partitions in record order so the reader's ``xr.concat`` is already
-    # chronological at block boundaries and the open-time ``sortby`` is skipped (a
-    # ManifestArray cannot be fancy-indexed at build, so ordering is a list reorder
-    # here, not a data shuffle). Only the list ORDER matters — the parquet paths
-    # (``parts/pNNNN``) stay as written. ``by_coords`` only: ``nested`` preserves input
-    # order by contract; and only when every partition has a comparable record start
-    # (else keep first-seen order, and the reader's ``sortby`` fallback still applies).
-    if (
-        combine == COMBINE_BY_COORDS
-        and len(entries) > 1
-        and all(start is not None for start, _ in entries)
-    ):
-        entries.sort(key=lambda e: e[0])
-    partitions: List[dict] = [p for _, p in entries]
+    plan = _combine_plan(metas) if combine == COMBINE_BY_COORDS else None
 
     payload = {
         "vz_version": VZ_VERSION,
@@ -601,6 +637,9 @@ def _assemble_store(
         # Additive field: stores written before this read as {} -> reader uses defaults.
         "open_kwargs": _filter_open_kwargs(open_kwargs),
         "partitions": partitions,
+        # Merge-aware recombination plan (None -> reader falls back to the plain
+        # concat path; absent in pre-schema-4 stores, which rebuild anyway).
+        "combine_plan": plan,
     }
     _cache.write_json(os.path.join(cache_dir, STORE_FILE), payload)
     return payload
@@ -710,16 +749,34 @@ def _is_monotonic_nondecreasing(out: xr.Dataset, rc: str) -> bool:
     return vals.size <= 1 or bool(np.all(vals[1:] >= vals[:-1]))
 
 
+def _merge_partitions(group: Sequence[xr.Dataset]) -> xr.Dataset:
+    """Merge partitions that share a record axis (different variables of one cube, each
+    in its own single-variable file -> its own encoding partition).
+
+    ``join="override"`` / ``compat="override"`` skip alignment and equality checks: the
+    record axes are identical by construction (same :func:`_axis_key`), so this just
+    unions the data variables and keeps the first copy of the shared coordinates /
+    grid_mapping containers. Variables stay lazy."""
+    group = list(group)
+    if len(group) == 1:
+        return group[0]
+    return xr.merge(
+        group, compat="override", join="override", combine_attrs="override"
+    )
+
+
 def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr.Dataset:
     """Reopen the combined lazy dataset from a store payload.
 
-    With one partition (the common case) this is a single lazy reference open — no
-    combine, no coordinate disk reads beyond the inline coordinates. With several
-    (mixed/heterogeneous-encoding) partitions, ``by_coords`` concatenates them along the
-    record dim and sorts by the coordinate — robust to partitions whose record ranges
-    interleave (which ``combine_by_coords`` cannot linearize); ``nested`` replays the
-    recorded combine in input/file order. Either way only the inline coordinates are
-    touched (concatenated + argsorted) — the data variables stay lazy.
+    The ``combine_plan`` (schema 4+) drives a merge-aware recombination that replays
+    ``open_mfdataset(by_coords)`` semantics: partitions sharing a record axis (different
+    variables of one cube) are **merged** (:func:`_merge_partitions`), and the resulting
+    distinct-axis groups are **concatenated** along the record dim in record order. This
+    avoids stacking per-variable partitions along the record axis (which would inflate it
+    N-fold and produce a wrong cube). With one group the merge is the whole result; with
+    one partition it is a single lazy reference open. ``nested`` (and pre-schema-4 / planless
+    stores) replay the recorded combine / plain concat. Only the inline coordinates are
+    touched (merged/concatenated/argsorted) — the data variables stay lazy.
 
     ``open_kwargs`` (xarray opener options) override the kwargs persisted at build time;
     both are forwarded to :func:`open_reference`. ``chunks`` is the lever that keeps the
@@ -729,6 +786,7 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
     parts = payload["partitions"]
     combine = payload.get("combine", COMBINE_BY_COORDS)
     concat_dim = payload.get("concat_dim")
+    plan = payload.get("combine_plan")
     # Persisted build-time kwargs are the defaults; read-time kwargs win.
     merged_open_kwargs = {**payload.get("open_kwargs", {}), **(open_kwargs or {})}
     datasets = [
@@ -740,16 +798,27 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
         )
         for p in parts
     ]
-    if len(datasets) == 1:
+    if combine == COMBINE_BY_COORDS and plan:
+        # Merge-aware: merge partitions within each record-axis group, then concatenate
+        # the (distinct-axis) groups along the record dim. Groups are ordered by record
+        # start at build, so the concat is already chronological for disjoint ranges and
+        # the sortby below is skipped; the sortby stays the fallback for interleaved ranges.
+        groups = [_merge_partitions([datasets[i] for i in g]) for g in plan]
+        if len(groups) == 1:
+            out = groups[0]
+        elif concat_dim:
+            out = xr.concat(
+                groups, dim=concat_dim, data_vars="minimal", coords="minimal",
+                compat="override", combine_attrs="override",
+            )
+        else:
+            return _combine(groups, combine, concat_dim)
+    elif len(datasets) == 1:
         out = datasets[0]
     elif combine == COMBINE_BY_COORDS and concat_dim:
-        # Several encoding-partitions (mixed/heterogeneous formats): concatenate along the
-        # record dim, then sort (below). Partitions are encoding-splits of ONE cube — same
-        # variables, same grid, disjoint record values — so a 1-D concat is exactly right
-        # and robust to partitions whose record ranges INTERLEAVE (e.g. the file encoding
-        # alternates across years). ``combine_by_coords`` cannot linearize interleaved
-        # tiles: it raises "Resulting object does not have monotonic global indexes along
-        # dimension <dim>". Same minimal/override policy as the build-time consolidation.
+        # No plan (pre-schema-4 / no orderable record coord): plain concat along the record
+        # dim + sort, as before. Robust to interleaved ranges (combine_by_coords cannot
+        # linearize them: it raises "...does not have monotonic global indexes...").
         out = xr.concat(
             datasets, dim=concat_dim, data_vars="minimal", coords="minimal",
             compat="override", combine_attrs="override",
@@ -760,8 +829,8 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
         return _combine(datasets, combine, concat_dim)
     # by_coords: order by the concat coordinate. The sort is deferred to here (a build-time
     # ManifestArray cannot be fancy-indexed) and runs on the dask-backed open, so it only
-    # reorders the lazy graph — never reads data. Covers both the single-partition result
-    # and the concatenated multi-partition one above. For a bare record axis (no coordinate
+    # reorders the lazy graph — never reads data. Covers the single-group/single-partition
+    # result and the concatenated multi-group one above. For a bare record axis (no coordinate
     # of its own, e.g. NSIDC ``tdim``) we order by the coordinate that spans it (``time``);
     # ``sortby(concat_dim)`` would otherwise raise on the missing ``tdim`` coordinate.
     if combine == COMBINE_BY_COORDS and concat_dim and concat_dim in out.dims:
