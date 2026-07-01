@@ -314,6 +314,39 @@ def _consolidate(vds_list: Sequence[xr.Dataset], dim: Optional[str]) -> xr.Datas
     )
 
 
+def _regular_concat_grid(vds_list: Sequence[xr.Dataset], dim: Optional[str]) -> bool:
+    """Whether the partition's files form a regular chunk grid for a build-time concat.
+
+    VirtualiZarr only supports regular (evenly chunked) grids on the concatenation axis: a
+    ``ManifestArray`` concat rejects any input *except the last* whose ``dim`` length is not
+    an exact multiple of its ``dim`` chunk — a partial final chunk landing mid-array. This is
+    the era5-hourly shape (yearly files of 8760 timesteps chunked at 512, ``8760 % 512 != 0``):
+    every file carries a partial final chunk, so consolidating them into one manifest is
+    impossible. When this returns ``False`` the caller keeps the files as per-file partitions
+    and lets the reader concatenate the (dask-backed) datasets at open, which has no
+    regular-grid constraint (see :func:`open_store`). A single file / no concat dim is trivially
+    regular — nothing is concatenated at build time. Metadata is read the same way as
+    :func:`_signature` (only lazy ``ManifestArray`` variables carry a chunk grid)."""
+    vds_list = list(vds_list)
+    if dim is None or len(vds_list) <= 1:
+        return True
+    for vds in vds_list[:-1]:  # the final input is allowed a partial final chunk
+        if dim not in vds.sizes:
+            continue
+        length = int(vds.sizes[dim])
+        for var in vds.variables.values():
+            if dim not in var.dims:
+                continue
+            meta = getattr(var.data, "metadata", None)
+            chunks = list(getattr(meta, "chunks", []) or []) if meta is not None else []
+            if not chunks:
+                continue  # unchunked/contiguous -> a single chunk spans the axis
+            chunk = chunks[var.dims.index(dim)]
+            if chunk and length % chunk:
+                return False
+    return True
+
+
 def _record_coord(ds: xr.Dataset, dim: str) -> Optional[str]:
     """The 1-D coordinate that orders ``dim`` for a ``by_coords`` open.
 
@@ -576,7 +609,12 @@ def _assemble_store(
     """Partition the per-file virtual datasets, consolidate each, write a manifest + index.
 
     Each encoding-homogeneous partition is consolidated via :func:`_consolidate` (a
-    vectorized manifest concat). The consolidated non-scalar coordinates are then
+    vectorized manifest concat) — unless its files would form an *irregular* chunk grid on
+    the concat axis (:func:`_regular_concat_grid`; the era5-hourly shape of 8760 timesteps
+    chunked at 512). VirtualiZarr forbids that concat, so such a group is instead emitted as
+    **one partition per file** and recombined at open by the dask-backed reader (which has no
+    regular-grid constraint) via the same ``combine_plan`` path as disjoint tiles. The
+    consolidated non-scalar coordinates are then
     *materialized inline* (read once via an :func:`open_reference` round-trip and
     re-assigned as numpy) so the persisted manifest carries its coordinates as a single
     inline blob — the reader never does per-record coordinate disk reads, keeping opens
@@ -605,26 +643,45 @@ def _assemble_store(
     # combine plan below. The partition list itself is NOT reordered — the plan refers
     # to partitions by index and carries both the merge grouping and the concat order.
     metas: List[Tuple[object, Optional[str]]] = []
-    for i, (sig_key, items) in enumerate(_partition(file_vds)):
+    for sig_key, items in _partition(file_vds):
         vds_list = [v for _, v in items]
         paths = [p for p, _ in items]
         dim = _resolve_concat_dim(vds_list[0], concat_dim)
         resolved_dim = resolved_dim or dim
-        combined = _consolidate(vds_list, dim)
-        combined = _inline_coords(combined, paths, dim, open_kwargs=open_kwargs)
-        start, axis = _record_start(combined, dim), _axis_key(combined, dim)
-        combined, scalars, gridmap = _extract_scalars(
-            combined, paths[0], open_kwargs=open_kwargs
-        )
 
-        rel = os.path.join(PARTS_SUBDIR, f"p{i:04d}{ext}")
-        _write_manifest(combined, os.path.join(cache_dir, rel))
+        # Normally the whole (encoding-homogeneous) group is consolidated into one manifest
+        # via a vectorized ManifestArray concat. VirtualiZarr only supports regular chunk
+        # grids on the concat axis, though: when the files' ``dim`` length is not an exact
+        # multiple of their ``dim`` chunk (the era5-hourly shape: 8760 timesteps chunked at
+        # 512) the concat is rejected, so fall back to per-file partitions — the reader then
+        # concatenates the dask-backed datasets at open, which has no regular-grid constraint.
+        # ``subgroups`` is a list of (dataset, paths): one consolidated dataset, or one entry
+        # per file. The try/except is a backstop for irregular grids the pre-check misses.
+        if _regular_concat_grid(vds_list, dim):
+            try:
+                subgroups = [(_consolidate(vds_list, dim), paths)]
+            except ValueError as exc:
+                if "partial chunks" not in str(exc):
+                    raise
+                subgroups = [(v, [p]) for v, p in zip(vds_list, paths)]
+        else:
+            subgroups = [(v, [p]) for v, p in zip(vds_list, paths)]
 
-        partitions.append({
-            "signature": sig_key, "files": paths, "parquet": rel,
-            "scalars": scalars, "gridmap": gridmap,
-        })
-        metas.append((start, axis))
+        for ds, ds_paths in subgroups:
+            combined = _inline_coords(ds, ds_paths, dim, open_kwargs=open_kwargs)
+            start, axis = _record_start(combined, dim), _axis_key(combined, dim)
+            combined, scalars, gridmap = _extract_scalars(
+                combined, ds_paths[0], open_kwargs=open_kwargs
+            )
+
+            rel = os.path.join(PARTS_SUBDIR, f"p{len(partitions):04d}{ext}")
+            _write_manifest(combined, os.path.join(cache_dir, rel))
+
+            partitions.append({
+                "signature": sig_key, "files": ds_paths, "parquet": rel,
+                "scalars": scalars, "gridmap": gridmap,
+            })
+            metas.append((start, axis))
 
     plan = _combine_plan(metas) if combine == COMBINE_BY_COORDS else None
 

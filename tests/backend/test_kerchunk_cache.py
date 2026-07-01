@@ -70,6 +70,36 @@ def _write_nc4_slab(sl, path, *, zlib=None):
     return str(path)
 
 
+def _write_chunked_slab(sl, path, *, time_chunk):
+    """Write a time-slice as NETCDF4 with an explicit on-disk record chunk of ``time_chunk``.
+
+    Stale chunk/contiguous encoding is dropped first, then the record-spanning data vars are
+    chunked at ``time_chunk`` along ``CDIM`` (full extent on the other axes). Choosing a
+    ``time_chunk`` that does not divide the slab's record length makes the file carry a
+    partial final chunk along the record axis — the era5-hourly-extended shape VirtualiZarr
+    cannot consolidate via a ManifestArray concat. Compression is dropped so slabs written
+    this way share one encoding signature (they would consolidate into one partition but for
+    the irregular grid).
+    """
+    out = sl.copy()
+    for v in list(out.variables):
+        # ``original_shape``/``preferred_chunks`` must go too: xarray's netcdf4 backend
+        # ignores a forced ``chunksizes`` while ``original_shape`` still reflects the source
+        # (a shape-mismatch guard), silently keeping the source chunk (here time=1).
+        for enc in ("chunksizes", "contiguous", "original_shape", "preferred_chunks"):
+            out[v].encoding.pop(enc, None)
+    for v in out.data_vars:
+        if CDIM in out[v].dims:
+            out[v].encoding["chunksizes"] = tuple(
+                time_chunk if d == CDIM else out.sizes[d] for d in out[v].dims
+            )
+            out[v].encoding["contiguous"] = False
+            out[v].encoding.pop("zlib", None)
+            out[v].encoding.pop("complevel", None)
+    out.to_netcdf(path, engine="netcdf4", format="NETCDF4")
+    return str(path)
+
+
 def _two_var_src():
     """Source with TWO data variables sharing dims/coords (DVAR + a derived second var),
     to exercise the single-variable-per-file -> per-variable-partition case."""
@@ -889,6 +919,54 @@ def test_single_variable_two_tiles_merge_and_concat(tmp_path):
 
     cube = open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache))
     _assert_cube_values_match(cube, open_datacube(files))
+
+
+@pytest.mark.integration
+def test_irregular_chunk_grid_splits_to_per_file(tmp_path, monkeypatch):
+    # The era5-hourly-extended crash: SAME-encoding files whose record-axis length is NOT a
+    # multiple of their on-disk record chunk (production: 8760 timesteps chunked at 512). A
+    # build-time ManifestArray concat needs a regular chunk grid, so VirtualiZarr rejects the
+    # partial mid-array chunk ("Cannot concatenate arrays with partial chunks"). The build must
+    # instead emit ONE partition PER FILE and let the (dask-backed) reader concatenate them.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    L = src.sizes[CDIM]
+    half = L // 2
+    if half < 3:
+        pytest.skip("source record axis too short to exercise a partial mid-array chunk")
+    # Two equal, disjoint halves with identical encoding -> normally ONE consolidated
+    # partition. A record chunk of half-1 does not divide half (half >= 3), so each file has a
+    # partial final chunk -> irregular grid -> the non-last input is rejected by a build concat.
+    chunk_t = half - 1
+    a = _write_chunked_slab(src.isel({CDIM: slice(0, half)}), tmp_path / "a.nc", time_chunk=chunk_t)
+    b = _write_chunked_slab(src.isel({CDIM: slice(half, 2 * half)}), tmp_path / "b.nc", time_chunk=chunk_t)
+
+    cache = tmp_path / "cache"
+    # Supplied late-first (b, a) to also exercise chronological reordering at read.
+    summary = build_metadata_cache([b, a], metadata_cache_path=str(cache))
+    assert summary["built"] == 1 and summary["skipped"] == []  # build no longer crashes
+
+    store = _kerchunk.load_store(str(cache))
+    # Same signature would consolidate to 1 partition; the irregular grid forces per-file.
+    assert len(store["partitions"]) == 2
+    assert [p["files"] for p in store["partitions"]] == [[b], [a]]  # first-seen (input) order
+    # Two disjoint singleton groups, ordered by record start -> a (early, idx 1) before b.
+    assert store["combine_plan"] == [[1], [0]]
+
+    calls = []
+    real_sortby = xr.Dataset.sortby
+    monkeypatch.setattr(
+        xr.Dataset, "sortby",
+        lambda self, *a, **k: (calls.append(1), real_sortby(self, *a, **k))[1],
+    )
+    ds = _kerchunk.open_store(store)
+    assert calls == []  # groups ordered at build -> concat already chronological -> no sortby
+    t = np.asarray(ds[CDIM].values)
+    assert t.size == 2 * half and np.all(t[1:] >= t[:-1])  # full, chronological record axis
+    assert dask.is_dask_collection(ds[_record_var(ds)].data)  # data stays lazy
+
+    cube = open_datacube([b, a], metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube([b, a]))
 
 
 @pytest.mark.integration
