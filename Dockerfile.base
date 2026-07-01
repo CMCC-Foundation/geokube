@@ -23,7 +23,11 @@ FROM ubuntu:${UBUNTU_VERSION} AS builder
 # Version knobs (kept in sync between base and dev via build-args).
 ARG ESMF_VERSION=8.9.1
 ARG XESMF_VERSION=0.9.2
-ARG SETUPTOOLS_VERSION=80.9.0
+# 80.10.2 is the earliest setuptools whose VENDORED wheel is 0.46.3 (>= 0.46.2),
+# clearing CVE-2026-24049 (path-traversal chmod in `wheel unpack`; affects vendored
+# wheel 0.40.0–0.46.1). 80.9.0 vendored the vulnerable wheel 0.45.1. The flaw is
+# build-time-only (not reachable at app runtime), so this is a SAST-hygiene bump.
+ARG SETUPTOOLS_VERSION=80.10.2
 
 ENV DEBIAN_FRONTEND=noninteractive
 
