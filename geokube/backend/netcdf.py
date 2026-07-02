@@ -24,6 +24,7 @@ import geokube.backend.base
 import geokube.core.datacube
 import geokube.core.dataset
 from geokube.backend import _cache
+from geokube.backend._progress import progress_iter
 from geokube.core.errs import CacheNotExist
 from geokube.utils.hcube_logger import HCubeLogger
 
@@ -303,6 +304,7 @@ def build_metadata_cache(
     concat_dim: Optional[str] = None,
     engine: Optional[str] = None,
     scheduler="auto",
+    progress: bool = False,
     concat_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     identical_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     **kwargs,
@@ -335,6 +337,15 @@ def build_metadata_cache(
     value (``"processes"`` to dodge the h5py GIL without a cluster, ``"threads"``, a
     ``Client``, ...) is passed through to :func:`dask.compute`.
 
+    ``progress`` (default ``False``) opt-in shows nested tqdm bars while building: an
+    outer bar over the cubes (when a ``pattern`` is given) and an inner bar over the
+    per-file opens within each cube (the dominant cost). It writes to ``stderr`` and stays
+    visible off-TTY (throttled) so it also shows in the catalog container logs. Under a
+    distributed scheduler the inner per-file bar is unavailable (``dask.diagnostics``
+    callbacks do not fire there) and degrades to a log line; the outer cube bar is
+    unaffected. Requires ``tqdm`` (a declared dependency); if it were missing the progress
+    silently turns off. Leaving it ``False`` imports nothing and adds no overhead.
+
     Extra ``**kwargs`` are xarray opener options (``chunks`` and decode flags such as
     ``decode_coords``/``mask_and_scale``/``decode_times``). They are **persisted in the
     store and replayed by the reader** (overridable at read time), so the cache stays
@@ -362,6 +373,7 @@ def build_metadata_cache(
             engine=engine,
             scheduler=scheduler,
             open_kwargs=kwargs,
+            progress=progress,
         )
         return {
             "groups": 1,
@@ -375,7 +387,10 @@ def build_metadata_cache(
     df = _get_df_from_files_list(files, pattern, ds_attr_names)
     cubes_dir = os.path.join(cache_dir, _cache.CUBES_DIR)
     built, skipped = 0, []
-    for i in df.index:
+    for i in progress_iter(
+        df.index, enabled=progress, desc="building cubes", total=len(df.index),
+        leave=True,
+    ):
         ok = _build_datacube_cache(
             df[FILES_COL][i],
             _cube_cache_dir(cubes_dir, i),
@@ -384,6 +399,7 @@ def build_metadata_cache(
             engine=engine,
             scheduler=scheduler,
             open_kwargs=kwargs,
+            progress=progress,
         )
         if ok:
             built += 1
@@ -401,7 +417,8 @@ def build_metadata_cache(
 
 
 def _build_datacube_cache(
-    files, cache_dir, *, combine, concat_dim, engine, scheduler="auto", open_kwargs=None
+    files, cache_dir, *, combine, concat_dim, engine, scheduler="auto",
+    open_kwargs=None, progress=False,
 ) -> bool:
     """Build/refresh one cube's kerchunk store under ``cache_dir`` (incremental).
 
@@ -446,6 +463,7 @@ def _build_datacube_cache(
         concat_dim=concat_dim,
         scheduler=scheduler,
         open_kwargs=open_kwargs,
+        progress=progress,
     )
     if payload is None:
         return False

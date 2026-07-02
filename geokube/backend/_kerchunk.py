@@ -71,8 +71,12 @@ except Exception:  # pragma: no cover
 from obstore.store import LocalStore
 
 from geokube.backend import _cache
+from geokube.backend._progress import dask_progress, is_distributed, progress_iter
 from geokube.utils.attrs_encoding import is_undecodable_time_unit
 from geokube.utils.format_parsing import _make_path_posix
+from geokube.utils.hcube_logger import HCubeLogger
+
+LOG = HCubeLogger(name="_kerchunk.py")
 
 VZ_VERSION = virtualizarr.__version__
 
@@ -577,7 +581,7 @@ def _write_manifest(ds: xr.Dataset, abs_path: str) -> None:
 
 def _inline_coords(
     combined: xr.Dataset, paths: Sequence[str], dim: Optional[str],
-    *, open_kwargs: Optional[Mapping] = None,
+    *, open_kwargs: Optional[Mapping] = None, progress: bool = False,
 ) -> xr.Dataset:
     """Materialize the consolidated dataset's non-scalar coordinates as inline numpy.
 
@@ -610,7 +614,10 @@ def _inline_coords(
         # by concatenating each file's CF-decoded values — one open per file, decoded with
         # that file's own units, so per-file unit rebasing does not collide.
         seg = {cn: [] for cn in spanning}
-        for pth in paths:
+        for pth in progress_iter(
+            paths, enabled=progress, desc="inlining coords", total=len(paths),
+            leave=False,
+        ):
             with xr.open_dataset(pth, **decode) as s:
                 for cn in spanning:
                     seg[cn].append(np.asarray(s[cn].values))
@@ -653,6 +660,7 @@ def _assemble_store(
     combine: str,
     concat_dim,
     open_kwargs: Optional[Mapping] = None,
+    progress: bool = False,
 ) -> dict:
     """Partition the per-file virtual datasets, consolidate each, write a manifest + index.
 
@@ -716,7 +724,9 @@ def _assemble_store(
             subgroups = [(v, [p]) for v, p in zip(vds_list, paths)]
 
         for ds, ds_paths in subgroups:
-            combined = _inline_coords(ds, ds_paths, dim, open_kwargs=open_kwargs)
+            combined = _inline_coords(
+                ds, ds_paths, dim, open_kwargs=open_kwargs, progress=progress
+            )
             start, axis = _record_start(combined, dim), _axis_key(combined, dim)
             combined, scalars, gridmap = _extract_scalars(
                 combined, ds_paths[0], open_kwargs=open_kwargs
@@ -750,7 +760,7 @@ def _assemble_store(
     return payload
 
 
-def _run_parallel(thunks: Sequence, scheduler):
+def _run_parallel(thunks: Sequence, scheduler, *, progress: bool = False, desc=None):
     """Run zero-arg callables, optionally via dask (returning results in order).
 
     ``None`` / inactive ``"auto"`` -> serial in-process. Otherwise the thunks are
@@ -758,19 +768,39 @@ def _run_parallel(thunks: Sequence, scheduler):
     scheduler. ``"threads"`` is the recommended parallel mode: the per-file open is
     I/O-bound (file-structure read) and the returned virtual datasets stay in shared
     memory (no pickling), which matters for slow/network storage.
+
+    With ``progress`` a tqdm bar (labelled ``desc``) tracks per-file completion: on the
+    serial paths it wraps the loop; on the dask path a ``dask.diagnostics`` callback drives
+    it (local schedulers only). Under a distributed scheduler that callback never fires, so
+    a single log line is emitted instead.
     """
     if not thunks:
         return []
     if scheduler is None:
-        return [t() for t in thunks]
+        return [
+            t() for t in progress_iter(
+                thunks, enabled=progress, desc=desc, total=len(thunks), leave=False
+            )
+        ]
     import dask
     from dask.base import get_scheduler
 
     if scheduler == SCHEDULER_AUTO and get_scheduler() is None:
-        return [t() for t in thunks]
+        return [
+            t() for t in progress_iter(
+                thunks, enabled=progress, desc=desc, total=len(thunks), leave=False
+            )
+        ]
     tasks = [dask.delayed(t)() for t in thunks]
     compute_kwargs = {} if scheduler == SCHEDULER_AUTO else {"scheduler": scheduler}
-    return list(dask.compute(*tasks, **compute_kwargs))
+    if progress and is_distributed(scheduler):
+        LOG.info(
+            f"{desc or 'processing'}: {len(tasks)} files"
+            " (distributed scheduler; per-file bar unavailable)"
+        )
+        return list(dask.compute(*tasks, **compute_kwargs))
+    with dask_progress(len(tasks), enabled=progress, desc=desc, leave=False):
+        return list(dask.compute(*tasks, **compute_kwargs))
 
 
 def cached_build_store(
@@ -782,6 +812,7 @@ def cached_build_store(
     concat_dim=None,
     scheduler=SCHEDULER_AUTO,
     open_kwargs: Optional[Mapping] = None,
+    progress: bool = False,
 ) -> Optional[dict]:
     """Incrementally (re)build the on-disk store under ``cache_dir``.
 
@@ -791,6 +822,9 @@ def cached_build_store(
     manifests are persisted, removed ones pruned, the partitions are consolidated to
     parquet and ``store.json`` is written. Returns the payload, or ``None`` (no writes)
     if a file is not referenceable — the caller then falls back to ``open_mfdataset``.
+
+    With ``progress`` a per-file tqdm bar tracks the opens (fresh + reused) and the
+    coordinate-inlining pass.
     """
     if not all(is_referenceable(f) for f in files):
         return None
@@ -815,6 +849,8 @@ def cached_build_store(
     fresh = _run_parallel(
         [(lambda f=files[i]: reference_one(f, open_kwargs=open_kwargs)) for i in stale_idx],
         scheduler,
+        progress=progress,
+        desc="opening files",
     )
     vds_by_idx = {}
     for k, i in enumerate(stale_idx):
@@ -827,6 +863,8 @@ def cached_build_store(
         [(lambda i=i: _reload_one(_ref_file(cache_dir, posix_paths[i]), open_kwargs=open_kwargs))
          for i in reuse_idx],
         scheduler,
+        progress=progress,
+        desc="reloading cached",
     )
     for k, i in enumerate(reuse_idx):
         vds = reloaded[k]
@@ -838,7 +876,7 @@ def cached_build_store(
     file_vds = [(files[i], vds_by_idx[i]) for i in range(len(files))]
     payload = _assemble_store(
         file_vds, cache_dir, combine=combine, concat_dim=concat_dim,
-        open_kwargs=open_kwargs,
+        open_kwargs=open_kwargs, progress=progress,
     )
     _prune_ref_files(cache_dir, set(posix_paths))
     return payload

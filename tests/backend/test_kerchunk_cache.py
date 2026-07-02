@@ -1215,3 +1215,91 @@ def test_decode_kwarg_symmetry_cached_vs_direct(tmp_path):
                            metadata_cache_path=str(cache), mask_and_scale=False)
     direct = open_datacube(files, mask_and_scale=False)
     _assert_cube_values_match(cached, direct)
+
+
+# ------------------------------------------------------------- build: progress bar
+# `progress=True` shows nested tqdm bars while building. It must be a pure add-on:
+# identical summary + identical store as `progress=False`, and it must actually drive
+# tqdm (we spy on the loader). Off by default -> tqdm is never even loaded.
+
+class _FakeTqdm:
+    """Records instantiations; works both as an iterable wrapper (``progress_iter``)
+    and as a total/update/close bar (the dask callback). Crucially it re-yields the
+    wrapped iterable unchanged, so the build sees every file."""
+
+    calls = 0
+
+    def __init__(self, iterable=None, **kwargs):
+        type(self).calls += 1
+        self._iterable = iterable
+
+    def __iter__(self):
+        return iter(() if self._iterable is None else self._iterable)
+
+    def update(self, n=1):
+        pass
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def spy_tqdm(monkeypatch):
+    from geokube.backend import _progress
+
+    _FakeTqdm.calls = 0
+    monkeypatch.setattr(_progress, "_load_tqdm", lambda: _FakeTqdm)
+    return _FakeTqdm
+
+
+@pytest.mark.integration
+def test_build_progress_is_transparent_single_cube(tmp_path, spy_tqdm):
+    files = _make_slabs(tmp_path)["nc4"]
+    plain, bar = tmp_path / "plain", tmp_path / "bar"
+    s_plain = build_metadata_cache(files, metadata_cache_path=str(plain))
+    assert spy_tqdm.calls == 0  # progress defaults off -> tqdm never loaded/used
+    s_bar = build_metadata_cache(files, metadata_cache_path=str(bar), progress=True)
+    assert spy_tqdm.calls > 0  # the per-file bar(s) were driven
+    assert s_bar == s_plain
+    assert (
+        _kerchunk.load_store(str(bar))["partitions"]
+        == _kerchunk.load_store(str(plain))["partitions"]
+    )
+    _assert_cube_values_match(
+        open_datacube(files, metadata_caching=True, metadata_cache_path=str(bar)),
+        open_datacube(files),
+    )
+
+
+@pytest.mark.integration
+def test_build_progress_with_dask_scheduler(tmp_path, spy_tqdm):
+    # The dask path drives the bar via a dask.diagnostics callback (local scheduler).
+    # "synchronous" exercises the delayed/compute plumbing deterministically.
+    files = _make_slabs(tmp_path)["nc4"]
+    cache = tmp_path / "cache"
+    summary = build_metadata_cache(
+        files, metadata_cache_path=str(cache), scheduler="synchronous", progress=True
+    )
+    assert summary["built"] == 1
+    assert spy_tqdm.calls > 0
+    _assert_cube_values_match(
+        open_datacube(files, metadata_caching=True, metadata_cache_path=str(cache)),
+        open_datacube(files),
+    )
+
+
+@pytest.mark.integration
+def test_build_progress_pattern_outer_cube_bar(tmp_path, spy_tqdm):
+    glob_path = os.path.join("tests", "resources",
+                             "era5-single-levels-reanalysis_*.nc")
+    pattern = os.path.join("tests", "resources",
+                           "era5-single-levels-reanalysis_{var}.nc")
+    plain, bar = tmp_path / "plain", tmp_path / "bar"
+    s_plain = build_metadata_cache(glob_path, pattern, metadata_cache_path=str(plain))
+    s_bar = build_metadata_cache(
+        glob_path, pattern, metadata_cache_path=str(bar), progress=True
+    )
+    assert s_bar == s_plain
+    assert spy_tqdm.calls > 0  # outer cube bar + inner per-file bar(s)
+    assert open_dataset(glob_path, pattern, metadata_caching=True,
+                        metadata_cache_path=str(bar)) is not None

@@ -52,7 +52,8 @@ dependencies = [
     "virtualizarr==2.7.0",
     "obstore==0.11.0",
     "fastparquet==2026.5.0",
-    "cftime==1.6.5"
+    "cftime==1.6.5",
+    "tqdm>=4.66"
 ]
 
 [project.optional-dependencies]
