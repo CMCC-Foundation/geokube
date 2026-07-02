@@ -832,7 +832,9 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
     avoids stacking per-variable partitions along the record axis (which would inflate it
     N-fold and produce a wrong cube). With one group the merge is the whole result; with
     one partition it is a single lazy reference open. ``nested`` (and pre-schema-4 / planless
-    stores) replay the recorded combine / plain concat. Only the inline coordinates are
+    ``by_coords``) multi-partition stores use a plain **lazy** ``xr.concat`` along the concat
+    dim in partition (input/file) order — never an eager ``combine_nested``/``combine_by_coords``
+    (whose default ``compat`` would compute variables and OOM). Only the inline coordinates are
     touched (merged/concatenated/argsorted) — the data variables stay lazy.
 
     ``open_kwargs`` (xarray opener options) override the kwargs persisted at build time;
@@ -872,17 +874,19 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
             return _combine(groups, combine, concat_dim)
     elif len(datasets) == 1:
         out = datasets[0]
-    elif combine == COMBINE_BY_COORDS and concat_dim:
-        # No plan (pre-schema-4 / no orderable record coord): plain concat along the record
-        # dim + sort, as before. Robust to interleaved ranges (combine_by_coords cannot
-        # linearize them: it raises "...does not have monotonic global indexes...").
+    elif concat_dim:
+        # Multi-partition with a resolved concat dim: plain LAZY concat along it in partition
+        # (== input/file) order. ``minimal``/``override`` keep it lazy — no per-variable
+        # equality compute (the OOM trap of ``xr.combine_nested``'s / ``combine_by_coords``'s
+        # default ``compat``, seen when a per-file split yields many disjoint-range partitions).
+        # ``by_coords`` (no plan: pre-schema-4 / no orderable record coord) is sorted below and
+        # is robust to interleaved ranges; ``nested`` keeps input order (the sort is skipped).
         out = xr.concat(
             datasets, dim=concat_dim, data_vars="minimal", coords="minimal",
             compat="override", combine_attrs="override",
         )
     else:
-        # ``nested`` (stack in input/file order along a bare index axis) or a by_coords
-        # store with no resolved concat dim (degenerate): replay the recorded combine.
+        # No resolved concat dim (degenerate): replay the recorded combine.
         return _combine(datasets, combine, concat_dim)
     # by_coords: order by the concat coordinate. The sort is deferred to here (a build-time
     # ManifestArray cannot be fancy-indexed) and runs on the dask-backed open, so it only

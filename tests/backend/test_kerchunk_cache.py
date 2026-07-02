@@ -970,6 +970,41 @@ def test_irregular_chunk_grid_splits_to_per_file(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_nested_irregular_chunk_grid_stays_lazy(tmp_path, monkeypatch):
+    # era5 nested variant: combine="nested" + an irregular chunk grid -> per-file partitions.
+    # The reader must LAZILY xr.concat them in input order, NOT eager xr.combine_nested, whose
+    # default compat computes overlapping vars aligned across the disjoint time ranges (the
+    # 48 GiB OOM in staging). Regression guard for the nested multi-partition read path.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    L = src.sizes[CDIM]
+    half = L // 2
+    if half < 3:
+        pytest.skip("source record axis too short to exercise a partial mid-array chunk")
+    chunk_t = half - 1
+    a = _write_chunked_slab(src.isel({CDIM: slice(0, half)}), tmp_path / "a.nc", time_chunk=chunk_t)
+    b = _write_chunked_slab(src.isel({CDIM: slice(half, 2 * half)}), tmp_path / "b.nc", time_chunk=chunk_t)
+
+    cache = tmp_path / "cache"
+    build_metadata_cache([a, b], metadata_cache_path=str(cache), combine="nested", concat_dim=CDIM)
+    store = _kerchunk.load_store(str(cache))
+    assert store["combine"] == "nested"
+    assert len(store["partitions"]) == 2  # irregular grid -> per-file, not consolidated
+
+    def _boom(*a, **k):
+        raise AssertionError("reader used eager xr.combine_nested (the OOM path)")
+
+    monkeypatch.setattr(xr, "combine_nested", _boom)
+    ds = _kerchunk.open_store(store)
+    assert int(ds.sizes[CDIM]) == 2 * half                    # lazily concatenated in input order
+    assert dask.is_dask_collection(ds[_record_var(ds)].data)  # data stays lazy (no compute)
+    monkeypatch.undo()
+
+    cube = open_datacube([a, b], metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube([a, b]))
+
+
+@pytest.mark.integration
 def test_decode_kwarg_symmetry_cached_vs_direct(tmp_path):
     # A non-default decode kwarg flows to BOTH build (persisted) and read; the cached
     # cube matches a direct open with the same kwarg (cache transparency preserved).
