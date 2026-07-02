@@ -305,6 +305,7 @@ def build_metadata_cache(
     engine: Optional[str] = None,
     scheduler="auto",
     progress: bool = False,
+    cube_parallel: bool = True,
     concat_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     identical_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     **kwargs,
@@ -336,6 +337,17 @@ def build_metadata_cache(
     back to serial in-process when none is active; ``None`` forces serial; any other
     value (``"processes"`` to dodge the h5py GIL without a cluster, ``"threads"``, a
     ``Client``, ...) is passed through to :func:`dask.compute`.
+
+    ``cube_parallel`` (default ``True``, only relevant when ``pattern`` is given) submits each
+    cube's build to the **same** ``scheduler`` as an independent task, with that cube's per-file
+    opens forced serial (no nested ``dask.compute``). With many cubes of few files each -- the
+    catalog norm -- this saturates the workers far better than the per-file parallelism alone
+    (which leaves them idle between cubes). Each task writes its own store under ``cubes_dir`` and
+    returns only a small status tuple, so ``processes``/distributed are safe here (nothing
+    un-picklable crosses the boundary; a multi-node cluster needs a shared ``cubes_dir``). A
+    failing cube is isolated (logged + reported in ``skipped``) instead of aborting the run, and
+    ``index.json`` is still published only after every cube completes. Set ``False`` to restore the
+    serial cube loop with per-file parallelism (better for the rare few-cubes/many-files shape).
 
     ``progress`` (default ``False``) opt-in shows nested tqdm bars while building: an
     outer bar over the cubes (when a ``pattern`` is given) and an inner bar over the
@@ -386,25 +398,31 @@ def build_metadata_cache(
     files = sorted(glob.glob(path))
     df = _get_df_from_files_list(files, pattern, ds_attr_names)
     cubes_dir = os.path.join(cache_dir, _cache.CUBES_DIR)
-    built, skipped = 0, []
-    for i in progress_iter(
-        df.index, enabled=progress, desc="building cubes", total=len(df.index),
-        leave=True,
-    ):
-        ok = _build_datacube_cache(
-            df[FILES_COL][i],
-            _cube_cache_dir(cubes_dir, i),
-            combine=combine,
-            concat_dim=concat_dim,
-            engine=engine,
-            scheduler=scheduler,
-            open_kwargs=kwargs,
-            progress=progress,
+    if cube_parallel:
+        built, skipped = _build_cubes_parallel(
+            df, cubes_dir, combine=combine, concat_dim=concat_dim, engine=engine,
+            scheduler=scheduler, open_kwargs=kwargs, progress=progress,
         )
-        if ok:
-            built += 1
-        else:
-            skipped.append(repr(i))
+    else:
+        built, skipped = 0, []
+        for i in progress_iter(
+            df.index, enabled=progress, desc="building cubes", total=len(df.index),
+            leave=True,
+        ):
+            ok = _build_datacube_cache(
+                df[FILES_COL][i],
+                _cube_cache_dir(cubes_dir, i),
+                combine=combine,
+                concat_dim=concat_dim,
+                engine=engine,
+                scheduler=scheduler,
+                open_kwargs=kwargs,
+                progress=progress,
+            )
+            if ok:
+                built += 1
+            else:
+                skipped.append(repr(i))
     # Publish the index LAST: it now references only already-written cube stores.
     _cache.write_json(
         os.path.join(cache_dir, _cache.INDEX_FILE),
@@ -414,6 +432,61 @@ def build_metadata_cache(
         },
     )
     return {"groups": int(len(df.index)), "built": built, "skipped": skipped}
+
+
+def _build_cubes_parallel(
+    df, cubes_dir, *, combine, concat_dim, engine, scheduler, open_kwargs, progress,
+):
+    """Build every cube in ``df`` via the active dask ``scheduler`` and return ``(built, skipped)``.
+
+    Each cube is submitted to :func:`_kerchunk._run_parallel` as an independent task whose
+    per-file opens run **serially** (``scheduler=None``), so there is no nested ``dask.compute``
+    (which would deadlock the local schedulers / worker threads). Under ``scheduler="auto"`` with
+    no active scheduler this degrades to the same serial loop as before; with a scheduler active the
+    cubes become a single ``dask.delayed`` graph computed at once.
+
+    Nothing un-picklable crosses the task boundary: each task writes its own parquet/JSON under
+    ``_cube_cache_dir`` and returns a ``(id, ok, err)`` tuple (the ``ManifestArray`` virtual
+    datasets stay inside the task), so ``processes``/distributed are safe here -- unlike the
+    per-file path, whose returned virtual datasets do not pickle. Each task ships only its own file
+    list, not the whole ``df``. A multi-node distributed cluster needs a shared filesystem for
+    ``cubes_dir`` (each task writes on its worker); the usual single-machine / shared-mount cache
+    build satisfies this.
+
+    A failing cube is isolated (counted as skipped and logged) rather than aborting the whole run.
+    ``_run_parallel`` is a barrier, so all cubes are complete before the caller publishes
+    ``index.json``.
+    """
+    from geokube.backend import _kerchunk
+
+    jobs = [
+        (i, list(df[FILES_COL][i]), _cube_cache_dir(cubes_dir, i)) for i in df.index
+    ]
+
+    def _build_one(job):
+        i, files_i, cube_dir = job
+        try:
+            ok = _build_datacube_cache(
+                files_i, cube_dir, combine=combine, concat_dim=concat_dim, engine=engine,
+                scheduler=None, open_kwargs=open_kwargs, progress=False,
+            )
+            return (i, bool(ok), None)
+        except Exception as exc:  # isolate a bad cube; don't abort the whole run
+            return (i, False, repr(exc))
+
+    results = _kerchunk._run_parallel(
+        [(lambda j=j: _build_one(j)) for j in jobs],
+        scheduler, progress=progress, desc="building cubes",
+    )
+    built, skipped = 0, []
+    for i, ok, err in results:
+        if ok:
+            built += 1
+        else:
+            skipped.append(repr(i))
+        if err is not None:
+            LOG.warn(f"cube {i!r} failed to build: {err}")
+    return built, skipped
 
 
 def _build_datacube_cache(

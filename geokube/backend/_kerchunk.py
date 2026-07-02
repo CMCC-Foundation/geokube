@@ -829,29 +829,48 @@ def cached_build_store(
     if not all(is_referenceable(f) for f in files):
         return None
     open_kwargs = dict(open_kwargs or {})
-    # Robustness: if the caller did not pin ``decode_times`` and any file carries a non-CF
-    # ``months``/``years since`` unit (undecodable by xarray/cftime for a real-world
-    # calendar), force ``decode_times=False`` for the whole build so the manifest read never
-    # crashes. It flows to every build opener and is persisted in the store (``_assemble_store``)
-    # so the reader replays it -- geokube decodes such time to datetime64 at read. ``any(...)``
-    # short-circuits on the first undecodable file.
-    if "decode_times" not in open_kwargs and any(
-        _time_units_undecodable(f) for f in files
-    ):
-        open_kwargs["decode_times"] = False
     os.makedirs(os.path.join(cache_dir, FILES_SUBDIR), exist_ok=True)
     reuse = set(reuse_keys)
     posix_paths = [_make_path_posix(f) for f in files]
     stale_idx = [i for i, p in enumerate(posix_paths) if p not in reuse]
     reuse_idx = [i for i, p in enumerate(posix_paths) if p in reuse]
 
+    def _fresh_thunks():
+        # Rebuilt after a decode retry so the ``open_kwargs`` mutation is picked up.
+        return [
+            (lambda f=files[i]: reference_one(f, open_kwargs=open_kwargs))
+            for i in stale_idx
+        ]
+
     # Stale files: open fresh (parallel) and persist each per-file JSON manifest.
-    fresh = _run_parallel(
-        [(lambda f=files[i]: reference_one(f, open_kwargs=open_kwargs)) for i in stale_idx],
-        scheduler,
-        progress=progress,
-        desc="opening files",
-    )
+    #
+    # Robustness (reactive, not proactive): some real-world files carry a non-CF
+    # ``months``/``years since`` time unit that xarray/cftime cannot decode for a real
+    # calendar. Rather than pre-open every file just to probe for that (a wasted second open
+    # per file on the common, decodable path), open once; only if the open *fails* AND the
+    # failure is genuinely an undecodable time unit (confirmed by the on-failure probe, which
+    # is thus rare) do we retry the whole build with ``decode_times=False``. The flag then
+    # flows to every opener below and is persisted in the store (``_assemble_store``) so the
+    # reader replays it -- geokube decodes such time to datetime64 at read via its cf_units
+    # layer. A caller-pinned ``decode_times`` is respected (no retry); any non-time failure is
+    # re-raised unchanged. The open thunks have no side effects (writes happen after), so the
+    # retry is clean.
+    try:
+        fresh = _run_parallel(
+            _fresh_thunks(), scheduler, progress=progress, desc="opening files",
+        )
+    except Exception:
+        if "decode_times" in open_kwargs or not any(
+            _time_units_undecodable(f) for f in files
+        ):
+            raise
+        LOG.info(
+            "undecodable time units detected; rebuilding manifest with decode_times=False"
+        )
+        open_kwargs["decode_times"] = False
+        fresh = _run_parallel(
+            _fresh_thunks(), scheduler, progress=progress, desc="opening files",
+        )
     vds_by_idx = {}
     for k, i in enumerate(stale_idx):
         vds = fresh[k]
