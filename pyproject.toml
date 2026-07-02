@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 authors = [
-    { name = "geokube Contributors", email = "geokube@googlegroups.com" },
+    { name = "geokube Contributors", email = "dds-support@cmcc.it" },
 ]
 keywords = ["xarray", "geoscience", "climate", "datacube", "earth-observation"]
 classifiers = [
@@ -52,6 +52,7 @@ dependencies = [
     "virtualizarr==2.7.0",
     "obstore==0.11.0",
     "fastparquet==2026.5.0",
+    "cftime==1.6.5"
 ]
 
 [project.optional-dependencies]
