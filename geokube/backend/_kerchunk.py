@@ -129,6 +129,18 @@ def _decode_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
     }
 
 
+# The only decode-related kwargs ``virtualizarr.open_virtual_dataset`` accepts (its signature
+# takes just these two of xarray's options). Forwarded to the per-file manifest build so the
+# cache honors the catalog's flags — notably ``decode_times=False`` for non-CF time units like
+# ``months since ...`` that xarray/cftime cannot decode — matching the non-cached open path.
+_VDS_OPEN_KWARGS = frozenset({"decode_times", "drop_variables"})
+
+
+def _vds_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
+    """Subset of ``open_kwargs`` that ``open_virtual_dataset`` accepts (build-time manifest)."""
+    return {k: v for k, v in (open_kwargs or {}).items() if k in _VDS_OPEN_KWARGS}
+
+
 _HDF5_MAGIC = b"\x89HDF"
 _NETCDF3_MAGICS = (b"CDF\x01", b"CDF\x02", b"CDF\x05")
 
@@ -191,7 +203,9 @@ def _drop_scalars(vds: xr.Dataset) -> xr.Dataset:
     return vds.drop_vars(names) if names else vds
 
 
-def reference_one(path: str, *, loadable_variables=None) -> xr.Dataset:
+def reference_one(
+    path: str, *, loadable_variables=None, open_kwargs: Optional[Mapping] = None
+) -> xr.Dataset:
     """Open one file as a fully-virtual per-file dataset (0-dim variables dropped).
 
     Everything stays a lazy ``ManifestArray`` (``loadable_variables=[]``): nothing is
@@ -201,22 +215,34 @@ def reference_one(path: str, *, loadable_variables=None) -> xr.Dataset:
     materialized inline only once, on the consolidated partition, in
     :func:`_assemble_store`. Scalars are dropped (handled via the sidecar). This is the
     embarrassingly-parallel hot spot of a cold build.
+
+    ``open_kwargs`` carries the catalog's decode flags; the subset ``open_virtual_dataset``
+    accepts (:func:`_vds_open_kwargs`) is forwarded so the manifest build honors them — e.g.
+    ``decode_times=False`` for non-CF ``months since ...`` time that xarray/cftime cannot
+    decode — keeping the cache transparent w.r.t. the non-cached open.
     """
     lv = [] if loadable_variables is None else list(loadable_variables)
     vds = open_virtual_dataset(
-        _url(path), registry=_REGISTRY, parser=_parser_for(path), loadable_variables=lv
+        _url(path), registry=_REGISTRY, parser=_parser_for(path), loadable_variables=lv,
+        **_vds_open_kwargs(open_kwargs),
     )
     return _drop_scalars(vds)
 
 
-def _reload_one(json_path: str) -> Optional[xr.Dataset]:
-    """Re-hydrate a fully-virtual per-file dataset from its cached kerchunk JSON."""
+def _reload_one(
+    json_path: str, *, open_kwargs: Optional[Mapping] = None
+) -> Optional[xr.Dataset]:
+    """Re-hydrate a fully-virtual per-file dataset from its cached kerchunk JSON.
+
+    Forwards the same decode subset as :func:`reference_one` so an incremental rebuild that
+    re-hydrates a manifest built with e.g. ``decode_times=False`` does not try (and fail) to
+    decode the raw time on reload."""
     if not os.path.isfile(json_path):
         return None
     try:
         return open_virtual_dataset(
             _url(json_path), registry=_REGISTRY, parser=KerchunkJSONParser(),
-            loadable_variables=[],
+            loadable_variables=[], **_vds_open_kwargs(open_kwargs),
         )
     except Exception:
         return None
@@ -754,7 +780,8 @@ def cached_build_store(
 
     # Stale files: open fresh (parallel) and persist each per-file JSON manifest.
     fresh = _run_parallel(
-        [(lambda f=files[i]: reference_one(f)) for i in stale_idx], scheduler
+        [(lambda f=files[i]: reference_one(f, open_kwargs=open_kwargs)) for i in stale_idx],
+        scheduler,
     )
     vds_by_idx = {}
     for k, i in enumerate(stale_idx):
@@ -764,13 +791,14 @@ def cached_build_store(
 
     # Reused files: re-hydrate from the cached JSON (parallel); regenerate on a miss.
     reloaded = _run_parallel(
-        [(lambda i=i: _reload_one(_ref_file(cache_dir, posix_paths[i]))) for i in reuse_idx],
+        [(lambda i=i: _reload_one(_ref_file(cache_dir, posix_paths[i]), open_kwargs=open_kwargs))
+         for i in reuse_idx],
         scheduler,
     )
     for k, i in enumerate(reuse_idx):
         vds = reloaded[k]
         if vds is None:  # rare cache miss -> regenerate and persist
-            vds = reference_one(files[i])
+            vds = reference_one(files[i], open_kwargs=open_kwargs)
             _to_kerchunk(vds, _ref_file(cache_dir, posix_paths[i]), "json")
         vds_by_idx[i] = vds
 

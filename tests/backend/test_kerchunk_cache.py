@@ -1040,6 +1040,40 @@ def test_nested_no_concat_dim_irregular_grid_stays_lazy(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_undecodable_time_units_honors_decode_times_false(tmp_path):
+    # sps3p5 EQM shape: monthly data whose time is non-CF ("months since 1993-01-01" with a
+    # proleptic_gregorian calendar, which xarray/cftime cannot decode -> only 360_day allows
+    # "months since"). The per-file manifest build (reference_one) must honor decode_times=False
+    # forwarded from open_kwargs -- like the non-cached open_mfdataset path -- so it does not
+    # crash; geokube's cf_units layer interprets the unit downstream. Pre-fix reference_one
+    # ignored open_kwargs, so it decoded (default) and crashed even with decode_times=False.
+    n = 6
+    ds = xr.Dataset(
+        {"v": (("time", "y", "x"), np.zeros((n, 3, 4), dtype="float32"))},
+        coords={"time": ("time", np.arange(n, dtype="int32")),
+                "y": ("y", np.arange(3)), "x": ("x", np.arange(4))},
+    )
+    ds["time"].attrs = {
+        "units": "months since 1993-01-01 00:00:00",
+        "calendar": "proleptic_gregorian",
+        "standard_name": "time",
+        "axis": "T",
+    }
+    p = str(tmp_path / "monthly.nc")
+    ds.to_netcdf(p, engine="netcdf4", format="NETCDF4")
+
+    cache = str(tmp_path / "cache")
+    summary = build_metadata_cache(p, metadata_cache_path=cache, decode_times=False)
+    assert summary["built"] == 1 and summary["skipped"] == []  # build did not crash
+
+    ds2 = _kerchunk.open_store(_kerchunk.load_store(cache), open_kwargs={"decode_times": False})
+    t = np.asarray(ds2["time"].values)
+    assert not np.issubdtype(t.dtype, np.datetime64)          # kept raw (not xarray-decoded)
+    assert t.size == n and int(t[0]) == 0 and int(t[-1]) == n - 1
+    assert str(ds2["time"].attrs.get("units", "")).startswith("months since")  # unit preserved
+
+
+@pytest.mark.integration
 def test_decode_kwarg_symmetry_cached_vs_direct(tmp_path):
     # A non-default decode kwarg flows to BOTH build (persisted) and read; the cached
     # cube matches a direct open with the same kwarg (cache transparency preserved).
