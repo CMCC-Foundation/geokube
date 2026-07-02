@@ -71,6 +71,7 @@ except Exception:  # pragma: no cover
 from obstore.store import LocalStore
 
 from geokube.backend import _cache
+from geokube.utils.attrs_encoding import is_undecodable_time_unit
 from geokube.utils.format_parsing import _make_path_posix
 
 VZ_VERSION = virtualizarr.__version__
@@ -161,6 +162,27 @@ def detect_format(path: str) -> str:
 def is_referenceable(path: str) -> bool:
     """True if VirtualiZarr can build a manifest for this file's format."""
     return detect_format(path) in ("hdf5", "netcdf3")
+
+
+def _time_units_undecodable(path: str) -> bool:
+    """Cheap metadata-only probe: does any variable carry a non-CF ``months``/``years since``
+    time unit that xarray/cftime cannot decode?
+
+    Opens with ``decode_times=False`` (so the probe itself never raises) and ``chunks={}``
+    (reads only header metadata, no data). Used to auto-apply ``decode_times=False`` for the
+    whole build so the manifest read never crashes even when the caller forgot the flag."""
+    try:
+        with xr.open_dataset(
+            path, decode_times=False, chunks={}, decode_coords="all"
+        ) as ds:
+            for var in ds.variables.values():
+                units = var.attrs.get("units", var.encoding.get("units"))
+                calendar = var.attrs.get("calendar", var.encoding.get("calendar"))
+                if is_undecodable_time_unit(units, calendar):
+                    return True
+    except Exception:
+        return False
+    return False
 
 
 # ------------------------------------------------------ virtualizarr plumbing
@@ -772,6 +794,17 @@ def cached_build_store(
     """
     if not all(is_referenceable(f) for f in files):
         return None
+    open_kwargs = dict(open_kwargs or {})
+    # Robustness: if the caller did not pin ``decode_times`` and any file carries a non-CF
+    # ``months``/``years since`` unit (undecodable by xarray/cftime for a real-world
+    # calendar), force ``decode_times=False`` for the whole build so the manifest read never
+    # crashes. It flows to every build opener and is persisted in the store (``_assemble_store``)
+    # so the reader replays it -- geokube decodes such time to datetime64 at read. ``any(...)``
+    # short-circuits on the first undecodable file.
+    if "decode_times" not in open_kwargs and any(
+        _time_units_undecodable(f) for f in files
+    ):
+        open_kwargs["decode_times"] = False
     os.makedirs(os.path.join(cache_dir, FILES_SUBDIR), exist_ok=True)
     reuse = set(reuse_keys)
     posix_paths = [_make_path_posix(f) for f in files]

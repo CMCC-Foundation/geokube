@@ -91,15 +91,22 @@ def _open_raw(path, *, engine, multi, **kwargs):
     return xr.open_dataset(path, engine=engine, **kwargs)
 
 
-def _kerchunk_covers(raw, sample_file, engine) -> bool:
+def _kerchunk_covers(raw, sample_file, engine, *, open_kwargs=None) -> bool:
     """True if the kerchunk dataset retains the sample file's data variables.
 
     kerchunk can silently drop a variable it fails to translate; we verify against
     a plain open of one source file and reject the cache if any data variable is
-    missing.
+    missing. ``open_kwargs`` (the decode flags persisted in the store) are forwarded so the
+    sample open honors e.g. ``decode_times=False`` for non-CF time units -- otherwise the
+    plain open would raise on decode and the check would be silently skipped.
     """
+    from geokube.backend import _kerchunk
+
     try:
-        sample = _open_raw(sample_file, engine=engine, multi=False)
+        sample = _open_raw(
+            sample_file, engine=engine, multi=False,
+            **_kerchunk._decode_open_kwargs(open_kwargs),
+        )
     except Exception:
         return True  # cannot verify -> do not block
     return set(sample.data_vars).issubset(set(raw.data_vars))
@@ -447,10 +454,15 @@ def _build_datacube_cache(
     # build-time only — never the O(#files) combine of the whole store. This also
     # exercises that the parquet manifests open correctly before the manifest is
     # marked valid.
+    # Use the kwargs actually persisted in the store (they may include an auto-applied
+    # ``decode_times=False`` for non-CF time units), so the coverage open matches the reader.
+    effective_open_kwargs = payload.get("open_kwargs", {})
     for p in payload["partitions"]:
         ref = os.path.join(cache_dir, p["parquet"])
-        opened = _kerchunk.open_reference(ref, open_kwargs=open_kwargs)
-        if not _kerchunk_covers(opened, p["files"][0], engine):
+        opened = _kerchunk.open_reference(ref, open_kwargs=effective_open_kwargs)
+        if not _kerchunk_covers(
+            opened, p["files"][0], engine, open_kwargs=effective_open_kwargs
+        ):
             return False
     # Manifest written last (after store.json): marks the store as valid.
     _cache.write_json(manifest_path, current)

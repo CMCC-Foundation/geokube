@@ -15,6 +15,7 @@ import xarray as xr
 
 from geokube import open_datacube, open_dataset, build_metadata_cache
 from geokube.backend import _cache, _kerchunk
+from geokube.core.axis import AxisType
 from geokube.core.errs import CacheNotExist
 
 SRC = os.path.join("tests", "resources", "rlat-rlon-tmin2m.nc")
@@ -1071,6 +1072,136 @@ def test_undecodable_time_units_honors_decode_times_false(tmp_path):
     assert not np.issubdtype(t.dtype, np.datetime64)          # kept raw (not xarray-decoded)
     assert t.size == n and int(t[0]) == 0 and int(t[-1]) == n - 1
     assert str(ds2["time"].attrs.get("units", "")).startswith("months since")  # unit preserved
+
+
+def _write_monthly(path, *, n=6, ref="1993-01-01 00:00:00",
+                   calendar="proleptic_gregorian", start=0):
+    """Write a monthly NetCDF4 file whose time is a non-CF 'months since ...' reference."""
+    ds = xr.Dataset(
+        {"v": (("time", "y", "x"), np.zeros((n, 3, 4), dtype="float32"))},
+        coords={"time": ("time", np.arange(start, start + n, dtype="int32")),
+                "y": ("y", np.arange(3)), "x": ("x", np.arange(4))},
+    )
+    ds["time"].attrs = {"units": f"months since {ref}", "calendar": calendar,
+                        "standard_name": "time", "axis": "T"}
+    ds.to_netcdf(str(path), engine="netcdf4", format="NETCDF4")
+    return str(path)
+
+
+def _expected_month_starts(n=6, year=1993):
+    return np.array([f"{year}-{m:02d}-01" for m in range(1, n + 1)], dtype="datetime64[ns]")
+
+
+def test_decode_month_year_reference_routine():
+    # Pure decode routine: months/years offsets -> calendar-correct datetime64, incl. the
+    # ref.day>28 month-end clamping fallback. No I/O -> runs in the fast (non-integration) suite.
+    from geokube.core.variable import _decode_month_year_reference
+
+    m = _decode_month_year_reference(
+        np.arange(6), "months since 1993-01-01 00:00:00", "proleptic_gregorian"
+    )
+    assert np.array_equal(m.astype("datetime64[ns]"), _expected_month_starts())
+
+    y = _decode_month_year_reference(np.arange(3), "years since 2000-01-01", "standard")
+    assert list(y.astype("datetime64[Y]").astype(str)) == ["2000", "2001", "2002"]
+
+    # ref.day = 31 -> +1 month must clamp to Feb 29 (2020 is a leap year), not overflow.
+    c = _decode_month_year_reference(
+        np.array([0, 1]), "months since 2020-01-31 00:00:00", "standard"
+    )
+    assert str(c[0]).startswith("2020-01-31") and str(c[1]).startswith("2020-02-29")
+
+    # a decodable "days since" unit is left to xarray -> routine returns None.
+    assert _decode_month_year_reference(np.arange(3), "days since 1970-01-01", None) is None
+
+
+@pytest.mark.integration
+def test_undecodable_time_build_without_flag_decodes_end_to_end(tmp_path):
+    # The build AUTO-detects the non-CF "months since" unit, forces+persists decode_times=False
+    # (the DDS driver need pass nothing), and open_datacube decodes months -> datetime64.
+    p = _write_monthly(tmp_path / "monthly.nc")
+    cache = str(tmp_path / "cache")
+
+    summary = build_metadata_cache(p, metadata_cache_path=cache)  # NO decode_times passed
+    assert summary["built"] == 1 and summary["skipped"] == []  # auto-detect prevented the crash
+    assert _kerchunk.load_store(cache)["open_kwargs"].get("decode_times") is False  # persisted
+
+    cube = open_datacube(p, metadata_caching=True, metadata_cache_path=cache)
+    tvals = np.asarray(cube.to_xarray()[CDIM].values)
+    assert np.issubdtype(tvals.dtype, np.datetime64)
+    assert np.array_equal(tvals.astype("datetime64[ns]"), _expected_month_starts())
+
+
+@pytest.mark.integration
+def test_undecodable_time_non_cached_decodes_same(tmp_path):
+    # Cached and non-cached opens share the Variable.from_xarray funnel, so both decode
+    # identically (the non-cached path needs the explicit decode_times=False to open raw).
+    p = _write_monthly(tmp_path / "monthly.nc")
+    cube = open_datacube(p, decode_times=False)
+    tvals = np.asarray(cube.to_xarray()[CDIM].values)
+    assert np.issubdtype(tvals.dtype, np.datetime64)
+    assert np.array_equal(tvals.astype("datetime64[ns]"), _expected_month_starts())
+
+
+@pytest.mark.integration
+def test_undecodable_time_to_dict_min_max_step(tmp_path):
+    # to_dict reports correct monthly dates/step, not the pre-fix garbage epoch dates.
+    p = _write_monthly(tmp_path / "monthly.nc")
+    cache = str(tmp_path / "cache")
+    build_metadata_cache(p, metadata_cache_path=cache)
+    cube = open_datacube(p, metadata_caching=True, metadata_cache_path=cache)
+
+    tcoord = cube.domain[AxisType.TIME]
+    d = tcoord.to_dict()
+    assert str(d["min"]).startswith("1993-01-01")
+    assert str(d["max"]).startswith("1993-06-01")
+    assert d["time_unit"] == "month" and d["time_step"] == 1
+    assert str(d["units"]).startswith("months since")
+
+
+def test_is_undecodable_time_unit_predicate():
+    # The predicate that drives both the build sniff and the read decode. No I/O.
+    from geokube.utils.attrs_encoding import is_undecodable_time_unit
+
+    assert is_undecodable_time_unit("months since 1993-01-01 00:00:00", "proleptic_gregorian")
+    assert is_undecodable_time_unit("years since 2000-01-01", "standard")
+    # 360_day CAN decode months/years via cftime -> NOT undecodable.
+    assert not is_undecodable_time_unit("months since 1993-01-01", "360_day")
+    # standard sub-monthly units decode natively, incl. the AxisType.TIME default.
+    assert not is_undecodable_time_unit("days since 1970-01-01", None)
+    assert not is_undecodable_time_unit("hours since 1970-01-01", "gregorian")
+    assert not is_undecodable_time_unit("seconds since 2000-01-01", "proleptic_gregorian")
+    assert not is_undecodable_time_unit("kelvin", None)
+    assert not is_undecodable_time_unit(None, None)
+
+
+@pytest.mark.integration
+def test_time_units_undecodable_probe(tmp_path):
+    # The build-time metadata probe detects the non-CF month unit but not a decodable one.
+    assert _kerchunk._time_units_undecodable(_write_monthly(tmp_path / "m.nc"))
+    ds = xr.Dataset({"v": (("time",), np.zeros(3, "float32"))},
+                    coords={"time": ("time", np.arange(3, dtype="int32"))})
+    ds["time"].attrs = {"units": "days since 1970-01-01", "calendar": "standard"}
+    reg = str(tmp_path / "days.nc")
+    ds.to_netcdf(reg, engine="netcdf4", format="NETCDF4")
+    assert not _kerchunk._time_units_undecodable(reg)
+
+
+@pytest.mark.integration
+def test_undecodable_time_to_xarray_roundtrip(tmp_path):
+    # A decoded month axis must round-trip through to_xarray/to_netcdf without hitting the
+    # cftime "months since" encode limitation (units normalized to a CF-decodable encoding).
+    p = _write_monthly(tmp_path / "monthly.nc")
+    cache = str(tmp_path / "cache")
+    build_metadata_cache(p, metadata_cache_path=cache)
+    cube = open_datacube(p, metadata_caching=True, metadata_cache_path=cache)
+
+    out = str(tmp_path / "roundtrip.nc")
+    cube.to_xarray().to_netcdf(out)  # must not raise
+    back = xr.open_dataset(out)
+    assert np.array_equal(
+        np.asarray(back[CDIM].values).astype("datetime64[ns]"), _expected_month_starts()
+    )
 
 
 @pytest.mark.integration
