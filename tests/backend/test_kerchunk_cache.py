@@ -1005,6 +1005,41 @@ def test_nested_irregular_chunk_grid_stays_lazy(tmp_path, monkeypatch):
 
 
 @pytest.mark.integration
+def test_nested_no_concat_dim_irregular_grid_stays_lazy(tmp_path, monkeypatch):
+    # The exact staging shape: combine="nested" built WITHOUT an explicit concat_dim -> the
+    # store persists concat_dim=None. With an irregular chunk grid -> per-file partitions, the
+    # reader must RESOLVE the concat dim from the data and lazily xr.concat, never fall back to
+    # eager xr.combine_nested (which computes across the disjoint ranges -> the 48 GiB OOM).
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    L = src.sizes[CDIM]
+    half = L // 2
+    if half < 3:
+        pytest.skip("source record axis too short to exercise a partial mid-array chunk")
+    chunk_t = half - 1
+    a = _write_chunked_slab(src.isel({CDIM: slice(0, half)}), tmp_path / "a.nc", time_chunk=chunk_t)
+    b = _write_chunked_slab(src.isel({CDIM: slice(half, 2 * half)}), tmp_path / "b.nc", time_chunk=chunk_t)
+
+    cache = tmp_path / "cache"
+    build_metadata_cache([a, b], metadata_cache_path=str(cache), combine="nested")  # no concat_dim
+    store = _kerchunk.load_store(str(cache))
+    assert store["combine"] == "nested" and store["concat_dim"] is None  # nothing persisted
+    assert len(store["partitions"]) == 2  # irregular grid -> per-file
+
+    def _boom(*a, **k):
+        raise AssertionError("reader used eager xr.combine_nested (the OOM path)")
+
+    monkeypatch.setattr(xr, "combine_nested", _boom)
+    ds = _kerchunk.open_store(store)                           # concat dim resolved at read
+    assert int(ds.sizes[CDIM]) == 2 * half                    # lazily concatenated, full axis
+    assert dask.is_dask_collection(ds[_record_var(ds)].data)  # data stays lazy (no compute)
+    monkeypatch.undo()
+
+    cube = open_datacube([a, b], metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube([a, b]))
+
+
+@pytest.mark.integration
 def test_decode_kwarg_symmetry_cached_vs_direct(tmp_path):
     # A non-default decode kwarg flows to BOTH build (persisted) and read; the cached
     # cube matches a direct open with the same kwarg (cache transparency preserved).

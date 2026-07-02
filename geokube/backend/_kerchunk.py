@@ -857,6 +857,13 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
         )
         for p in parts
     ]
+    if not concat_dim and len(datasets) > 1:
+        # Some stores persist no concat dim -- notably ``nested`` built without an explicit
+        # one (``:692`` keeps the raw ``None``). Resolve it from the opened data (leading dim
+        # of the largest var, the record axis) so the lazy ``xr.concat`` branch below applies
+        # instead of the eager ``_combine`` (whose default ``compat`` computes a variable
+        # aligned across the partitions' disjoint ranges -> OOM). No cache rebuild needed.
+        concat_dim = _resolve_concat_dim(datasets[0], None)
     if combine == COMBINE_BY_COORDS and plan:
         # Merge-aware: merge partitions within each record-axis group, then concatenate
         # the (distinct-axis) groups along the record dim. Groups are ordered by record
