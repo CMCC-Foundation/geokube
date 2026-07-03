@@ -608,6 +608,55 @@ def test_open_dataset_requires_cache_path():
                      metadata_cache_path=None)
 
 
+@pytest.mark.integration
+def test_open_dataset_lazy_cubes_expose_variables(tmp_path):
+    # Regression for the SPS3.5 many-cube catalog: with delay_read_cubes=True the cubes
+    # are Delayed, so geokube must load the variable list (and to_dict / ds[var]) from ONE
+    # representative cube (groups are homogeneous) instead of returning `datacube: None`
+    # or an empty ds[var]. Two time-slabs of the same source = a 2-group homogeneous
+    # catalog (same variable, distinct record ranges), keyed by a non-variable attribute.
+    from dask.delayed import Delayed
+
+    _make_slabs(tmp_path, n=2)  # -> slab0.nc, slab1.nc (same var, different time range)
+    glob_path = os.path.join(str(tmp_path), "slab*.nc")
+    pattern = os.path.join(str(tmp_path), "slab{tag}.nc")
+    cache = tmp_path / "cache"
+    summary = build_metadata_cache(glob_path, pattern, metadata_cache_path=str(cache))
+    assert summary["groups"] == 2 and summary["built"] == 2
+
+    # eager open defines the expected schema. Field names are geokube's (keyed by
+    # standard_name, e.g. `air_temperature`), distinct from the netCDF var name (ncvar).
+    expected_vars = set(
+        open_dataset(glob_path, pattern, metadata_caching=True,
+                     metadata_cache_path=str(cache)).variables
+    )
+    assert expected_vars  # non-empty: the representative cube resolved the schema
+    field = next(iter(expected_vars))
+
+    # lazy open: cubes stay Delayed, but the variable list is still exposed.
+    dset = open_dataset(glob_path, pattern, metadata_caching=True,
+                        metadata_cache_path=str(cache), delay_read_cubes=True)
+    assert all(isinstance(c, Delayed) for c in dset.cubes)
+    assert set(dset.variables) == expected_vars
+    # reading the schema must NOT materialize the stored cubes (only a cached representative).
+    assert all(isinstance(c, Delayed) for c in dset.cubes)
+
+    # to_dict is populated from the representative (fields + domain), not None.
+    entries = dset.to_dict()
+    assert len(entries) == 2
+    for e in entries:
+        assert e["datacube"] is not None
+        assert set(e["datacube"]["fields"]) == expected_vars
+        assert "domain" in e["datacube"]
+
+    # selection stays lazy, by field name AND by the netCDF var name (ncvar, how the API
+    # queries); an unknown variable -> empty Dataset.
+    for sel in (field, DVAR):
+        sub = dset[sel]
+        assert len(sub) == 2 and all(isinstance(c, Delayed) for c in sub.cubes)
+    assert len(dset["does_not_exist"]) == 0
+
+
 # ------------------------------------------------------ datacube: preprocess hook
 # `preprocess` (xr.Dataset -> xr.Dataset) must apply UNIFORMLY: single-file & multi,
 # cached & non-cached. It runs on the *combined* raw dataset right before the cube is

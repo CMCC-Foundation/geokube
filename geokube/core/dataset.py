@@ -33,6 +33,7 @@ class Dataset:
         "__attrs",
         "__cube_idx",
         "__load_files_on_persistance",
+        "__representative",
     )
 
     _LOG = HCubeLogger(name="Dataset")
@@ -78,21 +79,51 @@ class Dataset:
         ]
         self.__cube_idx = len(self.__attrs) + 1
         self.__metadata = dict(metadata) if metadata is not None else {}
+        # Cache for the lazily-opened representative cube (the schema source when the
+        # cubes are Delayed handles). See `_representative`.
+        self.__representative = None
 
     def __getitem__(self, key: Union[str, Tuple[str]]) -> Dataset:
         # TODO: Check if `.copy()` is necessary here.
         data = self.__data.iloc[:, : self.__cube_idx].copy()
         key = {key} if isinstance(key, str) else set(key)
-        data[self.DATACUBE_COL] = [
-            None
-            if isinstance(hcube, Delayed)
-            else Dataset._get_eligible_fields_for_datacube(hcube, key)
-            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
-        ]
-        dset = Dataset(
-            attrs=self.__attrs, hcubes=data, metadata=self.__metadata
+        # Delayed cubes don't expose their fields without opening one. Use the
+        # (homogeneous) representative's schema to pick eligible names, then subset
+        # through dask's proxy so the cube stays Delayed. Empty rows are dropped inline:
+        # Delayed rows carry FIELD_COL=None, so the FIELD_COL-based `_drop_empty` cannot
+        # be used on the lazy path.
+        valid = None
+        new_cubes, keep = [], []
+        for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat:
+            if isinstance(hcube, Delayed):
+                if valid is None:
+                    rep = self._representative()
+                    valid = (
+                        set(rep.fields) | set(rep._ncvar_to_name or {})
+                        if rep is not None
+                        else set()
+                    )
+                elig = key & valid
+                new_cubes.append(hcube[elig] if elig else None)
+                keep.append(bool(elig))
+            elif hcube is None:
+                new_cubes.append(None)
+                keep.append(False)
+            else:
+                sub = Dataset._get_eligible_fields_for_datacube(hcube, key)
+                new_cubes.append(sub)
+                keep.append(bool(len(sub)))
+        data[self.DATACUBE_COL] = new_cubes
+        # numpy bool array -> unambiguous positional row-mask (a plain [] list would be
+        # read as an empty column selection when the dataset has no rows).
+        data = data[np.array(keep, dtype=bool)]
+        data.index = np.arange(len(data))
+        return Dataset(
+            attrs=self.__attrs,
+            hcubes=data,
+            metadata=self.__metadata,
+            load_files_on_persistance=self.__load_files_on_persistance,
         )
-        return dset._drop_empty()
 
     def __len__(self):
         return len(self.__data)
@@ -241,23 +272,74 @@ class Dataset:
         else:
             return None
 
+    @property
+    def variables(self) -> List[str]:
+        """Variable (field) names exposed by the catalog.
+
+        Read from a single representative cube (see :meth:`_representative`), so the list
+        is available even when the cubes are lazy ``Delayed`` handles
+        (``delay_read_cubes=True``).
+        """
+        rep = self._representative()
+        return list(rep.fields.keys()) if rep is not None else []
+
+    def _representative(self) -> Optional[DataCube]:
+        """The schema-defining cube for a (homogeneous) catalog, opened once and cached.
+
+        With ``delay_read_cubes=True`` the cubes are lazy ``Delayed`` handles whose
+        variables are unknown until one is opened. Since a catalog's groups are
+        homogeneous (same variables/grid), a single representative cube defines the schema
+        for the whole dataset (variable listing, :meth:`to_dict`, variable selection). It
+        is computed lazily and memoized, so pure filter/persist flows that never need the
+        schema open no cube at all.
+        """
+        if self.__representative is not None:
+            return self.__representative
+        for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat:
+            if hcube is None:
+                continue
+            self.__representative = (
+                hcube.compute() if isinstance(hcube, Delayed) else hcube
+            )
+            return self.__representative
+        return None
+
     def to_dict(self, unique_values=False) -> dict:
+        # Delayed cubes have no schema until one is opened. For a homogeneous catalog,
+        # open a single representative cube and reuse its dict (variables + domain) for
+        # every Delayed row instead of emitting `datacube: None`. The dict is shared
+        # across those rows (the description is read-only). Per-cube attribute values
+        # (e.g. the forecast start-date) still come from `attributes`, not from the
+        # representative's domain.
+        rep_dict = None
+        if any(
+            isinstance(hcube, Delayed)
+            for hcube in self.__data[self.DATACUBE_COL].to_numpy().flat
+        ):
+            rep = self._representative()
+            rep_dict = rep.to_dict(unique_values) if rep is not None else None
         res = self.__data.drop(
             labels=Dataset.FILES_COL, inplace=False, axis=1
         ).apply(
             Dataset._row_to_dict,
             attrs=self.__attrs,
             unique_values=unique_values,
+            representative_dict=rep_dict,
             axis=1,
         )
         return list(res)
 
     @staticmethod
-    def _row_to_dict(row, attrs, unique_values):
+    def _row_to_dict(row, attrs, unique_values, representative_dict=None):
+        cube = row[Dataset.DATACUBE_COL]
+        if isinstance(cube, Delayed):
+            datacube = representative_dict
+        elif cube is None:
+            datacube = None
+        else:
+            datacube = cube.to_dict(unique_values)
         return {
-            "datacube": None
-            if isinstance(row[Dataset.DATACUBE_COL], Delayed)
-            else row[Dataset.DATACUBE_COL].to_dict(unique_values),
+            "datacube": datacube,
             "attributes": {attr_name: row[attr_name] for attr_name in attrs},
         }
 
