@@ -373,7 +373,9 @@ class Dataset:
 
         mask = np.full(shape=len(self.__data), fill_value=True, dtype=np.bool_)
         for param_name, param_value in params.items():
-            mask &= np.in1d(self.__data[param_name], param_value)
+            # np.isin (not the removed-in-NumPy-2.2 np.in1d): same boolean mask over the
+            # 1-D attribute column, scalar or list `param_value`.
+            mask &= np.isin(self.__data[param_name], param_value)
         data = self.__data.loc[mask, : self.DATACUBE_COL]
         data.index = np.arange(len(data))
 
