@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 from numbers import Number
 from typing import Any, Hashable, Iterable, Mapping, Optional, Tuple, Union
@@ -10,13 +11,13 @@ import xarray as xr
 
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
-from ..utils.attrs_encoding import CFAttributes
+from ..utils.attrs_encoding import CFAttributes, is_undecodable_time_unit
 from ..utils.serialization import maybe_convert_to_json_serializable
 from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
 from .unit import Unit
-from .variable import Variable
+from .variable import Variable, _decode_month_year_reference
 
 
 class CoordinateType(Enum):
@@ -42,6 +43,31 @@ FREQ_CODES = {
     "NS": "nanosecond",
     "MIN": "minute"
 }
+
+
+def _infer_month_year_freq(values):
+    """If a ``datetime64`` axis is regularly monthly/yearly, return ``(FREQ_CODES name, step)``,
+    else ``None`` so the caller falls back to the timedelta-based inference.
+
+    Monthly/yearly steps are irregular in days (28-31 / 365-366), so a ``Timedelta`` diff would
+    report them as ~30 days / ~365 days; ``pd.infer_freq`` recognizes the calendar frequency
+    directly (``"MS"``/``"ME"``/``"M"`` -> month, ``"YS"``/``"YE"``/``"A"`` -> year)."""
+    try:
+        freq = pd.infer_freq(pd.DatetimeIndex(np.asarray(values)))
+    except (ValueError, TypeError):
+        freq = None
+    if not freq:
+        return None
+    match = re.match(r"^(\d*)\s*([A-Za-z]+)", freq)
+    if not match:
+        return None
+    step = int(match.group(1)) if match.group(1) else 1
+    base = match.group(2).upper()
+    if base.startswith("M"):
+        return FREQ_CODES["M"], step
+    if base.startswith(("Y", "A")):  # A / AS = annual in older pandas aliases
+        return FREQ_CODES["Y"], step
+    return None
 
 
 class Coordinate(Variable, Axis):
@@ -355,32 +381,57 @@ class Coordinate(Variable, Axis):
             bounds = {}
         return xr.Dataset(coords={da.name: da, **bounds})
 
+    def _time_values_as_datetime64(self, values):
+        """Return a TIME axis' values as ``datetime64`` for serialization.
+
+        Already-``datetime64`` axes pass through. A still-numeric axis is decoded via its
+        reference unit -- non-CF ``months``/``years since`` (which ``Variable.from_xarray``
+        normally decodes upstream) through the geokube decoder, other ``"since"`` units
+        through the legacy epoch cast -- instead of blindly casting raw month offsets to
+        nanoseconds-since-1970 (which produced garbage dates)."""
+        arr = np.asarray(values)
+        if np.issubdtype(arr.dtype, np.datetime64):
+            return arr
+        units_str = str(self.units)
+        calendar = getattr(self.units, "calendar", None)
+        if is_undecodable_time_unit(units_str, calendar):
+            decoded = _decode_month_year_reference(arr, units_str, calendar)
+            if decoded is not None:
+                return decoded
+        return arr.astype(np.datetime64)
+
     def to_dict(self, unique_values=False):
         axis_specific_details = {}
         values = self.data
         if self.axis_type is AxisType.TIME:
-            values = np.array(values).astype(np.datetime64)
+            values = self._time_values_as_datetime64(values)
             time_unit = time_step = None
-            if len(self.data) > 1:
-                time_offset = to_offset(pd.Series(values).diff().mode()[0])
-                time_unit = time_offset.name
-                time_step = time_offset.n
-                if time_unit in {
-                    "L",
-                    "U",
-                    "N",
-                    "S"
-                }:  # skip mili, micro, and nanoseconds
-                    values = values.astype(
-                        "datetime64[m]"
-                    )  # with minute resoluton
-                    time_offset = to_offset(
-                        pd.Series(values).diff().mode().item()
-                    )
+            if len(values) > 1:
+                inferred = _infer_month_year_freq(values)
+                if inferred is not None:
+                    # regular monthly/yearly axis (a Timedelta diff would misreport ~30/365 days)
+                    time_unit, time_step = inferred
+                else:
+                    time_offset = to_offset(pd.Series(values).diff().mode()[0])
                     time_unit = time_offset.name
                     time_step = time_offset.n
+                    if time_unit in {
+                        "L",
+                        "U",
+                        "N",
+                        "S"
+                    }:  # skip mili, micro, and nanoseconds
+                        values = values.astype(
+                            "datetime64[m]"
+                        )  # with minute resoluton
+                        time_offset = to_offset(
+                            pd.Series(values).diff().mode().item()
+                        )
+                        time_unit = time_offset.name
+                        time_step = time_offset.n
+                    time_unit = FREQ_CODES[time_unit.upper()]
                 axis_specific_details = {
-                    "time_unit": FREQ_CODES[time_unit.upper()],
+                    "time_unit": time_unit,
                     "time_step": time_step,
                 }
         elif (

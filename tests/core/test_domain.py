@@ -358,36 +358,3 @@ def test_to_dict_store_rotated_crs_with_names_and_attributes(
     assert "ellipsoid" in crs
     assert crs["ellipsoid"] is None
 
-
-@pytest.mark.skip(
-    "Invalidate as in the current version, Domain does not contain data values"
-)
-def test_to_dict_store_coords_reg_crs(era5_globe_netcdf):
-    details = Domain.from_xarray(era5_globe_netcdf, ncvar="tp").to_dict()
-    coords = details["coordinates"]
-    assert len(coords) == 3
-    assert isinstance(coords, dict)
-    assert set(coords.keys()) == {"time", "latitude", "longitude"}
-    for k in coords.values():
-        assert "values" in k
-        assert isinstance(k["values"], list)
-
-@pytest.mark.skip(
-    "Invalidate as in the current version, Coordinate does not contain data values"
-)
-def test_to_dict_store_coords_rot_crs(era5_rotated_netcdf):
-    details = Domain.from_xarray(era5_rotated_netcdf, ncvar="W_SO").to_dict()
-    coords = details["coordinates"]
-    assert len(coords) == 6
-    assert isinstance(coords, dict)
-    assert set(coords.keys()) == {
-        "depth",
-        "time",
-        "grid_latitude",
-        "grid_longitude",
-        "latitude",
-        "longitude",
-    }
-    for k in coords.values():
-        assert "values" in k
-        assert isinstance(k["values"], list)

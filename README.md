@@ -17,16 +17,11 @@
 
 ## Installation 
 
+[![PyPI](https://img.shields.io/pypi/v/geokube.svg)](https://pypi.org/project/geokube/)
+
 #### Requirements
 You need to install xesmf and cartopy to use some feature of geokube.
 
 ```bash
-pip install geokube==v0.2.7.2
-```
-
-#### Docker Image
-Prebuilt Docker images of Geokube are available:
-
-```bash
-docker pull rg.fr-par.scw.cloud/geokube/geokube:v0.2.7.2
+pip install geokube
 ```

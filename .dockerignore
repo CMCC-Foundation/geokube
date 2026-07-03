@@ -1,3 +1,30 @@
+# VCS / IDE / CI
+.git
+.github
+.idea
+.vscode
+
+# Python build & test artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# Data, examples and local-only files not needed in the image
+data/
+tests/
+examples/
+nuts_shape/
+development.py
+environment.yaml
 *.nc
 *.zarr
-data
+*.png
+.DS_Store
+
+# Dockerfiles themselves (kept out of the build context)
+Dockerfile*
+.dockerignore

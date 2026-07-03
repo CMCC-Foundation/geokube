@@ -1,0 +1,33 @@
+name: Reusable geokube tests
+
+# Reusable test pipeline: runs a marker-selected subset of the geokube suite
+# inside the prebuilt base image (which carries the ESMF / esmpy / xesmf stack).
+# Callers invoke it twice — once for unit (`not integration`) and once for
+# integration (`integration`) — so the pipeline shows distinct blocks, and
+# nothing is built/published unless every block passes.
+on:
+  workflow_call:
+    inputs:
+      markers:
+        description: "pytest -m expression selecting the tests to run (e.g. 'not integration' or 'integration')."
+        required: true
+        type: string
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKER_REGISTRY }}
+          password: ${{ secrets.DOCKER_ACCESS_KEY }}
+
+      - name: Run tests (${{ inputs.markers }}) in the geokube base image
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}":/work -w /work \
+            "${{ vars.DOCKER_REGISTRY }}/geokube-base:latest" \
+            bash -c "pip install --no-cache-dir '.[test]' && pytest tests -m '${{ inputs.markers }}'"

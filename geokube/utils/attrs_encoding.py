@@ -1,3 +1,4 @@
+import re
 from enum import Enum
 from typing import List, Mapping, Tuple
 
@@ -77,6 +78,50 @@ ENCODING_PROP = (
 
 def is_time_unit(unit):
     return "since" in unit if isinstance(unit, str) else False
+
+
+_TIME_REF_RE = re.compile(r"^\s*(\w+)\s+since\s+(.+)$", re.IGNORECASE)
+
+# Reference-unit steps xarray/cftime CANNOT decode for a real-world calendar: months and
+# years have variable length, so cftime only supports them for the ``360_day`` calendar.
+# Every other step (day/hour/minute/second/...) decodes natively.
+_UNDECODABLE_TIME_STEPS = frozenset({"month", "year"})
+
+
+def parse_time_reference(unit):
+    """Split a CF reference time unit into ``(step, reference)``.
+
+    ``"months since 1993-01-01 00:00:00"`` -> ``("month", "1993-01-01 00:00:00")``.
+    The step is lower-cased with a trailing ``s`` stripped (``months`` -> ``month``).
+    Returns ``None`` if ``unit`` is not a ``"<step> since <date>"`` string.
+    """
+    if not isinstance(unit, str):
+        return None
+    match = _TIME_REF_RE.match(unit)
+    if match is None:
+        return None
+    step = match.group(1).lower()
+    if step.endswith("s"):
+        step = step[:-1]
+    return step, match.group(2).strip()
+
+
+def is_undecodable_time_unit(unit, calendar=None):
+    """True for a ``"months since ..."`` / ``"years since ..."`` reference unit that
+    xarray/cftime cannot decode (any calendar except ``360_day``).
+
+    These are the only time units geokube must decode itself; ``day``/``hour``/``minute``/
+    ``second`` "since" units (and the ``AxisType.TIME`` default ``"hours since 1970-01-01"``)
+    decode natively via xarray and return ``False`` here.
+    """
+    parsed = parse_time_reference(unit)
+    if parsed is None:
+        return False
+    step, _ = parsed
+    if step not in _UNDECODABLE_TIME_STEPS:
+        return False
+    cal = calendar.lower() if isinstance(calendar, str) else ""
+    return cal != "360_day"
 
 
 def in_encoding(key, unit=None):

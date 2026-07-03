@@ -755,7 +755,7 @@ class Field(Variable, DomainMixin):
         ds_dims = set(ds.dims)
         try:
             ds = ds.sel(indexers, tolerance=tolerance, method=method, drop=drop)
-        except KeyError:
+        except:
             self._LOG.warn("index axis is not present in the domain.")
 
         lost_dims = ds_dims - set(ds.dims)
@@ -1022,6 +1022,25 @@ class Field(Variable, DomainMixin):
             result[self.name].encoding["coordinates"] = "latitude longitude"
         # After regridding those attributes are not valid!
         util_methods.clear_attributes(result, attrs="cell_measures")
+        # Regridding produces a brand-new grid: drop any cell-bounds carried
+        # over from the source/target coordinates (now that to_xarray emits
+        # them) plus the xesmf `*_b` edge helpers, so from_xarray rebuilds a
+        # clean regridded domain instead of choking on stale/edge bounds.
+        bounds_vars = set()
+        for cname in result.coords:
+            enc_b = result[cname].encoding.get("bounds") or result[
+                cname
+            ].attrs.get("bounds")
+            if enc_b:
+                bounds_vars.update(enc_b.split())
+            result[cname].encoding.pop("bounds", None)
+            result[cname].attrs.pop("bounds", None)
+        bounds_vars.update(
+            str(n) for n in result.coords if str(n).endswith("_b")
+        )
+        drop = [n for n in bounds_vars if n in result.coords]
+        if drop:
+            result = result.drop_vars(drop)
         field_out = Field.from_xarray(
             ds=result,
             ncvar=self.name,
@@ -1091,6 +1110,17 @@ class Field(Variable, DomainMixin):
         field.domain.crs = self.domain.crs
         field.domain._type = self.domain._type
         field.domain._calculate_missing_lat_and_lon()
+        # Attach time bounds spanning each resampled period (see docstring).
+        time_coord = field.time
+        res_time = pd.DatetimeIndex(np.asarray(time_coord.values).ravel())
+        offset = pd.tseries.frequencies.to_offset(frequency)
+        orig_start = pd.Timestamp(np.asarray(self.time.values).min())
+        # pandas labels resample bins on the left or the right depending on the
+        # frequency; anchor the window so the bounds bracket the aggregated period.
+        starts = res_time if res_time[0] <= orig_start else res_time - offset
+        time_coord.bounds = np.stack(
+            [starts.values, (starts + offset).values], axis=1
+        )
         return field
 
     @geokube_logging

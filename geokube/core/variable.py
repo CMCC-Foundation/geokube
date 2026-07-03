@@ -22,10 +22,53 @@ import pandas as pd
 from xarray.core.options import OPTIONS
 
 from ..utils import formatting, formatting_html, util_methods
+from ..utils.attrs_encoding import is_undecodable_time_unit, parse_time_reference
 from ..utils.decorators import geokube_logging
 from ..utils.hcube_logger import HCubeLogger
 from .axis import Axis, AxisType
 from .unit import Unit
+
+
+def _decode_month_year_reference(values, unit_str, calendar=None):
+    """Decode raw numeric offsets against a non-CF ``"months since"`` / ``"years since"``
+    reference into ``datetime64[ns]`` using pandas calendar arithmetic.
+
+    xarray/cftime cannot decode month/year reference units for real-world calendars
+    (variable month length; cftime only supports ``360_day``), so datasets with such units
+    are opened raw (``decode_times=False``) and decoded here. Fractional offsets are rounded
+    to whole calendar steps -- monthly/yearly climate data uses integer offsets and a
+    fractional month has no exact calendar length. Returns ``None`` if ``unit_str`` is not a
+    month/year reference (nothing to decode). Preserves the input array shape (so ``time_bnds``
+    of shape ``(n, 2)`` round-trips).
+    """
+    parsed = parse_time_reference(unit_str)
+    if parsed is None:
+        return None
+    step, ref_str = parsed
+    if step not in ("month", "year"):
+        return None
+    arr = np.asarray(values)
+    off = np.rint(arr.astype("float64")).astype("int64").ravel()
+    ref = pd.Timestamp(ref_str)
+    if step == "year":
+        years, months = ref.year + off, np.full(off.shape, ref.month, dtype="int64")
+    else:
+        total = (ref.year * 12 + (ref.month - 1)) + off
+        years, months = total // 12, total % 12 + 1
+    if ref.day <= 28:
+        result = pd.to_datetime(
+            {"year": years, "month": months, "day": ref.day,
+             "hour": ref.hour, "minute": ref.minute, "second": ref.second}
+        ).values
+    else:
+        # ``ref.day`` may not exist in every target month (e.g. day 31 -> February); let
+        # pandas' DateOffset clamp to the valid month-end, per element.
+        offset = pd.DateOffset(years=1) if step == "year" else pd.DateOffset(months=1)
+        result = np.array(
+            [(ref + int(n) * offset).to_datetime64() for n in off],
+            dtype="datetime64[ns]",
+        )
+    return result.reshape(arr.shape).astype("datetime64[ns]")
 
 
 class Variable(xr.Variable):
@@ -35,6 +78,22 @@ class Variable(xr.Variable):
     )
 
     _LOG = HCubeLogger(name="Variable")
+
+    @property
+    def nbytes(self) -> int:
+        # Estimate the *storage* footprint rather than the decoded in-memory
+        # size: when the variable is packed for serialization (e.g.
+        # scale_factor/add_offset -> int16) use the encoded dtype's itemsize,
+        # so the estimate reflects the persisted size (consistent with how
+        # Dataset.nbytes reports on-disk sizes for already-persisted cubes).
+        # Falls back to the in-memory dtype when no packing is declared.
+        enc_dtype = self.encoding.get("dtype")
+        itemsize = (
+            np.dtype(enc_dtype).itemsize
+            if enc_dtype is not None
+            else self.dtype.itemsize
+        )
+        return int(self.size) * itemsize
 
     def __init__(
         self,
@@ -249,10 +308,27 @@ class Variable(xr.Variable):
         attrs = da.attrs.copy()
         encoding = da.encoding.copy()
 
-        units = Unit(
-            encoding.pop("units", attrs.pop("units", None)),
-            calendar=encoding.pop("calendar", attrs.pop("calendar", None)),
-        )
+        units_str = encoding.pop("units", attrs.pop("units", None))
+        calendar = encoding.pop("calendar", attrs.pop("calendar", None))
+        units = Unit(units_str, calendar=calendar)
+
+        # Non-CF "months since"/"years since" time (undecodable by xarray/cftime for any
+        # calendar but 360_day) is opened raw (decode_times=False); decode it to datetime64
+        # here -- the single funnel both the cached and non-cached read paths pass through --
+        # so the whole model sees a real time axis. Guard: numeric and 1-D/2-D (a coordinate
+        # axis or its bounds), never an already-decoded or a large lazy data variable.
+        dtype = getattr(data, "dtype", None)
+        ndim = getattr(data, "ndim", None)
+        if (
+            is_undecodable_time_unit(units_str, calendar)
+            and dtype is not None
+            and np.issubdtype(dtype, np.number)
+            and ndim is not None
+            and ndim <= 2
+        ):
+            decoded = _decode_month_year_reference(data, units_str, calendar)
+            if decoded is not None:
+                data = decoded
 
         return Variable(
             data=data,
@@ -272,8 +348,20 @@ class Variable(xr.Variable):
             dims = self.dim_names
         if self.units is not None and not self.units.is_unknown:
             if self.units.is_time_reference():
-                nc_encoding["units"] = self.units.cftime_unit
-                nc_encoding["calendar"] = self.units.calendar
+                units_str = str(self.units)
+                calendar = getattr(self.units, "calendar", None)
+                if np.issubdtype(self.dtype, np.datetime64) and is_undecodable_time_unit(
+                    units_str, calendar
+                ):
+                    # datetime64 data decoded from a non-CF "months/years since" reference:
+                    # xarray/cftime cannot re-encode that unit on write, so drop it and let
+                    # xarray pick a CF-decodable encoding; keep the original for provenance.
+                    nc_encoding.pop("units", None)
+                    nc_encoding.pop("calendar", None)
+                    nc_attrs.setdefault("original_time_units", units_str)
+                else:
+                    nc_encoding["units"] = self.units.cftime_unit
+                    nc_encoding["calendar"] = self.units.calendar
             elif np.issubdtype(self.dtype, np.timedelta64) or np.issubdtype(
                 self.dtype, np.datetime64
             ):

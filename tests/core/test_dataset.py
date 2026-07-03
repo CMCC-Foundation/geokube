@@ -28,15 +28,24 @@ def test_select_fields_by_ncvar(dataset_idpattern):
     assert len(tp) == 1
 
 
+def test_filter_by_attribute(dataset):
+    # regression: filter used np.in1d, removed in NumPy>=2.2 (geokube pins numpy 2.4.6);
+    # filter was previously untested, so the break went unnoticed. Uses np.isin now.
+    val = dataset.data["vars"].iloc[0]
+    filtered = dataset.filter(vars=val)
+    assert 1 <= len(filtered) <= len(dataset)
+    assert set(filtered.data["vars"]) == {val}
+    # list form: filtering on every value keeps every row.
+    all_vals = list(dataset.data["vars"].unique())
+    assert len(dataset.filter(vars=all_vals)) == len(dataset)
+
+
 def test_if_to_dict_produces_json_serializable(dataset, dataset_single_att):
     import json
 
     _ = json.dumps(dataset.to_dict())
     _ = json.dumps(dataset_single_att.to_dict())
 
-@pytest.mark.skip(
-    "Invalidate as in the current version, test don't take into consideration compression and result to be inaccurate"
-)
 def test_nbytes_estimation(dataset_single_att):
     import os
 
