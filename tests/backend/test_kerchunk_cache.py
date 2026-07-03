@@ -1266,6 +1266,89 @@ def test_decode_kwarg_symmetry_cached_vs_direct(tmp_path):
     _assert_cube_values_match(cached, direct)
 
 
+def _write_broken_time_bnds(path):
+    """A file whose ``time`` is a decodable ``days since`` unit but whose ``time_bnds``
+    carries an int32 fill sentinel (``-2147483648``) with NO units of its own.
+
+    Mirrors the soil-erosion-vhr-era5 ``historical`` files: because ``time`` declares
+    ``bounds='time_bnds'``, xarray's CF decode inherits ``time``'s units/calendar onto
+    ``time_bnds`` and tries to decode ``-2147483648 days`` -> OverflowError -> the
+    ``ValueError: unable to decode time units 'days since 1991-01-01'`` seen in prod.
+    ``decode_times=False`` is the only correct handling (the value is undecodable garbage).
+    """
+    ds = xr.Dataset(
+        {"v": (("time", "y", "x"), np.zeros((1, 3, 4), dtype="float32")),
+         "time_bnds": (("time", "bnds"),
+                       np.array([[0.0, -2147483648.0]], dtype="float64"))},
+        coords={"time": ("time", np.array([5297.0], dtype="float64")),
+                "y": ("y", np.arange(3)), "x": ("x", np.arange(4))},
+    )
+    ds["time"].attrs = {"units": "days since 1991-01-01", "calendar": "proleptic_gregorian",
+                        "standard_name": "time", "axis": "T", "bounds": "time_bnds"}
+    ds["time"].encoding = {"_FillValue": None}
+    ds["time_bnds"].encoding = {"_FillValue": None}  # keep the sentinel unmasked on disk
+    ds.to_netcdf(str(path), engine="netcdf4", format="NETCDF4")
+    return str(path)
+
+
+@pytest.mark.integration
+def test_broken_time_bnds_transparent_with_decode_times_false(tmp_path):
+    # With decode_times=False (as the catalog config sets, and the driver now forwards to the
+    # build) the manifest build does not crash, the flag is persisted, and the cached read
+    # matches the direct non-cached open -- transparent. Time stays raw; time_bnds preserved.
+    p = _write_broken_time_bnds(tmp_path / "hist.nc")
+    cache = str(tmp_path / "cache")
+
+    summary = build_metadata_cache(p, metadata_cache_path=cache, decode_times=False)
+    assert summary["built"] == 1 and summary["skipped"] == []
+    assert _kerchunk.load_store(cache)["open_kwargs"].get("decode_times") is False  # persisted
+
+    cached = open_datacube(p, metadata_caching=True, metadata_cache_path=cache,
+                           decode_times=False)
+    direct = open_datacube(p, decode_times=False)
+    _assert_cube_values_match(cached, direct)
+
+    xc, xd = cached.to_xarray(), direct.to_xarray()
+    # Time stays a raw axis (matches the configured non-cached decode_times=False open;
+    # geokube only self-decodes months/years, not days-since) and is identical to the
+    # direct open. Data-variable transparency is covered by _assert_cube_values_match above.
+    assert not np.issubdtype(np.asarray(xc[CDIM].values).dtype, np.datetime64)
+    np.testing.assert_array_equal(
+        np.asarray(xc[CDIM].values), np.asarray(xd[CDIM].values)
+    )
+
+
+@pytest.mark.integration
+def test_broken_time_bnds_default_build_raises(tmp_path):
+    # Documents WHY the flag is required: a single-cube build with default decoding surfaces
+    # the time-decode failure (single-cube builds are not silently swallowed; only the
+    # multi-cube catalog loop isolates a bad cube, see the isolation test below).
+    p = _write_broken_time_bnds(tmp_path / "hist.nc")
+    cache = str(tmp_path / "cache")
+    with pytest.raises(ValueError, match="decode time"):
+        build_metadata_cache(p, metadata_cache_path=cache)
+
+
+@pytest.mark.integration
+def test_failing_cube_isolated_in_pattern_build(tmp_path):
+    # A multi-cube (pattern) build must isolate an unrecoverable cube: report it in `skipped`
+    # and still build the healthy cubes, instead of aborting the whole run. Here the bad cube
+    # is the broken-time_bnds file opened with default decoding (proactive probe cannot see a
+    # value overflow); the healthy cube is a "months since" file the probe auto-handles.
+    good = _write_monthly(tmp_path / "good.nc")
+    bad = _write_broken_time_bnds(tmp_path / "bad.nc")
+    cache = str(tmp_path / "cache")
+    pattern = str(tmp_path / "{var}.nc")
+
+    summary = build_metadata_cache(  # must NOT raise
+        str(tmp_path / "*.nc"), pattern=pattern, metadata_cache_path=cache,
+    )
+    assert summary["groups"] == 2
+    assert summary["built"] == 1
+    assert len(summary["skipped"]) == 1 and "bad" in repr(summary["skipped"])
+    _ = good  # (referenced for clarity; the healthy cube is the one that built)
+
+
 # ------------------------------------------------------------- build: progress bar
 # `progress=True` shows nested tqdm bars while building. It must be a pure add-on:
 # identical summary + identical store as `progress=False`, and it must actually drive
