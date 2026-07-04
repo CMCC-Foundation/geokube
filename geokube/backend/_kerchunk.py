@@ -134,11 +134,13 @@ def _decode_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
     }
 
 
-# The only decode-related kwargs ``virtualizarr.open_virtual_dataset`` accepts (its signature
-# takes just these two of xarray's options). Forwarded to the per-file manifest build so the
+# The decode-related kwargs forwarded to ``virtualizarr.open_virtual_dataset`` at build so the
 # cache honors the catalog's flags — notably ``decode_times=False`` for non-CF time units like
 # ``months since ...`` that xarray/cftime cannot decode — matching the non-cached open path.
-_VDS_OPEN_KWARGS = frozenset({"decode_times", "drop_variables"})
+# ``drop_variables`` is deliberately NOT here: ``open_virtual_dataset`` applies it via a STRICT
+# ``Dataset.drop_vars`` (``errors="raise"``) that raises when a listed variable is absent from a
+# given file; :func:`reference_one` applies it itself with xarray-lenient semantics instead.
+_VDS_OPEN_KWARGS = frozenset({"decode_times"})
 
 
 def _vds_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
@@ -252,6 +254,16 @@ def reference_one(
         _url(path), registry=_REGISTRY, parser=_parser_for(path), loadable_variables=lv,
         **_vds_open_kwargs(open_kwargs),
     )
+    # Apply ``drop_variables`` here with xarray-lenient semantics rather than letting
+    # ``open_virtual_dataset`` do it: VirtualiZarr routes ``drop_variables`` through a strict
+    # ``Dataset.drop_vars`` (``errors="raise"``) that blows up when a listed variable is absent
+    # from *this* file, but the same var is often present in only some files of a dataset (e.g.
+    # ``time_bnds`` in bioclimind). ``errors="ignore"`` mirrors ``xr.open_dataset`` and keeps the
+    # cache transparent w.r.t. the non-cached open. The drop is post-decode either way (it does
+    # not avoid a decode crash — use ``decode_times=False`` for that).
+    drop = list((open_kwargs or {}).get("drop_variables") or ())
+    if drop:
+        vds = vds.drop_vars(drop, errors="ignore")
     return _drop_scalars(vds)
 
 

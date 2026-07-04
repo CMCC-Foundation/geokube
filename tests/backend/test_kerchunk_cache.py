@@ -1349,6 +1349,52 @@ def test_failing_cube_isolated_in_pattern_build(tmp_path):
     _ = good  # (referenced for clarity; the healthy cube is the one that built)
 
 
+def _write_optional_bnds(path, *, var, with_bnds, n=3):
+    """A small NetCDF4 file with data variable ``var`` over a ``time`` axis, optionally
+    carrying a ``time_bnds`` bounds variable — to exercise ``drop_variables`` over files
+    where the dropped var is present in only some of them (the bioclimind shape)."""
+    dv = {var: (("time", "y", "x"), np.zeros((n, 3, 4), dtype="float32"))}
+    if with_bnds:
+        dv["time_bnds"] = (("time", "bnds"),
+                           np.stack([np.arange(n), np.arange(1, n + 1)], axis=1).astype("float64"))
+    ds = xr.Dataset(dv, coords={"time": ("time", np.arange(n, dtype="int32")),
+                                "y": ("y", np.arange(3)), "x": ("x", np.arange(4))})
+    ds["time"].attrs = {"units": "days since 1970-01-01", "calendar": "standard",
+                        "standard_name": "time", "axis": "T"}
+    if with_bnds:
+        ds["time"].attrs["bounds"] = "time_bnds"
+    ds.to_netcdf(str(path), engine="netcdf4", format="NETCDF4")
+    return str(path)
+
+
+@pytest.mark.integration
+def test_drop_variables_lenient_when_absent(tmp_path):
+    # Regression: `drop_variables` naming a var ABSENT from the file must not crash the build.
+    # VirtualiZarr's open_virtual_dataset(drop_variables=...) uses a strict drop_vars that raises
+    # on a missing var; geokube applies it leniently (errors="ignore") in reference_one instead.
+    p = _write_optional_bnds(tmp_path / "nobnds.nc", var="v", with_bnds=False)
+    cache = str(tmp_path / "cache")
+    summary = build_metadata_cache(p, metadata_cache_path=cache, drop_variables=["time_bnds"])
+    assert summary["built"] == 1 and summary["skipped"] == []  # no strict-drop crash
+
+
+@pytest.mark.integration
+def test_drop_variables_lenient_across_mixed_files(tmp_path):
+    # bioclimind shape: a pattern build where the dropped var (time_bnds) is present in only
+    # SOME files. Every cube must build (lenient drop where present, ignore where absent) —
+    # none skipped, no raise.
+    _write_optional_bnds(tmp_path / "aaa.nc", var="aaa", with_bnds=True)
+    _write_optional_bnds(tmp_path / "bbb.nc", var="bbb", with_bnds=False)
+    cache = str(tmp_path / "cache")
+    pattern = str(tmp_path / "{var}.nc")
+    summary = build_metadata_cache(
+        str(tmp_path / "*.nc"), pattern=pattern, metadata_cache_path=cache,
+        drop_variables=["time_bnds"],
+    )
+    assert summary["groups"] == 2
+    assert summary["built"] == 2 and summary["skipped"] == []
+
+
 # ------------------------------------------------------------- build: progress bar
 # `progress=True` shows nested tqdm bars while building. It must be a pure add-on:
 # identical summary + identical store as `progress=False`, and it must actually drive
