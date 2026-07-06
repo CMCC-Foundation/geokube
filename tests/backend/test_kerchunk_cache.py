@@ -1599,6 +1599,45 @@ def test_passthrough_config_change_invalidates_cache(tmp_path):
 
 
 @pytest.mark.integration
+def test_passthrough_variable_excluded_by_read_time_drop_variables(tmp_path):
+    # Regression (bioclimind, production): `drop_variables` is intentionally NOT
+    # forwarded to the build (see `geolake-datastore`'s `intake_geokube.base`
+    # `_BUILD_ONLY_XARRAY_KWARGS`) -- a name present in only some files of a
+    # heterogeneous multi-file cube would otherwise hit VirtualiZarr's strict
+    # `drop_vars` at build. If that same name is ALSO a contiguous passthrough
+    # candidate, it gets recorded in `passthrough` at build time (`drop_variables`
+    # not in effect there) but is excluded only at READ time (`drop_variables` IS
+    # forwarded there, e.g. `AUX_BNDS` mirroring bioclimind's single-record
+    # `time_bnds`). `_splice_passthrough` must skip a passthrough name that the
+    # read-time `drop_variables` already excludes instead of reopening the file and
+    # indexing a variable the open call itself just dropped.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    src = src.drop_vars("time_bnds", errors="ignore")  # SRC's own bounds var; not this test's focus
+    aux = "AUX_BNDS"
+    n = src.sizes[CDIM]
+    bnds = np.stack([np.arange(n), np.arange(1, n + 1)], axis=1).astype("float64")
+    src = src.assign({aux: ((CDIM, "bnds"), bnds)})
+    src[CDIM].encoding.pop("bounds", None)
+    src[CDIM].attrs["bounds"] = aux
+    p = _write_contiguous_slab(src, tmp_path / "contig.nc")
+    cache = tmp_path / "cache"
+    build_metadata_cache(p, metadata_cache_path=str(cache))  # NO drop_variables at build
+
+    store = _kerchunk.load_store(str(cache))
+    passthrough = store["partitions"][0].get("passthrough") or {}
+    assert aux in passthrough  # contiguous and undropped at build -> passthrough candidate
+
+    cube = open_datacube(  # must NOT raise KeyError
+        p, metadata_caching=True, metadata_cache_path=str(cache), drop_variables=[aux],
+    )
+    xds = cube.to_xarray()
+    assert aux not in xds.variables
+    assert DVAR in xds.data_vars
+    _assert_cube_values_match(cube, open_datacube(p, drop_variables=[aux]))
+
+
+@pytest.mark.integration
 def test_many_small_chunks_warns_for_netcdf3_record_variable(tmp_path, caplog):
     # A NetCDF3 record variable is referenced one kerchunk chunk PER RECORD -- the
     # opposite pathology to a contiguous variable. Opening it with the bare default

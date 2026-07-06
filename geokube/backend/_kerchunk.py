@@ -1120,8 +1120,23 @@ def _splice_passthrough(
     Only the reopened variable's own values/dims/attrs/encoding are kept -- its own
     coordinates are discarded so ``ds`` keeps exactly one coordinate object per
     dimension (the one already inlined from the reference path).
+
+    ``drop_variables`` is intentionally NOT forwarded to the *build* (see
+    ``geolake-datastore``'s ``intake_geokube.base._BUILD_ONLY_XARRAY_KWARGS``): a
+    variable excluded at read can still be a passthrough candidate at build (e.g.
+    bioclimind's single-record ``time_bnds``, contiguous but absent from only some
+    of the dataset's files). The reference path already drops such a name for free
+    via xarray's own lenient ``drop_variables``; a passthrough name in the current
+    ``drop_variables`` is skipped here the same way -- it was already excluded from
+    the manifest at build time (:func:`_assemble_store`), so skipping the splice
+    just leaves it absent from the result, instead of reopening a file and indexing
+    a variable that open already dropped.
     """
     passthrough = entry.get("passthrough") or {}
+    if not passthrough:
+        return ds
+    drop = set((open_kwargs or {}).get("drop_variables") or ())
+    passthrough = {k: v for k, v in passthrough.items() if k not in drop}
     if not passthrough:
         return ds
     decode = {"decode_coords": "all", **_decode_open_kwargs(open_kwargs)}
