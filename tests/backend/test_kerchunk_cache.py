@@ -1395,6 +1395,232 @@ def test_drop_variables_lenient_across_mixed_files(tmp_path):
     assert summary["built"] == 2 and summary["skipped"] == []
 
 
+# ------------------------------------------------------ passthrough: contiguous vars
+# A variable whose native (on-disk) chunk spans the whole array (contiguous/unchunked
+# HDF5/NetCDF4 storage, or any NetCDF3-classic non-record variable) is excluded from
+# the kerchunk reference entirely and reopened directly from source at read time
+# instead of being cached as one indivisible chunk that no `chunks=` could subdivide.
+
+def _write_contiguous_slab(sl, path):
+    """Write a time-slice as NETCDF4 with data variables EXPLICITLY contiguous
+    (unchunked), regardless of any ambient chunking default -- the on-disk layout
+    kerchunk represents as one indivisible reference chunk (see
+    ``_kerchunk._is_contiguous_chunk``). HDF5 forbids contiguous storage for a
+    variable with an unlimited dimension, so ``unlimited_dims=[]`` is forced too."""
+    out = sl.copy()
+    for v in list(out.variables):
+        for enc in ("chunksizes", "contiguous", "original_shape", "preferred_chunks"):
+            out[v].encoding.pop(enc, None)
+    for v in out.data_vars:
+        out[v].encoding["contiguous"] = True
+        out[v].encoding.pop("zlib", None)
+        out[v].encoding.pop("complevel", None)
+    out.to_netcdf(path, engine="netcdf4", format="NETCDF4", unlimited_dims=[])
+    return str(path)
+
+
+def _write_contiguous_nc3(sl, path):
+    """Write a time-slice as NETCDF3_CLASSIC. The format has no chunking concept for
+    non-record variables at all, so as long as no dim is unlimited every data
+    variable is contiguous by construction (``kerchunk.netCDF3.NetCDF3ToZarr``
+    reports ``chunks=shape`` for it)."""
+    out = sl.copy()
+    for v in list(out.variables):
+        if out[v].dtype == np.int64:
+            out[v] = out[v].astype(np.int32)
+        for k in ("zlib", "complevel", "chunksizes", "contiguous"):
+            out[v].encoding.pop(k, None)
+    out.to_netcdf(path, format="NETCDF3_CLASSIC", unlimited_dims=[])
+    return str(path)
+
+
+def _write_record_nc3(path, n_time=2500):
+    """Synthetic NetCDF3_CLASSIC file with ``time`` as the RECORD (unlimited)
+    dimension -- kerchunk references such a variable one reference chunk PER RECORD
+    (``kerchunk.netCDF3.NetCDF3ToZarr.translate``), the mirror-image pathology to a
+    contiguous (whole-array) chunk. Used to exercise ``_warn_if_many_small_chunks``."""
+    ds = xr.Dataset(
+        {"v": (("time", "y"), np.arange(n_time * 2, dtype="float32").reshape(n_time, 2))},
+        coords={"time": ("time", np.arange(n_time, dtype="int32"))},
+    )
+    ds.to_netcdf(path, format="NETCDF3_CLASSIC", unlimited_dims=["time"])
+    return str(path)
+
+
+@pytest.mark.integration
+def test_passthrough_splices_small_chunks_for_contiguous_variable(tmp_path):
+    # A contiguous variable must NOT end up as one giant dask block: it is excluded
+    # from the kerchunk reference and reopened directly from source instead.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    p = _write_contiguous_slab(src, tmp_path / "contig.nc")
+    cache = tmp_path / "cache"
+    build_metadata_cache(p, metadata_cache_path=str(cache))
+
+    store = _kerchunk.load_store(str(cache))
+    assert store["partitions"][0].get("passthrough"), "no variable was flagged passthrough"
+    assert DVAR in store["partitions"][0]["passthrough"]
+    assert store["partitions"][0]["passthrough"][DVAR]["engine"] == "h5netcdf"
+
+    # The manifest itself must not carry a reference for the passthrough variable.
+    ref = os.path.join(str(cache), store["partitions"][0]["parquet"])
+    assert DVAR not in _kerchunk.open_reference(ref).data_vars
+
+    cube = open_datacube(p, metadata_caching=True, metadata_cache_path=str(cache))
+    xds = cube.to_xarray()
+    assert dask.is_dask_collection(xds[DVAR].data)
+    _assert_cube_values_match(cube, open_datacube(p))
+
+
+@pytest.mark.integration
+def test_passthrough_lets_auto_chunk_subdivide_reference_cannot(tmp_path):
+    # The core value proposition: `chunks="auto"` (the bare-default lever for
+    # passthrough -- see `_kerchunk._passthrough_chunks`) against the REFERENCE path
+    # is constrained by dask to a multiple of the on-disk chunk declared in the
+    # manifest -- for a contiguous variable that IS the whole array, so auto can only
+    # ever pick ONE block, no matter how small the byte-size target. The native
+    # engine passthrough uses exposes no preferred chunk for a contiguous variable at
+    # all, so auto is free to size chunks from the byte-size target alone -- shrink
+    # that target so even this small fixture visibly subdivides.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    p = _write_contiguous_slab(src, tmp_path / "contig.nc")
+
+    with dask.config.set({"array.chunk-size": "256KiB"}):
+        cache_on = tmp_path / "cache_on"
+        build_metadata_cache(p, metadata_cache_path=str(cache_on))
+        on = _kerchunk.open_store(_kerchunk.load_store(str(cache_on)))
+        assert _record_nblocks(on, DVAR) > 1
+
+        cache_off = tmp_path / "cache_off"
+        build_metadata_cache(
+            p, metadata_cache_path=str(cache_off), passthrough_contiguous=False,
+        )
+        off = _kerchunk.open_store(_kerchunk.load_store(str(cache_off)))
+        assert _record_nblocks(off, DVAR) == 1  # reference path: stuck at one chunk
+
+
+@pytest.mark.integration
+def test_passthrough_disabled_restores_single_chunk_reference(tmp_path):
+    # `passthrough_contiguous=False` restores the pre-existing (single indivisible
+    # chunk) behavior and never populates the `passthrough` store field.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    p = _write_contiguous_slab(src, tmp_path / "contig.nc")
+    cache = tmp_path / "cache"
+    build_metadata_cache(p, metadata_cache_path=str(cache), passthrough_contiguous=False)
+
+    store = _kerchunk.load_store(str(cache))
+    assert not store["partitions"][0].get("passthrough")
+    cube = open_datacube(p, metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(p))
+
+
+@pytest.mark.integration
+def test_passthrough_netcdf3_nonrecord_uses_netcdf4_engine(tmp_path):
+    # A contiguous NetCDF3-classic (non-record) variable is ALSO a passthrough
+    # candidate, but must be reopened with the `netcdf4` engine -- `h5netcdf` cannot
+    # even open a NetCDF3 file.
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    p = _write_contiguous_nc3(src, tmp_path / "contig_n3.nc")
+    cache = tmp_path / "cache"
+    build_metadata_cache(p, metadata_cache_path=str(cache))
+
+    store = _kerchunk.load_store(str(cache))
+    passthrough = store["partitions"][0].get("passthrough") or {}
+    assert DVAR in passthrough
+    assert passthrough[DVAR]["engine"] == "netcdf4"
+
+    cube = open_datacube(p, metadata_caching=True, metadata_cache_path=str(cache))
+    _assert_cube_values_match(cube, open_datacube(p))
+
+
+@pytest.mark.integration
+def test_passthrough_max_files_cap_falls_back(tmp_path, caplog):
+    # A contiguous variable spanning more files than the cap falls back to today's
+    # single-chunk reference for it instead of reopening that many files natively.
+    # Four EQUAL-length slabs -> identical shape/encoding signature -> one partition
+    # (an uneven split would give each its own signature and defeat the cap check).
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    n = src.sizes[CDIM]
+    q = n // 4
+    assert q >= 1, "SRC must have >=4 timesteps to form four equal-length slabs"
+    contiguous = [
+        _write_contiguous_slab(
+            src.isel({CDIM: slice(i * q, (i + 1) * q)}), tmp_path / f"c{i}.nc"
+        )
+        for i in range(4)
+    ]
+    cache = tmp_path / "cache"
+    with caplog.at_level("WARNING", logger="_kerchunk.py"):
+        build_metadata_cache(
+            contiguous, metadata_cache_path=str(cache),
+            passthrough_max_files_per_partition=2,
+        )
+    assert "cap 2" in caplog.text
+
+    store = _kerchunk.load_store(str(cache))
+    assert not any(p.get("passthrough") for p in store["partitions"])
+    cube = open_datacube(
+        contiguous, metadata_caching=True, metadata_cache_path=str(cache)
+    )
+    _assert_cube_values_match(cube, open_datacube(contiguous))
+
+
+@pytest.mark.integration
+def test_passthrough_ignores_already_chunked_variable(tmp_path):
+    # Regression: a genuinely chunked (non-contiguous) variable must never be marked
+    # passthrough -- only the reference path applies to it.
+    slabs = _make_slabs(tmp_path)["nc4"]
+    src = xr.open_dataset(slabs[0], decode_coords="all")
+    src.load()
+    p = _write_chunked_slab(src, tmp_path / "chunked.nc", time_chunk=1)
+    cache = tmp_path / "cache"
+    build_metadata_cache(p, metadata_cache_path=str(cache))
+    store = _kerchunk.load_store(str(cache))
+    assert not store["partitions"][0].get("passthrough")
+
+
+@pytest.mark.integration
+def test_passthrough_config_change_invalidates_cache(tmp_path):
+    # `passthrough_contiguous`/`passthrough_max_files_per_partition` are part of the
+    # manifest context: flipping them must force a rebuild (not an incremental no-op).
+    src = xr.open_dataset(SRC, decode_coords="all")
+    src.load()
+    p = _write_contiguous_slab(src, tmp_path / "contig.nc")
+    cache = tmp_path / "cache"
+    build_metadata_cache(p, metadata_cache_path=str(cache))
+    assert _kerchunk.load_store(str(cache))["partitions"][0].get("passthrough")
+
+    build_metadata_cache(p, metadata_cache_path=str(cache), passthrough_contiguous=False)
+    assert not _kerchunk.load_store(str(cache))["partitions"][0].get("passthrough")
+
+
+@pytest.mark.integration
+def test_many_small_chunks_warns_for_netcdf3_record_variable(tmp_path, caplog):
+    # A NetCDF3 record variable is referenced one kerchunk chunk PER RECORD -- the
+    # opposite pathology to a contiguous variable. Opening it with the bare default
+    # `chunks={}` would build one dask task per record; warn at build time instead.
+    p = _write_record_nc3(tmp_path / "record.nc", n_time=2500)
+    cache = tmp_path / "cache"
+    with caplog.at_level("WARNING", logger="_kerchunk.py"):
+        build_metadata_cache(p, metadata_cache_path=str(cache))
+    assert "native reference chunks" in caplog.text
+
+
+@pytest.mark.integration
+def test_many_small_chunks_no_warning_with_explicit_chunks(tmp_path, caplog):
+    # The warning is only useful when the caller left `chunks` at the bare default;
+    # an explicit coalescing `chunks=` (or "auto") silences it.
+    p = _write_record_nc3(tmp_path / "record.nc", n_time=2500)
+    cache = tmp_path / "cache"
+    with caplog.at_level("WARNING", logger="_kerchunk.py"):
+        build_metadata_cache(p, metadata_cache_path=str(cache), chunks={"time": 500})
+    assert "native reference chunks" not in caplog.text
+
+
 # ------------------------------------------------------------- build: progress bar
 # `progress=True` shows nested tqdm bars while building. It must be a pure add-on:
 # identical summary + identical store as `progress=False`, and it must actually drive
