@@ -391,16 +391,25 @@ def build_metadata_cache(
         df.index, enabled=progress, desc="building cubes", total=len(df.index),
         leave=True,
     ):
-        ok = _build_datacube_cache(
-            df[FILES_COL][i],
-            _cube_cache_dir(cubes_dir, i),
-            combine=combine,
-            concat_dim=concat_dim,
-            engine=engine,
-            scheduler=scheduler,
-            open_kwargs=kwargs,
-            progress=progress,
-        )
+        # Isolate a failing cube: one unreadable/undecodable file must not abort the
+        # whole catalog build (and, via the catalog's generate script, every dataset
+        # after it). A raising cube is logged and counted as skipped, exactly like a
+        # non-referenceable group (which already returns ok=False). index.json is still
+        # published last, over only the cubes that actually built.
+        try:
+            ok = _build_datacube_cache(
+                df[FILES_COL][i],
+                _cube_cache_dir(cubes_dir, i),
+                combine=combine,
+                concat_dim=concat_dim,
+                engine=engine,
+                scheduler=scheduler,
+                open_kwargs=kwargs,
+                progress=progress,
+            )
+        except Exception as exc:
+            LOG.warn(f"cube {i!r} failed to build; skipping: {exc!r}")
+            ok = False
         if ok:
             built += 1
         else:
