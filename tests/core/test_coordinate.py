@@ -602,3 +602,61 @@ def test_to_dict_not_store_all_values(nemo_ocean_16):
     assert isinstance(details, dict)
     assert "values" not in details.keys()
 
+
+def test_to_dict_time_numeric_hours_since_decodes():
+    # A numeric TIME axis (e.g. a source opened ``decode_times=False``) must decode its standard
+    # "since" unit rather than crash serializing a generic-unit datetime64. Regression for the
+    # 500 on ``product_details`` for ``soil-erosion-over-italy-2km`` ("Cannot convert a NumPy
+    # datetime value other than NaT with generic units").
+    c = Coordinate(
+        data=np.array([0, 24, 48], dtype="int32"),
+        axis=Axis("time", is_dim=True),
+        dims="time",
+        units="hours since 1970-01-01",
+    )
+    details = c.to_dict()
+    assert details["axis"] == "TIME"
+    assert np.datetime64(details["min"]) == np.datetime64("1970-01-01T00:00")
+    assert np.datetime64(details["max"]) == np.datetime64("1970-01-03T00:00")
+
+
+def test_to_dict_time_numeric_days_since_decodes():
+    c = Coordinate(
+        data=np.array([0, 31, 59], dtype="int32"),
+        axis=Axis("time", is_dim=True),
+        dims="time",
+        units="days since 1900-01-01",
+    )
+    details = c.to_dict()
+    assert details["axis"] == "TIME"
+    assert np.datetime64(details["min"]) == np.datetime64("1900-01-01")
+    assert np.datetime64(details["max"]) == np.datetime64("1900-03-01")
+
+
+def test_to_dict_time_numeric_out_of_range_does_not_raise():
+    # Undecodable / out-of-range offsets must fall back to a concrete-unit datetime64 (never a
+    # generic-unit one), so serialization cannot raise on generic units.
+    c = Coordinate(
+        data=np.array([1e30], dtype="float64"),
+        axis=Axis("time", is_dim=True),
+        dims="time",
+        units="days since 1970-01-01",
+    )
+    details = c.to_dict()  # must not raise
+    assert isinstance(details, dict)
+    assert details["axis"] == "TIME"
+    assert "min" in details and "max" in details
+
+
+def test_maybe_convert_generic_unit_datetime64_does_not_raise():
+    from geokube.utils.serialization import maybe_convert_to_json_serializable
+
+    generic = np.asarray([0, 1, 2]).astype(np.datetime64)  # generic-unit datetime64
+    assert np.datetime_data(generic.dtype)[0] == "generic"
+    # array branch
+    out = maybe_convert_to_json_serializable(generic)
+    assert isinstance(out, list) and all(isinstance(x, str) for x in out)
+    # scalar branch
+    out_scalar = maybe_convert_to_json_serializable(generic[0])
+    assert isinstance(out_scalar, str)
+

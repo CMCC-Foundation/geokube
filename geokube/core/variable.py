@@ -71,6 +71,47 @@ def _decode_month_year_reference(values, unit_str, calendar=None):
     return result.reshape(arr.shape).astype("datetime64[ns]")
 
 
+# pandas ``to_timedelta`` unit codes for the standard CF "since" steps that xarray normally
+# decodes natively (see ``is_undecodable_time_unit``). ``parse_time_reference`` singularises the
+# step, so keys are singular.
+_STANDARD_TIME_STEPS = {
+    "week": "W",
+    "day": "D",
+    "hour": "h",
+    "minute": "m",
+    "second": "s",
+    "millisecond": "ms",
+    "microsecond": "us",
+    "nanosecond": "ns",
+}
+
+
+def _decode_standard_reference(values, unit_str):
+    """Decode raw numeric offsets against a standard ``"<step> since <ref>"`` reference
+    (week/day/hour/minute/second/...) into ``datetime64[ns]`` using pandas.
+
+    These units decode natively via xarray at open time; this handles the case where the source
+    was opened with ``decode_times=False`` (so the axis reaches serialization still numeric) and
+    geokube must decode it itself. Month/year references are handled by
+    ``_decode_month_year_reference`` and are not standard steps, so they return ``None`` here.
+    Returns ``None`` when ``unit_str`` is not a standard "since" reference (nothing to decode).
+    Fill values (``NaN``) map to ``NaT``. Preserves the input array shape (so ``time_bnds`` of
+    shape ``(n, 2)`` round-trips). May raise ``OutOfBoundsDatetime``/``OverflowError`` if the
+    offsets are out of the representable range; the caller is expected to fall back."""
+    parsed = parse_time_reference(unit_str)
+    if parsed is None:
+        return None
+    step, ref_str = parsed
+    pandas_unit = _STANDARD_TIME_STEPS.get(step)
+    if pandas_unit is None:
+        return None
+    arr = np.asarray(values)
+    ref = pd.Timestamp(ref_str)
+    offsets = arr.astype("float64").ravel()
+    result = ref + pd.to_timedelta(offsets, unit=pandas_unit)
+    return np.asarray(result).reshape(arr.shape).astype("datetime64[ns]")
+
+
 class Variable(xr.Variable):
     __slots__ = (
         "_dimensions",

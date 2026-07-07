@@ -92,14 +92,20 @@ def _open_raw(path, *, engine, multi, **kwargs):
     return xr.open_dataset(path, engine=engine, **kwargs)
 
 
-def _kerchunk_covers(raw, sample_file, engine, *, open_kwargs=None) -> bool:
-    """True if the kerchunk dataset retains the sample file's data variables.
+def _kerchunk_covers(
+    raw, sample_file, engine, *, open_kwargs=None, extra_vars=(),
+) -> bool:
+    """True if the kerchunk dataset (plus ``extra_vars`` handled out-of-band) retains
+    the sample file's data variables.
 
     kerchunk can silently drop a variable it fails to translate; we verify against
     a plain open of one source file and reject the cache if any data variable is
     missing. ``open_kwargs`` (the decode flags persisted in the store) are forwarded so the
     sample open honors e.g. ``decode_times=False`` for non-CF time units -- otherwise the
     plain open would raise on decode and the check would be silently skipped.
+    ``extra_vars`` are variables deliberately excluded from the reference on purpose
+    (passthrough candidates -- see ``_kerchunk._detect_passthrough``), not dropped by
+    a kerchunk translation failure, so they must not fail the coverage check.
     """
     from geokube.backend import _kerchunk
 
@@ -110,7 +116,8 @@ def _kerchunk_covers(raw, sample_file, engine, *, open_kwargs=None) -> bool:
         )
     except Exception:
         return True  # cannot verify -> do not block
-    return set(sample.data_vars).issubset(set(raw.data_vars))
+    covered = set(raw.data_vars) | set(extra_vars)
+    return set(sample.data_vars).issubset(covered)
 
 
 def _check_not_legacy(path) -> None:
@@ -305,6 +312,8 @@ def build_metadata_cache(
     engine: Optional[str] = None,
     scheduler="auto",
     progress: bool = False,
+    passthrough_contiguous: bool = True,
+    passthrough_max_files_per_partition: int = 8,
     concat_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     identical_dims: Optional[Sequence[str]] = None,  # deprecated; ignored
     **kwargs,
@@ -355,6 +364,18 @@ def build_metadata_cache(
     the record axis instead of one dask block per on-disk chunk. (``combine``/
     ``concat_dim``/``engine``/``scheduler`` are build/combine params, not opener kwargs.)
 
+    ``passthrough_contiguous`` (default ``True``) detects data variables whose native
+    on-disk chunk spans the whole array -- contiguous/unchunked HDF5/NetCDF4 storage,
+    or any NetCDF3-classic non-record variable -- and excludes them from the kerchunk
+    reference entirely instead of caching them as one indivisible chunk that no
+    ``chunks=`` at read time could ever subdivide. They are reopened directly from
+    their source file(s) at read time (real, natively-chunked lazy reads; no data is
+    duplicated in the cache). A variable spanning more than
+    ``passthrough_max_files_per_partition`` (default 8) files in one partition falls
+    back to today's single-chunk reference instead, with a warning, to keep the
+    read-time cost of reopening files bounded. Set ``passthrough_contiguous=False`` to
+    restore the pre-existing behavior.
+
     Returns ``{"groups": int, "built": int, "skipped": [..]}``.
     """
     if metadata_cache_path is None:
@@ -374,6 +395,8 @@ def build_metadata_cache(
             scheduler=scheduler,
             open_kwargs=kwargs,
             progress=progress,
+            passthrough_contiguous=passthrough_contiguous,
+            passthrough_max_files_per_partition=passthrough_max_files_per_partition,
         )
         return {
             "groups": 1,
@@ -406,6 +429,8 @@ def build_metadata_cache(
                 scheduler=scheduler,
                 open_kwargs=kwargs,
                 progress=progress,
+                passthrough_contiguous=passthrough_contiguous,
+                passthrough_max_files_per_partition=passthrough_max_files_per_partition,
             )
         except Exception as exc:
             LOG.warn(f"cube {i!r} failed to build; skipping: {exc!r}")
@@ -428,6 +453,7 @@ def build_metadata_cache(
 def _build_datacube_cache(
     files, cache_dir, *, combine, concat_dim, engine, scheduler="auto",
     open_kwargs=None, progress=False,
+    passthrough_contiguous=True, passthrough_max_files_per_partition=8,
 ) -> bool:
     """Build/refresh one cube's kerchunk store under ``cache_dir`` (incremental).
 
@@ -448,6 +474,8 @@ def _build_datacube_cache(
         "open_kwargs": _kerchunk._filter_open_kwargs(open_kwargs),
         "vz_version": _kerchunk.VZ_VERSION,
         "store_schema": _kerchunk.STORE_SCHEMA_VERSION,
+        "passthrough_contiguous": passthrough_contiguous,
+        "passthrough_max_files_per_partition": passthrough_max_files_per_partition,
     }
     current = _cache.build_manifest(files, context=context)
     manifest_path = os.path.join(cache_dir, _cache.MANIFEST_FILE)
@@ -473,6 +501,8 @@ def _build_datacube_cache(
         scheduler=scheduler,
         open_kwargs=open_kwargs,
         progress=progress,
+        passthrough_contiguous=passthrough_contiguous,
+        passthrough_max_files_per_partition=passthrough_max_files_per_partition,
     )
     if payload is None:
         return False
@@ -488,7 +518,8 @@ def _build_datacube_cache(
         ref = os.path.join(cache_dir, p["parquet"])
         opened = _kerchunk.open_reference(ref, open_kwargs=effective_open_kwargs)
         if not _kerchunk_covers(
-            opened, p["files"][0], engine, open_kwargs=effective_open_kwargs
+            opened, p["files"][0], engine, open_kwargs=effective_open_kwargs,
+            extra_vars=p.get("passthrough", {}),
         ):
             return False
     # Manifest written last (after store.json): marks the store as valid.

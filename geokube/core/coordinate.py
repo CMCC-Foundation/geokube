@@ -17,7 +17,11 @@ from .bounds import Bounds, Bounds1D, BoundsND
 from .axis import Axis, AxisType
 from .enums import LatitudeConvention, LongitudeConvention
 from .unit import Unit
-from .variable import Variable, _decode_month_year_reference
+from .variable import (
+    Variable,
+    _decode_month_year_reference,
+    _decode_standard_reference,
+)
 
 
 class CoordinateType(Enum):
@@ -384,11 +388,14 @@ class Coordinate(Variable, Axis):
     def _time_values_as_datetime64(self, values):
         """Return a TIME axis' values as ``datetime64`` for serialization.
 
-        Already-``datetime64`` axes pass through. A still-numeric axis is decoded via its
-        reference unit -- non-CF ``months``/``years since`` (which ``Variable.from_xarray``
-        normally decodes upstream) through the geokube decoder, other ``"since"`` units
-        through the legacy epoch cast -- instead of blindly casting raw month offsets to
-        nanoseconds-since-1970 (which produced garbage dates)."""
+        Already-``datetime64`` axes pass through. A still-numeric axis (e.g. a source opened
+        ``decode_times=False``) is decoded via its reference unit: non-CF ``months``/``years
+        since`` (which ``Variable.from_xarray`` normally decodes upstream) through the geokube
+        month/year decoder, and standard ``"<step> since <ref>"`` units (day/hour/minute/second/...,
+        which xarray normally decodes natively at open) through the pandas decoder. If decoding is
+        impossible -- an unknown/non-``"since"`` unit, or out-of-range/fill offsets -- the values
+        are cast to a concrete-resolution ``datetime64[ns]`` as a last resort, never a generic-unit
+        ``datetime64`` (which is unserializable and breaks ``np.nanmin``/``str``)."""
         arr = np.asarray(values)
         if np.issubdtype(arr.dtype, np.datetime64):
             return arr
@@ -398,7 +405,23 @@ class Coordinate(Variable, Axis):
             decoded = _decode_month_year_reference(arr, units_str, calendar)
             if decoded is not None:
                 return decoded
-        return arr.astype(np.datetime64)
+        else:
+            try:
+                decoded = _decode_standard_reference(arr, units_str)
+            except (
+                pd.errors.OutOfBoundsDatetime,
+                pd.errors.OutOfBoundsTimedelta,
+                OverflowError,
+                ValueError,
+            ):
+                decoded = None
+            if decoded is not None:
+                return decoded
+        # Last resort: a concrete unit so callers never receive a generic-unit datetime64.
+        try:
+            return arr.astype("datetime64[ns]")
+        except (ValueError, TypeError, OverflowError):
+            return arr.astype("datetime64[s]")
 
     def to_dict(self, unique_values=False):
         axis_specific_details = {}

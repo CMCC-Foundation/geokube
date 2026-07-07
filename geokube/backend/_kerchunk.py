@@ -53,6 +53,7 @@ __all__ = [
 import base64
 import hashlib
 import json
+import math
 import os
 import shutil
 from typing import List, Mapping, Optional, Sequence, Tuple
@@ -83,8 +84,11 @@ VZ_VERSION = virtualizarr.__version__
 # Bump when the on-disk store shape changes; old stores then read as a miss (the
 # catalog rebuilds them). Schema 3 = VirtualiZarr per-partition parquet manifests;
 # schema 4 adds the `combine_plan` (merge-aware recombination: partitions sharing a
-# record axis are merged, distinct-axis groups concatenated).
-STORE_SCHEMA_VERSION = 4
+# record axis are merged, distinct-axis groups concatenated). Schema 5 adds
+# `passthrough` (per-partition: variables whose native chunk spans the whole array
+# are excluded from the kerchunk reference entirely and reopened directly from their
+# source file(s) at read time -- see `_detect_passthrough` / `_splice_passthrough`).
+STORE_SCHEMA_VERSION = 5
 
 # Cache-directory layout for the per-cube store.
 FILES_SUBDIR = "files"      # one per-file kerchunk JSON manifest (incremental rebuild)
@@ -117,6 +121,109 @@ _FORWARDED_OPEN_KWARGS = frozenset({
 
 # Hardcoded defaults applied when an option is neither persisted nor passed at read time.
 _OPEN_DEFAULTS = {"decode_coords": "all", "chunks": {}}
+
+# Native xarray engine used to reopen a "passthrough" variable directly from its
+# source file(s), bypassing the kerchunk reference layer entirely (see
+# ``_detect_passthrough``/``_splice_passthrough`` below). ``detect_format``'s
+# "hdf5"/"netcdf3" strings are NOT valid xarray engine names on their own --
+# ``h5netcdf`` cannot even open a NetCDF3-classic file -- and ``netcdf4`` (the full
+# netCDF-C library) reads both formats with more dask/thread-safe locking than the
+# mmap-based ``scipy`` backend, which xarray itself flags as fragile under dask.
+_PASSTHROUGH_ENGINE = {"hdf5": "h5netcdf", "netcdf3": "netcdf4"}
+
+# Default cap on how many source files a single passthrough variable may span within
+# one partition before falling back to today's plain (single giant chunk) kerchunk
+# reference for it. Reopening N files natively at read time is cheap when N is small
+# (the motivating case is N=1: one contiguous file per model/cube); an unbounded N
+# would silently reintroduce the per-file open cost this cache exists to avoid.
+DEFAULT_PASSTHROUGH_MAX_FILES = 8
+
+# Number of native on-disk reference chunks along a dimension above which a variable
+# that is NOT a passthrough candidate (i.e. genuinely fine-grained -- e.g. a NetCDF3
+# *record* variable, referenced one kerchunk chunk per record by
+# ``kerchunk.netCDF3.NetCDF3ToZarr``) gets a build-time warning if the effective
+# ``chunks`` open kwarg is left at the bare default. Opening O(#records) reference
+# chunks with ``chunks={}`` reproduces the "OOM in apertura a scala" graph blow-up
+# this cache already fixed once, just from the opposite (too-fine, not too-coarse)
+# native chunking.
+_MANY_CHUNKS_WARN_THRESHOLD = 2000
+
+
+def _var_native_chunks(vds: xr.Dataset, name: str) -> Optional[List[int]]:
+    """The native/manifest chunk shape for a lazy data variable, or ``None`` if it
+    carries no manifest metadata at all (e.g. an eagerly-loaded coordinate)."""
+    meta = getattr(vds.variables[name].data, "metadata", None)
+    if meta is None:
+        return None
+    return list(getattr(meta, "chunks", []) or [])
+
+
+def _is_contiguous_chunk(chunks: Optional[Sequence[int]], shape: Sequence[int]) -> bool:
+    """True if ``chunks`` denotes a single chunk spanning the whole array -- no chunk
+    grid at all (``chunks`` empty) or an explicit chunk shape equal to the full
+    extent. HDF5/NetCDF4 contiguous storage and NetCDF3-classic non-record variables
+    both surface this way: VirtualiZarr/kerchunk report one chunk shaped like the
+    whole variable (``kerchunk.netCDF3.NetCDF3ToZarr.translate`` hardcodes
+    ``chunks=shape`` for non-record variables -- a literal ``# TODO: chance to
+    sub-chunk`` left unimplemented in that library)."""
+    return not chunks or list(chunks) == list(shape)
+
+
+def _detect_passthrough(vds: xr.Dataset, *, enabled: bool) -> dict:
+    """Data variables in a per-file virtual dataset whose native chunk spans the
+    whole variable (:func:`_is_contiguous_chunk`) -- candidates to skip the kerchunk
+    reference entirely and be reopened directly from source at read time
+    (:func:`_splice_passthrough`). Returns ``{name: native_chunks}``.
+
+    ``vds`` is one representative file from an encoding-signature group
+    (:func:`_partition`): the signature folds the native chunk shape into the
+    grouping key, so every file sharing it has an identical per-file chunk/shape for
+    a given variable -- checking one file stands for the whole group, independent of
+    how many of them later get consolidated into one manifest by :func:`_consolidate`.
+    """
+    if not enabled:
+        return {}
+    out = {}
+    for name in vds.data_vars:
+        chunks = _var_native_chunks(vds, name)
+        if chunks is None:
+            continue
+        if _is_contiguous_chunk(chunks, vds[name].shape):
+            out[name] = chunks
+    return out
+
+
+def _warn_if_many_small_chunks(
+    vds: xr.Dataset, dim: Optional[str], n_files: int,
+    open_kwargs: Optional[Mapping], passthrough_vars: Mapping,
+) -> None:
+    """Log a build-time warning when a (non-passthrough) variable's native chunking
+    along ``dim`` would yield so many reference chunks that opening with the bare
+    ``chunks={}`` default (no coalescing requested) blows up the dask graph at open --
+    the mirror-image of the contiguous-chunk problem :func:`_detect_passthrough`
+    handles. Passthrough candidates are exempt: they are never opened via the
+    reference path."""
+    if dim is None or (open_kwargs or {}).get("chunks"):
+        return  # caller already requested explicit coalescing -- nothing to warn about
+    for name in vds.data_vars:
+        if name in passthrough_vars:
+            continue
+        chunks = _var_native_chunks(vds, name)
+        if not chunks or dim not in vds[name].dims:
+            continue
+        chunk = chunks[vds[name].dims.index(dim)]
+        if not chunk:
+            continue
+        n_chunks = math.ceil(vds.sizes[dim] / chunk) * max(n_files, 1)
+        if n_chunks > _MANY_CHUNKS_WARN_THRESHOLD:
+            LOG.warn(
+                f"variable `{name}` has ~{n_chunks} native reference chunks along"
+                f" `{dim}` (on-disk chunk size {chunk}); opening with the default"
+                ' `chunks={}` builds one dask task per chunk. Pass an explicit'
+                f' `chunks={{"{dim}": N}}` (or "auto") to `build_metadata_cache`'
+                " to coalesce the graph."
+            )
+            return
 
 
 def _filter_open_kwargs(open_kwargs: Optional[Mapping]) -> dict:
@@ -673,6 +780,8 @@ def _assemble_store(
     concat_dim,
     open_kwargs: Optional[Mapping] = None,
     progress: bool = False,
+    passthrough_contiguous: bool = True,
+    passthrough_max_files_per_partition: int = DEFAULT_PASSTHROUGH_MAX_FILES,
 ) -> dict:
     """Partition the per-file virtual datasets, consolidate each, write a manifest + index.
 
@@ -698,6 +807,17 @@ def _assemble_store(
     disjoint ranges (the ``sortby`` in :func:`open_store` stays the fallback for interleaved
     ranges). This replays ``open_mfdataset(by_coords)`` semantics (merge + concat) instead of
     a blind ``xr.concat`` that would stack per-variable partitions and inflate the record axis.
+
+    ``passthrough_contiguous`` (default ``True``) additionally detects, per encoding-signature
+    group, data variables whose native chunk spans the whole array (:func:`_detect_passthrough`)
+    -- kerchunk can only reference such a variable as one indivisible chunk, so no ``chunks=``
+    at read time can subdivide it. These are dropped from the manifest entirely (no reference
+    is ever written for them) and recorded instead as a lightweight ``passthrough`` descriptor
+    (source file paths + native engine) on the partition entry, reopened directly from source
+    at read time by :func:`_splice_passthrough`. A variable spanning more than
+    ``passthrough_max_files_per_partition`` files within one partition falls back to today's
+    plain single-chunk reference instead (with a warning), to keep the read-time cost of
+    reopening files natively bounded.
     """
     parts_dir = os.path.join(cache_dir, PARTS_SUBDIR)
     if os.path.isdir(parts_dir):
@@ -716,6 +836,13 @@ def _assemble_store(
         paths = [p for p, _ in items]
         dim = _resolve_concat_dim(vds_list[0], concat_dim)
         resolved_dim = resolved_dim or dim
+
+        # Detected once per encoding-signature group: `_signature` folds the native chunk
+        # shape into the grouping key, so every file in `vds_list` shares an identical
+        # per-file chunk/shape for a given variable -- checking one file stands for the
+        # whole group, regardless of how the subgroups below get consolidated.
+        passthrough_vars = _detect_passthrough(vds_list[0], enabled=passthrough_contiguous)
+        _warn_if_many_small_chunks(vds_list[0], dim, len(vds_list), open_kwargs, passthrough_vars)
 
         # Normally the whole (encoding-homogeneous) group is consolidated into one manifest
         # via a vectorized ManifestArray concat. VirtualiZarr only supports regular chunk
@@ -736,6 +863,19 @@ def _assemble_store(
             subgroups = [(v, [p]) for v, p in zip(vds_list, paths)]
 
         for ds, ds_paths in subgroups:
+            group_passthrough = {}
+            if passthrough_vars:
+                if len(ds_paths) > passthrough_max_files_per_partition:
+                    LOG.warn(
+                        f"variables {sorted(passthrough_vars)} are contiguous/unchunked at"
+                        f" the source but span {len(ds_paths)} files in one partition"
+                        f" (cap {passthrough_max_files_per_partition}); falling back to a"
+                        " single-chunk kerchunk reference for them instead of reopening"
+                        " that many files natively at read time."
+                    )
+                else:
+                    group_passthrough = passthrough_vars
+
             combined = _inline_coords(
                 ds, ds_paths, dim, open_kwargs=open_kwargs, progress=progress
             )
@@ -743,14 +883,26 @@ def _assemble_store(
             combined, scalars, gridmap = _extract_scalars(
                 combined, ds_paths[0], open_kwargs=open_kwargs
             )
+            if group_passthrough:
+                # No kerchunk reference at all for these -- reopened directly from
+                # `ds_paths` at read time (`_splice_passthrough`). Dropping them here keeps
+                # a single source of truth: never both a reference AND a passthrough splice.
+                combined = combined.drop_vars(list(group_passthrough), errors="ignore")
 
             rel = os.path.join(PARTS_SUBDIR, f"p{len(partitions):04d}{ext}")
             _write_manifest(combined, os.path.join(cache_dir, rel))
 
-            partitions.append({
+            entry = {
                 "signature": sig_key, "files": ds_paths, "parquet": rel,
                 "scalars": scalars, "gridmap": gridmap,
-            })
+            }
+            if group_passthrough:
+                fmt = detect_format(ds_paths[0])
+                entry["passthrough"] = {
+                    name: {"files": ds_paths, "engine": _PASSTHROUGH_ENGINE.get(fmt, fmt)}
+                    for name in group_passthrough
+                }
+            partitions.append(entry)
             metas.append((start, axis))
 
     plan = _combine_plan(metas) if combine == COMBINE_BY_COORDS else None
@@ -825,6 +977,8 @@ def cached_build_store(
     scheduler=SCHEDULER_AUTO,
     open_kwargs: Optional[Mapping] = None,
     progress: bool = False,
+    passthrough_contiguous: bool = True,
+    passthrough_max_files_per_partition: int = DEFAULT_PASSTHROUGH_MAX_FILES,
 ) -> Optional[dict]:
     """Incrementally (re)build the on-disk store under ``cache_dir``.
 
@@ -889,6 +1043,8 @@ def cached_build_store(
     payload = _assemble_store(
         file_vds, cache_dir, combine=combine, concat_dim=concat_dim,
         open_kwargs=open_kwargs, progress=progress,
+        passthrough_contiguous=passthrough_contiguous,
+        passthrough_max_files_per_partition=passthrough_max_files_per_partition,
     )
     _prune_ref_files(cache_dir, set(posix_paths))
     return payload
@@ -933,6 +1089,85 @@ def _merge_partitions(group: Sequence[xr.Dataset]) -> xr.Dataset:
     )
 
 
+def _passthrough_chunks(open_kwargs: Optional[Mapping]):
+    """The ``chunks=`` value to reopen a passthrough variable with.
+
+    The merged ``chunks`` (persisted default overridden at read time) governs the
+    *reference* path, where the bare ``{}`` default deliberately mirrors on-disk
+    chunking. A contiguous variable opened via its native engine has no on-disk chunk
+    to mirror at all -- h5netcdf/netCDF4 never set ``encoding["preferred_chunks"]``
+    for it -- and xarray's own chunk resolution turns a bare ``{}``/unset ``chunks``
+    into a *single whole-array* chunk whenever no preferred chunk is exposed, silently
+    recreating the very problem passthrough exists to avoid. ``"auto"`` has no such
+    trap: with no preferred chunk to align to, dask sizes the chunk from the byte-size
+    target alone -- exactly the "on the fly" chunking a normal (non-cached) open
+    already gets. Only an explicit, non-empty ``chunks`` dict overrides this default.
+    """
+    chunks = (open_kwargs or {}).get("chunks")
+    return chunks if chunks else "auto"
+
+
+def _splice_passthrough(
+    ds: xr.Dataset, entry: Mapping, dim: Optional[str], open_kwargs: Optional[Mapping],
+) -> xr.Dataset:
+    """Reopen "passthrough" variables (:func:`_detect_passthrough`) directly from
+    their original file(s), splicing them into ``ds`` in place of what would
+    otherwise be one indivisible kerchunk-reference chunk. Runs before any
+    cross-partition merge/concat/sortby in :func:`open_store`, so a spliced variable
+    rides through that logic identically to a reference-derived one -- no separate
+    combine path is needed.
+
+    Only the reopened variable's own values/dims/attrs/encoding are kept -- its own
+    coordinates are discarded so ``ds`` keeps exactly one coordinate object per
+    dimension (the one already inlined from the reference path).
+
+    ``drop_variables`` is intentionally NOT forwarded to the *build* (see
+    ``geolake-datastore``'s ``intake_geokube.base._BUILD_ONLY_XARRAY_KWARGS``): a
+    variable excluded at read can still be a passthrough candidate at build (e.g.
+    bioclimind's single-record ``time_bnds``, contiguous but absent from only some
+    of the dataset's files). The reference path already drops such a name for free
+    via xarray's own lenient ``drop_variables``; a passthrough name in the current
+    ``drop_variables`` is skipped here the same way -- it was already excluded from
+    the manifest at build time (:func:`_assemble_store`), so skipping the splice
+    just leaves it absent from the result, instead of reopening a file and indexing
+    a variable that open already dropped.
+    """
+    passthrough = entry.get("passthrough") or {}
+    if not passthrough:
+        return ds
+    drop = set((open_kwargs or {}).get("drop_variables") or ())
+    passthrough = {k: v for k, v in passthrough.items() if k not in drop}
+    if not passthrough:
+        return ds
+    decode = {"decode_coords": "all", **_decode_open_kwargs(open_kwargs)}
+    chunks = _passthrough_chunks(open_kwargs)
+    for name, info in passthrough.items():
+        files, engine = info["files"], info["engine"]
+        opened_full = [
+            xr.open_dataset(f, engine=engine, chunks=chunks, **decode) for f in files
+        ]
+        # `decode_coords="all"` promotes CF bounds/grid_mapping variables (e.g.
+        # `time_bnds`) to coordinates on a direct open; mirror that status so the
+        # spliced variable matches a non-cached open's `data_vars`/`coords` split.
+        is_coord = name in opened_full[0].coords
+        opened = [o[name] for o in opened_full]
+        resolved = dim or (opened[0].dims[0] if opened[0].dims else None)
+        if len(opened) == 1:
+            var = opened[0]
+        elif resolved and resolved in opened[0].dims:
+            # `data_vars`/`coords` (used elsewhere for a Dataset concat) are not valid
+            # for a plain DataArray concat -- there is nothing else to minimize here.
+            var = xr.concat(
+                opened, dim=resolved, join="override", combine_attrs="override",
+            )
+        else:
+            var = opened[0]
+        ds[name] = xr.Variable(var.dims, var.data, dict(var.attrs), dict(var.encoding))
+        if is_coord:
+            ds = ds.set_coords([name])
+    return ds
+
+
 def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr.Dataset:
     """Reopen the combined lazy dataset from a store payload.
 
@@ -960,11 +1195,14 @@ def open_store(payload: Mapping, *, open_kwargs: Optional[Mapping] = None) -> xr
     # Persisted build-time kwargs are the defaults; read-time kwargs win.
     merged_open_kwargs = {**payload.get("open_kwargs", {}), **(open_kwargs or {})}
     datasets = [
-        _reattach_scalars(
-            open_reference(
-                os.path.join(cache_dir, p["parquet"]), open_kwargs=merged_open_kwargs
+        _splice_passthrough(
+            _reattach_scalars(
+                open_reference(
+                    os.path.join(cache_dir, p["parquet"]), open_kwargs=merged_open_kwargs
+                ),
+                p.get("scalars", {}), p.get("gridmap", {}),
             ),
-            p.get("scalars", {}), p.get("gridmap", {}),
+            p, concat_dim, merged_open_kwargs,
         )
         for p in parts
     ]
