@@ -53,7 +53,10 @@ dependencies = [
     "obstore==0.11.0",
     "fastparquet==2026.5.0",
     "cftime==1.6.5",
-    "tqdm>=4.66"
+    "tqdm>=4.66",
+    # Transitive deps pinned directly to pick up CVE fixes (hotfix 2026.06.2.1).
+    "pillow==13.0.0",
+    "certifi==2026.10.18",
 ]
 
 [project.optional-dependencies]
